@@ -1,6 +1,6 @@
 // fidelio-audiod: the audio arbiter (audiod/DESIGN.md). Owns the single audio output; cspot and
 // fidelio-raop stream PCM to it over a Unix socket; most-recent-active-source-wins, debounced.
-// Milestone A: host-only (FileOutput / NullOutput). Milestone B swaps in AudioQueueOutput on iOS.
+// Output: the AudioQueue on iOS (airplay/src/AudioQueueOutput.h), --pcm-out / --no-audio on the host.
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +10,9 @@
 #include <string>
 
 #include "AudioOutput.h"
+#ifdef __APPLE__
+#include "AudioQueueOutput.h"
+#endif
 #include "Arbiter.h"
 #include "Server.h"
 #include "ios3_trace.h"
@@ -34,8 +37,11 @@ int main(int argc, char** argv) {
   t.idleStopMs = envOr("AUDIOD_IDLE_STOP_MS", t.idleStopMs);
   if (getenv("AUDIOD_SOCK")) so.sockPath = getenv("AUDIOD_SOCK");
   std::string pcmOut;
-  bool noAudio = false;
+  bool noAudio = false, feedSilenceSet = false;
   so.statusDir = "/var/mobile/fidelio";
+#ifdef __APPLE__
+  AudioQueueSink::Options aq;
+#endif
 
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
@@ -43,11 +49,14 @@ int main(int argc, char** argv) {
     if (a == "-h" || a == "--help") {
       printf("Usage: fidelio-audiod [OPTION]...\n"
              "  --sock PATH              listen here (default %s; env AUDIOD_SOCK)\n"
-             "  --pcm-out FILE           write the played PCM to FILE (host test)\n"
+             "  --pcm-out FILE           write the played PCM to FILE instead of the AudioQueue (host test)\n"
              "  --no-audio               discard the played PCM\n"
+             "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
+             "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
              "  --status-dir DIR         write DIR/active-source (default /var/mobile/fidelio); --no-status disables\n"
              "  --event-log FILE         machine-readable transition log: '<ms> <kind> <from> <to> <reason>'\n"
-             "  --no-silence             do not feed silence between sources\n"
+             "  --no-silence / --silence do not / do feed silence between sources (default: on for\n"
+             "                           --pcm-out, off for the AudioQueue, which pads itself)\n"
              "  --tick-ms MS             arbitration tick (default 20)\n"
              "  --producing-gap-ms MS    (default 120)  env AUDIOD_PRODUCING_GAP_MS\n"
              "  --takeover-ms MS         (default 400)  env AUDIOD_TAKEOVER_MS\n"
@@ -62,7 +71,25 @@ int main(int argc, char** argv) {
     else if (a == "--status-dir") so.statusDir = next("--status-dir");
     else if (a == "--no-status") so.statusDir.clear();
     else if (a == "--event-log") so.eventLog = next("--event-log");
-    else if (a == "--no-silence") so.feedSilence = false;
+    else if (a == "--no-silence") { so.feedSilence = false; feedSilenceSet = true; }
+    else if (a == "--silence") { so.feedSilence = true; feedSilenceSet = true; }
+#ifdef __APPLE__
+    else if (a == "--audio-route") {
+      std::string v = next("--audio-route");
+      if (v == "auto") aq.route = AudioQueueSink::ROUTE_AUTO;
+      else if (v == "speaker") aq.route = AudioQueueSink::ROUTE_SPEAKER;
+      else if (v == "lineout") aq.route = AudioQueueSink::ROUTE_LINEOUT;
+      else { fprintf(stderr, "--audio-route must be auto|speaker|lineout\n"); return 1; }
+    } else if (a == "--on-route-change") {
+      std::string v = next("--on-route-change");
+      if (v == "recreate") aq.recovery = AudioQueueSink::RECOVER_RECREATE;
+      else if (v == "restart") aq.recovery = AudioQueueSink::RECOVER_RESTART;
+      else if (v == "none") aq.recovery = AudioQueueSink::RECOVER_NONE;
+      else { fprintf(stderr, "--on-route-change must be recreate|restart|none\n"); return 1; }
+    }
+#else
+    else if (a == "--audio-route" || a == "--on-route-change") next(a.c_str());  // accepted, no AudioQueue on the host
+#endif
     else if (a == "--tick-ms") so.tickMs = atoi(next("--tick-ms"));
     else if (a == "--producing-gap-ms") t.producingGapMs = strtoull(next(a.c_str()), nullptr, 10);
     else if (a == "--takeover-ms") t.takeoverMs = strtoull(next(a.c_str()), nullptr, 10);
@@ -80,15 +107,20 @@ int main(int argc, char** argv) {
     out.reset(fo);
   } else {
 #ifdef __APPLE__
-    IOS3_TRACE("AudioQueue output arrives with Milestone B; use --pcm-out or --no-audio for now"); return 2;
+    out.reset(new AudioQueueOutput(aq));
+    if (!feedSilenceSet) so.feedSilence = false;  // the AudioQueue sink pads silence itself
 #else
+    (void)feedSilenceSet;
     IOS3_TRACE("host build: use --pcm-out FILE or --no-audio"); return 2;
 #endif
   }
-  IOS3_TRACE("fidelio-audiod start (milestone A, host output: %s)", noAudio ? "discard" : pcmOut.c_str());
+  IOS3_TRACE("fidelio-audiod start (output: %s)", noAudio ? "discard" : !pcmOut.empty() ? pcmOut.c_str() : "AudioQueue");
 
   audiod::Server server(so, t, out.get());
   if (!server.listen()) return 2;
+  signal(SIGTERM, audiod::Server::requestStop);
+  signal(SIGINT, audiod::Server::requestStop);
   server.run();
+  IOS3_TRACE("fidelio-audiod exit");
   return 0;
 }

@@ -2,16 +2,21 @@
 """Host test for fidelio-audiod's arbitration (audiod/DESIGN.md).
 
 Starts audiod with --pcm-out/--event-log, opens two client connections ("spotify" = A sends sample
-0x1111, "airplay" = B sends 0x2222), streams timed PCM bursts (20 ms chunks, real time) and asserts
-that the active-source transitions in the event log land at the TAKEOVER / HOLD / RELEASE
-boundaries, that a rapid-flapping rival never steals, and that the played PCM is exactly the
-active sources' audio. Usage: test_arbiter.py PATH_TO_fidelio-audiod
+0x1111, "airplay" = B sends 0x2222), streams timed PCM bursts (20 ms chunks) and asserts that the
+active-source transitions in the event log land at the TAKEOVER / HOLD / RELEASE boundaries, that
+a rapid-flapping rival never steals, and that the played PCM is exactly the active sources' audio.
+
+The clients behave like the real producers behind SocketSink: audio runs LEAD ms ahead of real
+time (a 500 ms burst at the start of each window, then one 20 ms chunk every 20 ms), so audiod's
+per-source ring holds the next 500 ms when a takeover happens and every active segment plays
+its duration + LEAD of that source's timeline. Usage: test_arbiter.py PATH_TO_fidelio-audiod
 """
 import os, socket, struct, subprocess, sys, threading, time
 
 AUDIOD = sys.argv[1] if len(sys.argv) > 1 else "build/fidelio-audiod"
 GAP, TAKEOVER, HOLD, RELEASE, IDLE_STOP = 120, 400, 1500, 1000, 2000  # idle-stop shortened for the test
 TOL = 120  # ms tolerance on boundaries (20 ms tick + socket + python jitter)
+LEAD = 500  # SocketSink::kLeadMs: how far the producers run ahead of real time
 TMP = "/tmp/audiod-test"
 os.makedirs(TMP, exist_ok=True)
 SOCK = f"{TMP}/audiod.sock"; OUT = f"{TMP}/out.pcm"; EVT = f"{TMP}/events.log"; STATUS = TMP
@@ -47,14 +52,15 @@ class Client:
     def send(self, t, payload=b""):
         self.s.sendall(struct.pack("<II", t, len(payload)) + payload)
     def stream(self, windows):
-        """windows: list of (start_ms, end_ms) relative to T0, during which AUDIO is sent every 20 ms."""
+        """windows: list of (start_ms, end_ms) relative to T0: AUDIO is sent every 20 ms during the window,
+        carrying the source's timeline a .. b+LEAD (chunk for timeline t goes out at wall time max(a, t-LEAD))."""
         def run():
             for (a, b) in windows:
                 i = 0
                 while True:
-                    at = a + i * 20
-                    if at >= b: break
-                    d = at - ms()
+                    t = a + i * 20          # timeline position of this chunk
+                    if t >= b + LEAD: break
+                    d = max(a, t - LEAD) - ms()
                     if d > 0: time.sleep(d / 1000)
                     self.send(2, self.chunk); i += 1
         self.thread = threading.Thread(target=run, daemon=True); self.thread.start()
@@ -116,11 +122,12 @@ between = [e for e in events if 1900 + TOL < e[0] < 4000]
 print(("ok   " if not between else "FAIL ") + f"no transition while both streamed (1900..4000): {between}")
 if between: fails.append("hold")
 
-# PCM: the output must be A-samples for ~0.4..1.9 s, B for ~1.9..4.0, A for ~5.0..8.4, B for ~8.4..9.0.
+# PCM: the output must be A's timeline for ~0.4..2.4 s, B for ~1.9..4.5, A for ~5.0..8.9, B for ~8.4..9.5:
+# each active segment plays its wall-clock duration plus the LEAD the source had sent ahead.
 data = open(OUT, "rb").read()
 frames = len(data) // 4
 a_frames = data.count(struct.pack("<hh", 0x1111, 0x1111)); b_frames = data.count(struct.pack("<hh", 0x2222, 0x2222))
-exp_a = (1900 - 400 + 8400 - 5000) * 44.1; exp_b = (4000 - 1900 + 9000 - 8400) * 44.1
+exp_a = (1900 - 400 + LEAD + 8400 - 5000 + LEAD) * 44.1; exp_b = (4000 - 1900 + LEAD + 9000 - 8400 + LEAD) * 44.1
 ok = abs(a_frames - exp_a) < 0.15 * exp_a and abs(b_frames - exp_b) < 0.15 * exp_b and a_frames + b_frames >= frames * 0.98
 print(("ok   " if ok else "FAIL ") + f"played PCM: A {a_frames} frames (expect ~{int(exp_a)}), B {b_frames} (expect ~{int(exp_b)}), total {frames}")
 if not ok: fails.append("pcm")

@@ -20,6 +20,9 @@
 
 namespace audiod {
 
+volatile sig_atomic_t Server::stopRequested = 0;
+void Server::requestStop(int) { stopRequested = 1; }
+
 uint64_t Server::nowMs() {
 #ifdef __APPLE__
   static mach_timebase_info_data_t tb;
@@ -68,14 +71,16 @@ void Server::acceptClient() {
   Client c;
   c.fd = fd;
   c.id = nextId++;
-  clients[fd] = c;
+  c.ring.resize(kRingFrames * 2);
+  clients[fd] = std::move(c);
   IOS3_TRACE("client #%d connected (fd %d)", c.id, fd);
 }
 
 void Server::dropClient(int fd, const char* why) {
   auto it = clients.find(fd);
   if (it == clients.end()) return;
-  IOS3_TRACE("client #%d '%s' dropped: %s", it->second.id, it->second.name.c_str(), why);
+  IOS3_TRACE("client #%d '%s' dropped: %s%s", it->second.id, it->second.name.c_str(), why,
+             it->second.overflowFrames ? " (while active it ran ahead of the output; oldest frames were dropped)" : "");
   if (it->second.hello) arbiter.removeSource(it->second.id, nowMs());
   close(fd);
   clients.erase(it);
@@ -108,12 +113,12 @@ void Server::handle(Client& c, const Message& m) {
   switch (m.type) {
     case AUDIOD_MSG_AUDIO:
       if (m.payload.size() % 4 != 0) { dropClient(c.fd, "AUDIO length not a multiple of a frame"); return; }
+      ringAppend(c, reinterpret_cast<const int16_t*>(m.payload.data()), m.payload.size() / 4);
       arbiter.onAudio(c.id, m.payload.size(), now);
       afterTick();
-      if (arbiter.activeId() == c.id && arbiter.outputRunning())
-        out->write(reinterpret_cast<const int16_t*>(m.payload.data()), m.payload.size() / 4);
       break;
     case AUDIOD_MSG_FLUSH:
+      c.ringHead = 0; c.ringFrames = 0;
       if (arbiter.activeId() == c.id) out->flush();
       break;
     case AUDIOD_MSG_STOP:
@@ -159,18 +164,63 @@ void Server::writeActiveSourceFile(const std::string& name) {
 void Server::afterTick() {
   for (const Event& e : arbiter.drainEvents()) {
     logEvent(e);
-    if (e.kind == Event::TAKEOVER) { out->flush(); lastSilenceMs = 0; }
+    if (e.kind == Event::TAKEOVER) {
+      out->flush();
+      lastSilenceMs = 0;
+      // Start with the new source's lead (the latest kLeadFrames it sent); anything older is stale.
+      if (Client* c = clientById(arbiter.activeId())) {
+        if (c->ringFrames > kLeadFrames) { c->ringHead = (c->ringHead + c->ringFrames - kLeadFrames) % kRingFrames; c->ringFrames = kLeadFrames; }
+      }
+    }
     if (e.kind == Event::RELEASE) { out->flush(); lastSilenceMs = e.atMs; }
-    if (e.kind == Event::IDLE_STOP) out->flush();
+    if (e.kind == Event::IDLE_STOP) { out->flush(); out->idle(); }
   }
   std::string a = arbiter.activeName();
   writeActiveSourceFile(a.empty() ? "none" : a);
+  pump();
+}
+
+Server::Client* Server::clientById(int id) {
+  for (auto& kv : clients) if (kv.second.id == id) return &kv.second;
+  return nullptr;
+}
+
+void Server::ringAppend(Client& c, const int16_t* frames, size_t n) {
+  bool active = arbiter.activeId() == c.id;  // an inactive source's ring overwriting itself is normal
+  if (n > kRingFrames) { frames += (n - kRingFrames) * 2; if (active) c.overflowFrames += n - kRingFrames; n = kRingFrames; }
+  if (c.ringFrames + n > kRingFrames) {  // drop the oldest (active: the producer ran ahead of the pump)
+    size_t drop = c.ringFrames + n - kRingFrames;
+    c.ringHead = (c.ringHead + drop) % kRingFrames;
+    c.ringFrames -= drop;
+    if (active) c.overflowFrames += drop;
+  }
+  size_t tail = (c.ringHead + c.ringFrames) % kRingFrames;
+  size_t first = kRingFrames - tail;
+  if (first > n) first = n;
+  memcpy(&c.ring[tail * 2], frames, first * 4);
+  if (n > first) memcpy(&c.ring[0], frames + first * 2, (n - first) * 4);
+  c.ringFrames += n;
+}
+
+void Server::pump() {
+  if (arbiter.activeId() < 0 || !arbiter.outputRunning()) return;
+  Client* c = clientById(arbiter.activeId());
+  if (!c) return;
+  while (c->ringFrames > 0 && out->bufferedSeconds() < opts.sinkTargetSec) {
+    size_t n = c->ringFrames < 882 ? c->ringFrames : 882;  // 20 ms slices
+    size_t first = kRingFrames - c->ringHead;
+    if (first > n) first = n;
+    out->write(&c->ring[c->ringHead * 2], first);
+    if (n > first) out->write(&c->ring[0], n - first);
+    c->ringHead = (c->ringHead + n) % kRingFrames;
+    c->ringFrames -= n;
+  }
 }
 
 void Server::run() {
   static int16_t silence[441 * 2 * 4];  // 40 ms
   memset(silence, 0, sizeof silence);
-  while (true) {
+  while (!stopRequested) {
     std::vector<pollfd> pfds;
     pfds.push_back({listenFd, POLLIN, 0});
     for (auto& kv : clients) pfds.push_back({kv.first, POLLIN, 0});
@@ -195,6 +245,10 @@ void Server::run() {
       }
     }
   }
+  IOS3_TRACE("shutdown requested: releasing the output");
+  out->flush();
+  out->idle();
+  writeActiveSourceFile("none");
 }
 
 }  // namespace audiod
