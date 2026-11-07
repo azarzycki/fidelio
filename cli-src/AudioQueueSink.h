@@ -40,7 +40,7 @@ class AudioQueueSink : public AudioSink {
 
   // Drop everything that is still queued (used on seek/flush).
   void flush();
-  // Seconds of audio still buffered (ring + AudioQueue buffers).
+  // Seconds of audio still buffered (ring + the real PCM inside the AudioQueue buffers).
   double bufferedSeconds();
   // Current system audio route name ("Speaker", "LineOut", "Headphone", ...), "" if unknown.
   std::string currentRoute();
@@ -73,6 +73,7 @@ class AudioQueueSink : public AudioSink {
   AudioQueueRef queue = nullptr;
   AudioQueueBufferRef buffers[kNumBuffers];
   bool enqueued[kNumBuffers];    // under queueMutex: the queue owns the buffer
+  size_t queuedBytes[kNumBuffers];  // under queueMutex: real PCM (not silence padding) in that buffer
   AudioStreamBasicDescription format;
   bool running = false;       // AudioQueueStart has been called on `queue`
   bool open = false;          // `queue` exists with buffers

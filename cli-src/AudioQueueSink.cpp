@@ -18,7 +18,7 @@ void AudioQueueSink::init() {
   pthread_mutex_init(&queueMutex, nullptr);
   pthread_mutex_init(&readyMutex, nullptr);
   pthread_cond_init(&readyCond, nullptr);
-  for (int i = 0; i < kNumBuffers; i++) { buffers[i] = nullptr; enqueued[i] = false; }
+  for (int i = 0; i < kNumBuffers; i++) { buffers[i] = nullptr; enqueued[i] = false; queuedBytes[i] = 0; }
   memset(&format, 0, sizeof format);
   softwareVolumeControl = false;  // we use the AudioQueue volume parameter
 
@@ -211,7 +211,7 @@ bool AudioQueueSink::createQueue() {
     }
   }
   AudioQueueSetParameter(q, kAudioQueueParam_Volume, lastVolume);
-  for (int i = 0; i < kNumBuffers; i++) enqueued[i] = false;
+  for (int i = 0; i < kNumBuffers; i++) { enqueued[i] = false; queuedBytes[i] = 0; }
   queue = q;
   open = true;
   running = false;
@@ -230,7 +230,7 @@ void AudioQueueSink::destroyQueue() {
   AudioQueueStop(q, true);     // synchronous: no callbacks after this returns
   AudioQueueDispose(q, true);  // frees the buffers too
   pthread_mutex_lock(&queueMutex);
-  for (int i = 0; i < kNumBuffers; i++) { buffers[i] = nullptr; enqueued[i] = false; }
+  for (int i = 0; i < kNumBuffers; i++) { buffers[i] = nullptr; enqueued[i] = false; queuedBytes[i] = 0; }
   pthread_mutex_unlock(&queueMutex);
 }
 
@@ -303,10 +303,10 @@ double AudioQueueSink::bufferedSeconds() {
   pthread_mutex_lock(&mutex);
   size_t fill = ringFill;
   pthread_mutex_unlock(&mutex);
+  size_t bytes = fill;
   pthread_mutex_lock(&queueMutex);
-  bool r = running;
+  for (int i = 0; i < kNumBuffers; i++) bytes += queuedBytes[i];
   pthread_mutex_unlock(&queueMutex);
-  size_t bytes = fill + (r ? kNumBuffers * kBufferBytes : 0);
   return format.mBytesPerFrame ? (double)bytes / (format.mBytesPerFrame * format.mSampleRate) : 0;
 }
 
@@ -317,7 +317,7 @@ void AudioQueueSink::outputCallback(void* userData, AudioQueueRef q, AudioQueueB
   pthread_mutex_lock(&self->queueMutex);
   if (self->queue == q) {
     for (int i = 0; i < kNumBuffers; i++) {
-      if (self->buffers[i] == buffer) { self->enqueued[i] = false; index = i; break; }
+      if (self->buffers[i] == buffer) { self->enqueued[i] = false; self->queuedBytes[i] = 0; index = i; break; }
     }
   }
   pthread_mutex_unlock(&self->queueMutex);
@@ -356,7 +356,7 @@ void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
   pthread_mutex_lock(&queueMutex);
   if (queue == q) {
     OSStatus st = AudioQueueEnqueueBuffer(q, buffer, 0, nullptr);
-    if (st == 0) enqueued[index] = true;
+    if (st == 0) { enqueued[index] = true; queuedBytes[index] = take; }
     // kAudioQueueErr_EnqueueDuringReset (-66632) is expected inside AudioQueueReset/Stop: the
     // buffer is ours again and the next primeBuffers() enqueues it. Its data is lost either way.
     else if (st != kAudioQueueErr_EnqueueDuringReset) IOS3_TRACE("AudioQueueEnqueueBuffer -> %ld", (long)st);
