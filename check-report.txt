@@ -1,0 +1,8 @@
+dist/fidelio-raop: MH_EXECUTE cputype=12 subtype=6 (armv6) flags=0x18085
+  load commands: LC_SEGMENT LC_SEGMENT LC_SEGMENT LC_SEGMENT LC_SYMTAB LC_DYSYMTAB LC_LOAD_DYLINKER LC_UUID LC_UNIXTHREAD LC_ENCRYPTION_INFO LC_LOAD_DYLIB LC_LOAD_DYLIB LC_LOAD_DYLIB LC_LOAD_DYLIB LC_CODE_SIGNATURE
+  LC_LOAD_DYLIB      /System/Library/Frameworks/AudioToolbox.framework/AudioToolbox (compat 1.0.0) [ok]
+  LC_LOAD_DYLIB      /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation (compat 150.0.0) [ok]
+  LC_LOAD_DYLIB      /usr/lib/libSystem.B.dylib (compat 1.0.0) [ok]
+  LC_LOAD_DYLIB      /usr/lib/libgcc_s.1.dylib (compat 1.0.0) [ok]
+  undefined symbols checked against SDK dylibs: 182
+  => PASS
