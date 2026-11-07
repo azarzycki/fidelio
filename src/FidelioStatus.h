@@ -3,7 +3,7 @@
 #import <UIKit/UIKit.h>
 
 #define FIDELIO_DIR @"/var/mobile/fidelio"
-#define FIDELIO_APP_VERSION @"1.0 (rev4 toolchain)"
+#define FIDELIO_APP_VERSION @"1.1 (source-aware)"
 
 @interface FidelioStatus : NSObject {
   NSDictionary* dict;      // last parsed status.plist, or nil

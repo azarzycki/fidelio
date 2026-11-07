@@ -100,6 +100,9 @@
   else if ([st isEqualToString:@"stopped"]) line = @"Stopped";
   else if ([st isEqualToString:@"connected"]) line = @"Connected - waiting for Spotify";
   else line = @"Waiting for Spotify";
+  NSString* src = [status string:@"source"];
+  if ([src length] && ([st isEqualToString:@"playing"] || [st isEqualToString:@"paused"]))
+    line = [NSString stringWithFormat:@"%@ via %@", line, [src isEqualToString:@"airplay"] ? @"AirPlay" : ([src isEqualToString:@"spotify"] ? @"Spotify" : src)];
   if ([status fileAge] > 15 && ![st isEqualToString:@""]) line = [line stringByAppendingString:@" (stale)"];
   stateLabel.text = line;
 }

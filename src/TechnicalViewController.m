@@ -36,6 +36,7 @@
   NSString* ageStr = age < 0 ? @"no file" : [NSString stringWithFormat:@"%.0f s", age];
   NSString* rss = [status integer:@"rss_kb"] ? [NSString stringWithFormat:@"%lld KB", [status integer:@"rss_kb"]] : @"";
   NSArray* r = [NSArray arrayWithObjects:
+      [NSArray arrayWithObjects:@"Source", [status string:@"source"], nil],
       [NSArray arrayWithObjects:@"State", [status state], nil],
       [NSArray arrayWithObjects:@"Codec", [status dict] ? codec : @"", nil],
       [NSArray arrayWithObjects:@"TLS", [tls length] ? tls : @"(none yet)", nil],
