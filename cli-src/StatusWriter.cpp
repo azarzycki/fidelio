@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -56,7 +57,7 @@ static std::string xmlEscape(const std::string& s) {
   return o;
 }
 
-static bool writeAtomic(const std::string& path, const std::string& data) {
+static bool writeAtomic(const std::string& path, std::string_view data) {
   std::string tmp = path + ".tmp";
   FILE* f = fopen(tmp.c_str(), "wb");
   if (!f) return false;
@@ -209,18 +210,20 @@ void StatusWriter::onEvent(const cspot::SpircHandler::Event& event) {
 bool StatusWriter::fetchCover(const std::string& url, std::string& outName) {
   try {
     auto response = bell::HTTPClient::get(url);
-    auto bytes = response->bytes();
-    if (bytes.size() < 100) {
-      CSPOT_LOG(error, "cover: short response (%d bytes) from %s", (int)bytes.size(), url.c_str());
+    // HTTPClient does not expose the status code; an error page would otherwise become cover.jpg.
+    std::string type(response->header("content-type"));
+    size_t length = response->contentLength();
+    if (type.compare(0, 6, "image/") != 0 || length < 100 || length > kMaxCoverBytes) {
+      CSPOT_LOG(error, "cover: not an image (%s, %u bytes) from %s", type.c_str(), (unsigned)length, url.c_str());
       return false;
     }
-    std::string data(bytes.begin(), bytes.end());
+    std::string_view data = response->body();  // the response's own buffer; no copies
     if (!writeAtomic(dir + "/cover.jpg", data)) {
       CSPOT_LOG(error, "cover: cannot write %s/cover.jpg: %s", dir.c_str(), strerror(errno));
       return false;
     }
     outName = "cover.jpg";
-    IOS3_TRACE("cover saved (%d bytes) from %s", (int)bytes.size(), url.c_str());
+    IOS3_TRACE("cover saved (%u bytes) from %s", (unsigned)data.size(), url.c_str());
     return true;
   } catch (const std::exception& e) {
     CSPOT_LOG(error, "cover: fetch failed: %s", e.what());
@@ -312,10 +315,13 @@ void StatusWriter::threadLoop() {
       if (imageUrl != coverFetchedUrl) {
         url = imageUrl;
         coverFetchedUrl = imageUrl;
-        if (url.empty()) coverFile.clear();
+        coverFile.clear();  // the old track's image must not be shown with the new title
       }
     }
     if (!url.empty()) {
+      // Publish the new track first: the HTTPS fetch below (TLS handshake on an ARM11) takes
+      // a while, and the writer is single-threaded.
+      writeFiles();
       std::string name;
       bool ok = fetchCover(url, name);
       std::scoped_lock l(mutex);

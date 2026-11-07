@@ -29,6 +29,8 @@ class StatusWriter {
   void audioEnded();
 
  private:
+  static const size_t kMaxCoverBytes = 1024 * 1024;  // Spotify covers are tens of KB; a bound for Content-Length
+
   static void* threadEntry(void* self);
   void threadLoop();
   void writeFiles();                 // caller holds no lock
