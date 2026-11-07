@@ -16,17 +16,38 @@
   return self;
 }
 
-- (void)dealloc {
+- (void)releaseSubviews {
   [coverView release];
+  coverView = nil;
   [placeholder release];
+  placeholder = nil;
   [titleLabel release];
+  titleLabel = nil;
   [artistLabel release];
+  artistLabel = nil;
   [albumLabel release];
+  albumLabel = nil;
   [progress release];
+  progress = nil;
   [elapsedLabel release];
+  elapsedLabel = nil;
   [remainingLabel release];
+  remainingLabel = nil;
   [stateLabel release];
+  stateLabel = nil;
+}
+
+- (void)dealloc {
+  [self releaseSubviews];
   [super dealloc];
+}
+
+// A memory warning while the Technical tab is showing purges this (offscreen) view; -loadView
+// then runs again when the tab is reselected, so the old subviews must be let go here or they
+// leak (placeholder bitmap, image view, labels) every time it happens.
+- (void)viewDidUnload {
+  [super viewDidUnload];
+  [self releaseSubviews];
 }
 
 - (UILabel*)makeLabel:(CGRect)frame font:(UIFont*)font color:(UIColor*)color align:(UITextAlignment)align {
