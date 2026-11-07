@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
                  "                           (default /var/mobile/fidelio); --no-status disables\n";
     return 0;
   }
-  IOS3_TRACE("cspot-ios3 rev3 start (no-audio=%d, bitrate=%d, port=%d)", (int)args.noAudio, args.bitrate, args.port);
+  IOS3_TRACE("cspot-ios3 rev5 start (no-audio=%d, bitrate=%d, port=%d)", (int)args.noAudio, args.bitrate, args.port);
 
   std::unique_ptr<StatusWriter> status;
   if (!args.statusDir.empty()) {

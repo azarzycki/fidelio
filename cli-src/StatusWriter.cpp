@@ -251,6 +251,7 @@ void StatusWriter::writeFiles() {
 
   char num[64];
   std::string j = "{\n";
+  j += "  \"source\": \"spotify\",\n";
   j += "  \"state\": \"" + jsonEscape(st) + "\",\n";
   j += "  \"title\": \"" + jsonEscape(ti) + "\", \"artist\": \"" + jsonEscape(ar) + "\", \"album\": \"" + jsonEscape(al) + "\",\n";
   snprintf(num, sizeof num, "%u, \"position_ms\": %u,\n", (unsigned)dur, (unsigned)pos);
@@ -271,7 +272,7 @@ void StatusWriter::writeFiles() {
                   "<plist version=\"1.0\">\n<dict>\n";
   auto ps = [&](const char* k, const std::string& v) { p += std::string("\t<key>") + k + "</key><string>" + xmlEscape(v) + "</string>\n"; };
   auto pi = [&](const char* k, long long v) { snprintf(num, sizeof num, "%lld", v); p += std::string("\t<key>") + k + "</key><integer>" + num + "</integer>\n"; };
-  ps("state", st); ps("title", ti); ps("artist", ar); ps("album", al);
+  ps("source", "spotify"); ps("state", st); ps("title", ti); ps("artist", ar); ps("album", al);
   pi("duration_ms", dur); pi("position_ms", pos);
   pi("bitrate_kbps", bitrate); ps("codec", "OGG/Vorbis");
   ps("cover", cv); ps("device", dv); ps("ap", apS); ps("country", co); ps("tls", tls);
