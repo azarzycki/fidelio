@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "BellHTTPServer.h"
 #include "BellLogger.h"
@@ -120,6 +121,12 @@ static const char* eventName(cspot::SpircHandler::EventType t) {
 
 class ZeroconfAuthenticator {
  public:
+  // A real addUser body is a few KB (base64 blob + DH key). The limit keeps an unauthenticated
+  // LAN client from making us allocate Content-Length bytes (body.resize zero-fills them).
+  static const long long kMaxBodyBytes = 64 * 1024;
+  static constexpr const char* kOkJson = "{\"status\":101,\"spotifyError\":0,\"statusString\":\"ERROR-OK\"}";
+  static constexpr const char* kBadRequestJson =
+      "{\"status\":103,\"spotifyError\":0,\"statusString\":\"ERROR-INVALID-ARGUMENTS\"}";
   int serverPort = 7864;
   std::unique_ptr<bell::BellHTTPServer> server;
   std::unique_ptr<MDNSService> mdns;
@@ -140,23 +147,44 @@ class ZeroconfAuthenticator {
     });
     server->registerPost("/spotify_info", [this](struct mg_connection* conn) {
       IOS3_TRACE("zeroconf POST received");
-      std::string body;
       auto requestInfo = mg_get_request_info(conn);
-      if (requestInfo->content_length > 0) {
-        body.resize(requestInfo->content_length);
-        mg_read(conn, body.data(), requestInfo->content_length);
-        mg_header hd[10];
-        int num = mg_split_form_urlencoded(body.data(), hd, 10);
-        std::map<std::string, std::string> queryMap;
-        for (int i = 0; i < num; i++) queryMap[hd[i].name] = hd[i].value;
-        IOS3_TRACE("zeroconf POST body %d bytes, %d fields", (int)requestInfo->content_length, num);
-        blob->loadZeroconfQuery(queryMap);
-        IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
-        onAuthSuccess();
-      } else {
+      long long length = requestInfo->content_length;
+      if (length <= 0) {
         IOS3_TRACE("zeroconf POST without body, ignored");
+        return server->makeJsonResponse(kBadRequestJson);
       }
-      return server->makeJsonResponse("{\"status\":101,\"spotifyError\":0,\"statusString\":\"ERROR-OK\"}");
+      if (length > kMaxBodyBytes) {
+        CSPOT_LOG(error, "Zeroconf POST body of %lld bytes rejected", length);
+        return server->makeJsonResponse(kBadRequestJson);
+      }
+      std::string body((size_t)length, '\0');
+      int got = mg_read(conn, body.data(), body.size());
+      if (got != (int)length) {
+        CSPOT_LOG(error, "Zeroconf POST body truncated (%d of %lld bytes)", got, length);
+        return server->makeJsonResponse(kBadRequestJson);
+      }
+      // Count the fields first (no fixed limit), then split in place.
+      int num = mg_split_form_urlencoded(body.data(), nullptr, 0);
+      std::vector<mg_header> hd(num > 0 ? num : 1);
+      num = mg_split_form_urlencoded(body.data(), hd.data(), hd.size());
+      std::map<std::string, std::string> queryMap;
+      for (int i = 0; i < num; i++) {
+        if (hd[i].name) queryMap[hd[i].name] = hd[i].value ? hd[i].value : "";  // value is NULL for "key&"
+      }
+      IOS3_TRACE("zeroconf POST body %lld bytes, %d fields", length, num);
+      if (queryMap["userName"].empty() || queryMap["blob"].empty() || queryMap["clientKey"].empty()) {
+        CSPOT_LOG(error, "Zeroconf POST without userName/blob/clientKey, ignored");
+        return server->makeJsonResponse(kBadRequestJson);
+      }
+      try {
+        blob->loadZeroconfQuery(queryMap);
+      } catch (const std::exception& e) {
+        CSPOT_LOG(error, "Zeroconf blob rejected: %s", e.what());
+        return server->makeJsonResponse(kBadRequestJson);
+      }
+      IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
+      onAuthSuccess();
+      return server->makeJsonResponse(kOkJson);
     });
 
     mdns = MDNSService::registerService(blob->getDeviceName(), "_spotify-connect", "_tcp", "", serverPort,
