@@ -1,0 +1,8 @@
+build/
+build-host/
+*.o
+*.a
+# compiled binary (build it, or fetch from Releases)
+fidelio-raop
+*.pcm
+.DS_Store
