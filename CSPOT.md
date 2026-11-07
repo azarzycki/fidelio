@@ -30,6 +30,8 @@ New in rev 4 (`cli-src/StatusWriter.{h,cpp}`, plus two small cspot/bell changes)
 - The writer runs on its own 192 KB-stack pthread; memory cost ≈ the cover JPEG (~30–60 KB) plus one TLS session while fetching.
 Patch now has four commits (13 files, +161/−4): `Session.h/.cpp` (`lastApAddress`), `TLSSocket.h/.cpp` (`lastNegotiated`).
 
+**Revision 5 (2026-11-07, one key).** `status.json`/`status.plist` now carry `"source": "spotify"` (first key) so the dock app can show which input is live next to the AirPlay receiver (`fidelio-raop`, which writes `"source": "airplay"` to the same files). No other change; same patch (four commits), only `cli-src/StatusWriter.cpp` and the start banner (`rev5`) differ.
+
 Suggested test order with rev 3: `./cspot-ios3 --no-audio -b 96 2>&1 | tee log.txt` (also pass the client id/secret), tap the device, then read the last `T [rss …]` line; then the same without `--no-audio`.
 
 Read §5 before deploying.
