@@ -47,6 +47,7 @@ class StatusWriter {
   pthread_mutex_t wakeMutex;
   bool dirty = true;
   bool running = true;
+  bool threadStarted = false;
 
   // state under mutex
   std::string state = "idle";

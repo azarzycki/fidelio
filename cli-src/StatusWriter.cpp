@@ -71,7 +71,7 @@ static bool writeAtomic(const std::string& path, std::string_view data) {
 }
 
 uint64_t StatusWriter::nowMs() {
-  static mach_timebase_info_data_t tb;
+  static mach_timebase_info_data_t tb;  // filled once, from the constructor, before any other thread calls this
   if (tb.denom == 0) mach_timebase_info(&tb);
   uint64_t t = mach_absolute_time();
   return (t / tb.denom) * tb.numer / 1000000ull + ((t % tb.denom) * tb.numer / tb.denom) / 1000000ull;
@@ -79,13 +79,16 @@ uint64_t StatusWriter::nowMs() {
 
 StatusWriter::StatusWriter(const std::string& d, const std::string& deviceName, int bitrateKbps)
     : dir(d), device(deviceName), bitrate(bitrateKbps) {
+  nowMs();  // initialise the timebase while we are still single-threaded
   mkdir(dir.c_str(), 0755);  // ok if it exists
   pthread_mutex_init(&wakeMutex, nullptr);
   pthread_cond_init(&wake, nullptr);
   pthread_attr_t attr;
   pthread_attr_init(&attr);
   pthread_attr_setstacksize(&attr, 192 * 1024);  // does an HTTPS fetch (mbedTLS) for the cover
-  if (pthread_create(&thread, &attr, threadEntry, this) != 0) {
+  if (pthread_create(&thread, &attr, threadEntry, this) == 0) {
+    threadStarted = true;
+  } else {
     running = false;
     CSPOT_LOG(error, "StatusWriter: cannot start thread");
   }
@@ -97,7 +100,7 @@ StatusWriter::~StatusWriter() {
   running = false;
   pthread_cond_signal(&wake);
   pthread_mutex_unlock(&wakeMutex);
-  pthread_join(thread, nullptr);
+  if (threadStarted) pthread_join(thread, nullptr);
   pthread_cond_destroy(&wake);
   pthread_mutex_destroy(&wakeMutex);
 }
