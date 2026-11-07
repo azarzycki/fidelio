@@ -83,8 +83,33 @@ void SocketSink::disconnect(const char* why) {
   nextAttemptMs = nowMs() + backoffMs;
 }
 
+long SocketSink::leadMs(uint64_t now) const {
+  if (!timelineStartMs) return 0;
+  return (long)(timelineFrames * 1000 / 44100) - (long)(now - timelineStartMs);
+}
+
+void SocketSink::pace(size_t framesAboutToSend) {
+  uint64_t now = nowMs();
+  if (!timelineStartMs || now - lastWriteMs > kGapResetMs) { timelineStartMs = now; timelineFrames = 0; }
+  long ahead = leadMs(now) + (long)(framesAboutToSend * 1000 / 44100);
+  if (ahead > (long)kLeadMs) usleep((useconds_t)((ahead - kLeadMs) * 1000));
+}
+
+double SocketSink::bufferedSeconds() {
+  long l = leadMs(nowMs());
+  return l > 0 ? l / 1000.0 : 0.0;
+}
+
 void SocketSink::write(const int16_t* frames, size_t numFrames) {
+  pace(numFrames);
+  lastWriteMs = nowMs();
+  timelineFrames += numFrames;
   if (!ensureConnected()) { droppedFrames += numFrames; return; }
+  if (volume < 0.999f) {
+    scaled.resize(numFrames * 2);
+    for (size_t i = 0; i < numFrames * 2; i++) scaled[i] = (int16_t)(frames[i] * volume);
+    frames = scaled.data();
+  }
   while (numFrames > 0) {
     size_t n = numFrames < kMaxFramesPerMsg ? numFrames : kMaxFramesPerMsg;
     if (!audiod::writeFrame(fd, AUDIOD_MSG_AUDIO, frames, n * 4)) {
@@ -98,13 +123,22 @@ void SocketSink::write(const int16_t* frames, size_t numFrames) {
 }
 
 void SocketSink::flush() {
+  timelineStartMs = 0;  // the next write starts a fresh lead
   if (fd < 0) return;
   if (!audiod::writeFrame(fd, AUDIOD_MSG_FLUSH, nullptr, 0)) disconnect("flush");
 }
 
-void SocketSink::stop() {
+void SocketSink::idle() {
+  // Let the lead play out first, so audiod's immediate release on STOP cuts nothing.
+  long l = leadMs(nowMs());
+  if (l > 0) usleep((useconds_t)(l * 1000));
+  timelineStartMs = 0;
   if (fd < 0) return;
   if (!audiod::writeFrame(fd, AUDIOD_MSG_STOP, nullptr, 0)) disconnect("stop");
 }
 
-void SocketSink::setVolume(float linear) { volume = linear; }
+void SocketSink::setVolume(float linear) {
+  if (linear < 0) linear = 0;
+  if (linear > 1) linear = 1;
+  volume = linear;
+}

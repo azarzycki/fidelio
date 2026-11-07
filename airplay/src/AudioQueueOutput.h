@@ -9,6 +9,7 @@
 class AudioQueueOutput : public AudioOutput {
  public:
   AudioQueueOutput() : sink(new AudioQueueSink()) {}
+  explicit AudioQueueOutput(const AudioQueueSink::Options& o) : sink(new AudioQueueSink(o)) {}
   void write(const int16_t* frames, size_t numFrames) override {
     sink->feedPCMFrames(reinterpret_cast<const uint8_t*>(frames), numFrames * 4);
   }
@@ -19,6 +20,8 @@ class AudioQueueOutput : public AudioOutput {
     sink->volumeChanged((uint16_t)(linear * 65535.0f));
   }
   double bufferedSeconds() override { return sink->bufferedSeconds(); }
+  void idle() override { sink->stop(); }  // releases the hardware path; the next write() restarts the queue
+  AudioQueueSink* queueSink() { return sink.get(); }
 
  private:
   std::unique_ptr<AudioQueueSink> sink;

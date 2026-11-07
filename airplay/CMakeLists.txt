@@ -16,7 +16,7 @@ if(NOT APPLE)
   list(FILTER SRC EXCLUDE REGEX "AudioQueueSink")
 endif()
 add_executable(fidelio-raop ${SRC})
-target_include_directories(fidelio-raop PRIVATE src ${MBEDTLS_PREFIX}/include)
+target_include_directories(fidelio-raop PRIVATE src ${CMAKE_CURRENT_SOURCE_DIR}/../common ${MBEDTLS_PREFIX}/include)
 target_compile_options(fidelio-raop PRIVATE -O2 -Wall -Wno-unused-function)
 target_link_libraries(fidelio-raop PRIVATE alacdec
   ${MBEDTLS_PREFIX}/lib/libmbedtls.a ${MBEDTLS_PREFIX}/lib/libmbedx509.a ${MBEDTLS_PREFIX}/lib/libmbedcrypto.a

@@ -1,11 +1,18 @@
 #pragma once
-// SocketSink: an AudioOutput (airplay/src/AudioOutput.h) that streams PCM to fidelio-audiod over
-// the Unix socket instead of opening the hardware. write() -> AUDIO, flush() -> FLUSH, stop() ->
-// STOP. Connects lazily with backoff, sends HELLO, and reconnects + re-HELLOs after a broken pipe
+// SocketSink: an AudioOutput (common/AudioOutput.h) that streams PCM to fidelio-audiod over the
+// Unix socket instead of opening the hardware. write() -> AUDIO, flush() -> FLUSH, idle() -> STOP.
+// Connects lazily with backoff, sends HELLO, and reconnects + re-HELLOs after a broken pipe
 // (audiod restarted). While audiod is unreachable, audio is dropped (never blocks the producer).
+//
+// Pacing: the producers (cspot's player thread, raop's playerLoop) push as fast as their sink
+// accepts and rely on it blocking; the AudioQueue ring did that. write() therefore sleeps so the
+// stream stays at most kLeadMs ahead of the monotonic clock, counted from the first write after a
+// flush or a gap. bufferedSeconds() reports that lead, which keeps cspot's end-of-track detection
+// working. Volume: there is no VOLUME message, so setVolume() is applied as gain before sending.
 #include <stdint.h>
 
 #include <string>
+#include <vector>
 
 #include "AudioOutput.h"
 
@@ -17,9 +24,13 @@ class SocketSink : public AudioOutput {
 
   void write(const int16_t* frames, size_t numFrames) override;
   void flush() override;
-  void setVolume(float linear) override;  // v1: producers keep their own volume; recorded only
-  double bufferedSeconds() override { return 0; }
-  void stop();  // STOP message (source intentionally stopping); the connection stays open
+  void setVolume(float linear) override;  // software gain (applied to the PCM before sending)
+  double bufferedSeconds() override;      // how far ahead of real time the stream is (0..kLeadMs)
+  void idle() override;                   // waits out the lead, then sends STOP; the connection stays open
+  void stop() { idle(); }
+
+  static const unsigned kLeadMs = 500;    // how far a producer may run ahead of real time
+  static const unsigned kGapResetMs = 500;  // a pause longer than this starts a new timeline
 
   bool connected() const { return fd >= 0; }
   unsigned long reconnects() const { return reconnectCount; }
@@ -38,4 +49,10 @@ class SocketSink : public AudioOutput {
   unsigned long reconnectCount = 0;
   unsigned long droppedFrames = 0;
   float volume = 1.0f;
+  std::vector<int16_t> scaled;  // scratch for the gain
+  uint64_t timelineStartMs = 0;  // 0 = no timeline yet
+  uint64_t timelineFrames = 0;   // frames sent on the current timeline
+  uint64_t lastWriteMs = 0;
+  void pace(size_t framesAboutToSend);  // sleeps until sending them keeps the lead <= kLeadMs
+  long leadMs(uint64_t now) const;
 };

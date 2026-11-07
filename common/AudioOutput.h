@@ -1,7 +1,8 @@
 #pragma once
-// PCM output interface of the RAOP receiver. PHASE 1 implements it with the AudioQueue sink
-// (AudioQueueOutput) and a discarding NullOutput (--no-audio). PHASE 2 swaps in a socket to
-// the fidelio-audiod arbiter without touching the RAOP code.
+// PCM output interface shared by the producers (fidelio-raop, cspot-ios3) and fidelio-audiod.
+// Implementations: SocketSink (common/, streams to audiod; the producers' default), AudioQueueOutput
+// (airplay/src, the hardware; audiod's default and the producers' --direct-audio), FileOutput and
+// NullOutput below (host tests).
 #include <stddef.h>
 #include <stdint.h>
 
@@ -16,6 +17,9 @@ class AudioOutput {
   virtual void setVolume(float linear) = 0;
   // Seconds of audio still queued downstream (for the status position and end detection).
   virtual double bufferedSeconds() = 0;
+  // No more audio for a while (end of playlist, TEARDOWN, audiod's idle stop): a producer sink tells
+  // audiod (STOP), the hardware sink stops the queue. The next write() resumes. Optional.
+  virtual void idle() {}
 };
 
 #include <stdio.h>
