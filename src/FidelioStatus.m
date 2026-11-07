@@ -9,6 +9,10 @@
 #include <sys/sysctl.h>
 #include <sys/time.h>
 
+static BOOL SameDate(NSDate* a, NSDate* b) {
+  return a == b || (a && b && [a isEqualToDate:b]);
+}
+
 @implementation FidelioStatus
 
 @synthesize dict, cover, fileMissing;
@@ -43,34 +47,30 @@
     fileMissing = YES;  // keep the last good dict so the screen does not flicker on a partial read
   }
 
-  // Cover: reload when the name or the modification time changes.
+  // Cover: reload when the (name, mtime, size) of the file differs from the last load attempt.
+  // HFS+ keeps mtime in whole seconds, so two covers written within the same second can only
+  // be told apart by their size. A load that fails (missing, 0-byte or corrupt file) leaves
+  // cover nil -- the placeholder, not the previous track's art -- and is not retried until the
+  // file changes again.
   NSString* name = [self string:@"cover"];
-  if ([name length] == 0) {
-    if (cover) {
-      [cover release];
-      cover = nil;
-    }
-    [coverName release];
-    coverName = [@"" retain];
-    return;
+  NSString* coverPath = nil;
+  NSDate* mtime = nil;
+  unsigned long long size = 0;
+  if ([name length]) {
+    coverPath = [FIDELIO_DIR stringByAppendingPathComponent:name];
+    NSDictionary* attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:coverPath error:NULL];
+    mtime = [attrs objectForKey:NSFileModificationDate];
+    size = [[attrs objectForKey:NSFileSize] unsignedLongLongValue];
   }
-  NSString* coverPath = [FIDELIO_DIR stringByAppendingPathComponent:name];
-  NSDictionary* attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:coverPath error:NULL];
-  NSDate* mtime = [attrs objectForKey:NSFileModificationDate];
-  BOOL changed = ![name isEqualToString:coverName] || !cover ||
-                 (mtime && (!coverMtime || ![mtime isEqualToDate:coverMtime]));
+  BOOL changed = ![name isEqualToString:coverName] || !SameDate(mtime, coverMtime) || size != coverSize;
   if (changed) {
-    UIImage* img = [[UIImage alloc] initWithContentsOfFile:coverPath];
-    if (img) {
-      [cover release];
-      cover = img;
-      [coverName release];
-      coverName = [name retain];
-      [coverMtime release];
-      coverMtime = [mtime retain];
-    } else {
-      [img release];
-    }
+    [cover release];
+    cover = mtime ? [[UIImage alloc] initWithContentsOfFile:coverPath] : nil;
+    [coverName release];
+    coverName = [name copy];
+    [coverMtime release];
+    coverMtime = [mtime retain];
+    coverSize = size;
   }
 }
 

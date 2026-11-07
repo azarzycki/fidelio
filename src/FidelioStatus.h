@@ -9,7 +9,8 @@
   NSDictionary* dict;      // last parsed status.plist, or nil
   UIImage* cover;          // current cover, or nil
   NSString* coverName;     // "cover.jpg" or ""
-  NSDate* coverMtime;
+  NSDate* coverMtime;      // mtime of the file at the last load attempt, nil if it was absent
+  unsigned long long coverSize;
   NSDate* readTime;        // when `dict` was read (for smooth position)
   BOOL fileMissing;
 }
