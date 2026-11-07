@@ -19,3 +19,13 @@ target_link_libraries(fidelio-audiod PRIVATE audiod_common)
 if(NOT APPLE)
   target_link_libraries(fidelio-audiod PRIVATE pthread)
 endif()
+
+# Host tests
+add_executable(framing_test hosttest/framing_test.cpp)
+target_include_directories(framing_test PRIVATE ${INC})
+target_link_libraries(framing_test PRIVATE audiod_common)
+
+# A tiny producer that streams a file through SocketSink (exercises reconnect too)
+add_executable(socketsink_producer hosttest/socketsink_producer.cpp)
+target_include_directories(socketsink_producer PRIVATE ${INC})
+target_link_libraries(socketsink_producer PRIVATE audiod_common)
