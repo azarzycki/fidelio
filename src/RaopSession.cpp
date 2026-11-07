@@ -47,6 +47,11 @@ RaopSession::RaopSession(AudioOutput* o, StatusFile* s, int latencyMs) : out(o),
   latencyPackets = latencyMs * 44100 / 1000 / kFramesPerPacket;
   if (latencyPackets < 4) latencyPackets = 4;
   if (latencyPackets > kSlots - 32) latencyPackets = kSlots - 32;
+  // A mid-stream drain shouldn't cost the whole cushion to rebuild: resume on a small fraction so the
+  // gap is a blip (~150 ms) instead of a full re-prime (~1 s). Only the very first prime waits the full depth.
+  reprimePackets = latencyPackets / 8;
+  if (reprimePackets < 12) reprimePackets = 12;            // >= ~96 ms so we don't instantly re-drain
+  if (reprimePackets > latencyPackets) reprimePackets = latencyPackets;
   pthread_mutex_init(&waitMutex, nullptr);
   pthread_cond_init(&waitCond, nullptr);
   slots.resize(kSlots);  // ~360 KB, allocated once per session
@@ -123,7 +128,7 @@ void RaopSession::record(uint16_t seq, uint32_t rtptime) {
   {
     std::scoped_lock l(bufMutex);
     for (auto& s : slots) s.valid = false;
-    expectedSeq = seq; haveExpected = true; haveNewest = false; haveLastRx = false; primed = false;
+    expectedSeq = seq; haveExpected = true; haveNewest = false; haveLastRx = false; primed = false; everPrimed = false;
   }
   playing = true;
   IOS3_TRACE("RECORD: expecting seq %u (rtptime %u)", seq, rtptime);
@@ -134,7 +139,7 @@ void RaopSession::flush(uint16_t seq, bool haveSeq) {
     std::scoped_lock l(bufMutex);
     for (auto& s : slots) s.valid = false;
     if (haveSeq) { expectedSeq = seq; haveExpected = true; } else haveExpected = false;
-    haveNewest = false; haveLastRx = false; primed = false;
+    haveNewest = false; haveLastRx = false; primed = false; everPrimed = false;
   }
   out->flush();
   IOS3_TRACE("FLUSH: buffer dropped, next seq %s%u", haveSeq ? "" : "(unknown) ", seq);
@@ -177,8 +182,9 @@ bool RaopSession::audioFlowing() {
 
 std::string RaopSession::stats() {
   char b[200];
-  snprintf(b, sizeof b, "packets=%u resent=%u lost=%u late=%u decode_err=%u skipped=%u", statPackets.load(), statResent.load(),
-           statLost.load(), statLate.load(), statDecodeErr.load(), statSkipped.load());
+  snprintf(b, sizeof b, "packets=%u resent=%u lost=%u late=%u decode_err=%u skipped=%u concealed=%u underruns=%u",
+           statPackets.load(), statResent.load(), statLost.load(), statLate.load(), statDecodeErr.load(), statSkipped.load(),
+           statConcealed.load(), statUnderrun.load());
   return b;
 }
 
@@ -329,6 +335,8 @@ void RaopSession::playerLoop() {
   static int16_t silence[kFramesPerPacket * 2];
   memset(silence, 0, sizeof silence);
   int underrunLogged = 0;
+  uint64_t lastStatsMs = nowMs();
+  int16_t lastDepth = 0;
   int16_t* playBuf = decodeBuf + kFramesPerPacket * 2;  // second half of decodeBuf: the player's copy
   while (running) {
     bool play = false, conceal = false;
@@ -337,9 +345,14 @@ void RaopSession::playerLoop() {
       std::unique_lock<std::mutex> l(bufMutex);
       if (playing && haveExpected && haveNewest) {
         int16_t depth = (int16_t)(newestSeq - expectedSeq) + 1;  // packets from expected..newest
-        if (!primed && depth >= latencyPackets) {
-          primed = true;
-          IOS3_TRACE("playback primed with %d packets (%d ms)", depth, depth * 8);
+        lastDepth = depth;
+        if (!primed) {
+          int threshold = everPrimed ? reprimePackets : latencyPackets;  // first prime waits the full cushion; later ones resume fast
+          if (depth >= threshold) {
+            IOS3_TRACE("playback %sprimed with %d packets (%d ms)", everPrimed ? "re-" : "", depth, depth * 8);
+            primed = true;
+            everPrimed = true;
+          }
         }
         if (primed) {
           if (depth > kSlots - 8) {  // the sink fell behind by more than the buffer: jump forward
@@ -355,15 +368,21 @@ void RaopSession::playerLoop() {
             expectedSeq++;
             play = true;
           } else if (depth > 1) {
-            conceal = true;  // missing packet but newer ones exist: silence, move on
+            conceal = true; statConcealed++;  // missing packet but newer ones exist: silence, move on
             expectedSeq++;
           } else {
-            // nothing newer yet: underrun; wait for data without advancing, re-prime for a clean resume
+            // nothing newer yet: underrun; wait for data without advancing, re-prime (short cushion) for a clean resume
             if (underrunLogged < 3) { IOS3_TRACE("underrun at seq %u, waiting", expectedSeq); underrunLogged++; }
+            statUnderrun++;
             primed = false;
           }
         }
       }
+    }
+    uint64_t tnow = nowMs();
+    if (tnow - lastStatsMs >= 10000) {  // periodic health line: proves where any glitch originates
+      lastStatsMs = tnow;
+      IOS3_TRACE("stats: %s depth=%d primed=%d", stats().c_str(), (int)lastDepth, (int)primed);
     }
     if (play) { out->write(playBuf, frames); continue; }
     if (conceal) { out->write(silence, kFramesPerPacket); continue; }

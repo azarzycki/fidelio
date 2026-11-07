@@ -25,7 +25,7 @@ struct Options {
   std::string name = "Fidelio (AirPlay)";
   std::string statusDir = "/var/mobile/fidelio";
   int port = 5000;
-  int latencyMs = 1000;
+  int latencyMs = 1200;
   bool noAudio = false;
   bool help = false;
   std::string pcmOut;  // --pcm-out FILE: write decoded PCM to a file instead of AudioQueue
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
            "AirPlay v1 / RAOP audio receiver for iPhone OS 3 (ARMv6), AudioQueue output.\n"
            "  -n, --name NAME       advertised name (default: Fidelio (AirPlay))\n"
            "  --port PORT           RTSP port (default 5000; 0 = any free port)\n"
-           "  --latency-ms MS       jitter buffer depth before playback starts (default 1000, max ~1800)\n"
+           "  --latency-ms MS       jitter buffer depth before playback starts (default 1200, max ~3800)\n"
            "  --status-dir DIR      status.json/status.plist/cover.jpg (default /var/mobile/fidelio); --no-status disables\n"
            "  --no-audio            decode and discard (no AudioQueue), for isolation tests\n"
            "  --pcm-out FILE        write the decoded 44.1 kHz/16/stereo PCM to FILE instead of playing\n");

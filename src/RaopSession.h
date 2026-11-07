@@ -52,7 +52,7 @@ class RaopSession {
     uint16_t frames = 0;
     int16_t pcm[352 * 2];
   };
-  static const int kSlots = 256;       // 2.04 s at 352 frames/packet
+  static const int kSlots = 512;       // 4.08 s at 352 frames/packet: headroom to absorb a bursty sender
   static const int kFramesPerPacket = 352;
 
   static void* audioThreadEntry(void*);
@@ -73,6 +73,7 @@ class RaopSession {
   AudioOutput* out;
   StatusFile* status;
   int latencyPackets;
+  int reprimePackets = 0;     // after a mid-stream drain, resume on this many packets (not the full cushion)
   Codec codec = CODEC_NONE;
   AlacWrapper alac;
   AesCbcDecryptor aes;
@@ -100,9 +101,11 @@ class RaopSession {
   uint16_t lastRxSeq = 0;
   bool haveLastRx = false;
   bool primed = false;        // player started output (buffer filled to latency once)
+  bool everPrimed = false;    // primed at least once this stream: later primes use the shorter reprime cushion
 
   std::atomic<uint64_t> lastPacketMs{0};
   std::atomic<uint32_t> statPackets{0}, statResent{0}, statLost{0}, statLate{0}, statDecodeErr{0}, statSkipped{0};
+  std::atomic<uint32_t> statConcealed{0}, statUnderrun{0};
   uint8_t* rxBuf = nullptr;
   int16_t* decodeBuf = nullptr;
 };
