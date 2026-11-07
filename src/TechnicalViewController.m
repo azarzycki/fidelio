@@ -6,8 +6,9 @@
   if ((self = [super initWithStyle:UITableViewStylePlain])) {
     status = s;
     self.title = @"Technical";
-    self.tabBarItem = [[[UITabBarItem alloc] initWithTabBarSystemItem:UITabBarSystemItemMore tag:1] autorelease];
-    self.tabBarItem.title = @"Technical";
+    UIImage* icon = [[UIImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"tab_technical" ofType:@"png"]];
+    self.tabBarItem = [[[UITabBarItem alloc] initWithTitle:@"Technical" image:icon tag:1] autorelease];
+    [icon release];
     rows = [[NSArray alloc] init];
   }
   return self;

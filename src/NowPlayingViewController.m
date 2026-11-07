@@ -10,8 +10,10 @@
   if ((self = [super initWithNibName:nil bundle:nil])) {
     status = s;
     self.title = @"Now Playing";
-    self.tabBarItem = [[[UITabBarItem alloc] initWithTabBarSystemItem:UITabBarSystemItemMostViewed tag:0] autorelease];
-    self.tabBarItem.title = @"Now Playing";
+    // A system item (initWithTabBarSystemItem:) keeps its system title, so use our own 30 px glyph.
+    UIImage* icon = [[UIImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"tab_nowplaying" ofType:@"png"]];
+    self.tabBarItem = [[[UITabBarItem alloc] initWithTitle:@"Now Playing" image:icon tag:0] autorelease];
+    [icon release];
   }
   return self;
 }

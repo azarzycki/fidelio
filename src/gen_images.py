@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Generate Icon.png (57x57), placeholder.png (256x256) and Default.png (320x480) for
-NowPlaying.app: a dark gradient tile with rounded corners and a drawn eighth-note glyph.
+"""Generate Icon.png (57x57), placeholder.png (256x256), Default.png (320x480) and the two
+30x30 tab bar glyphs (tab_nowplaying.png, tab_technical.png) for NowPlaying.app: a dark
+gradient tile with rounded corners and a drawn eighth-note glyph.
 Pure Python (zlib + struct), no PIL, deterministic output."""
 import struct
 import sys
@@ -69,8 +70,36 @@ def tile(path, size, radius, accent):
     png(path, size, size, rows)
 
 
+def glyph(path, size, hit):
+    # Tab bar icon: UIKit only uses the alpha channel (as a mask), so draw white with 4x4
+    # supersampled coverage as alpha.
+    rows = []
+    for y in range(size):
+        row = []
+        for x in range(size):
+            n = sum(hit(x + (i + 0.5) / 4, y + (j + 0.5) / 4) for i in range(4) for j in range(4))
+            row += [255, 255, 255, n * 255 // 16]
+        rows.append(row)
+    png(path, size, size, rows)
+
+
+def note_glyph_hit(x, y):
+    # the note from note_hit, stretched to fill a 30 px box (its bbox is x 24..73, y 22..78 of 100)
+    return note_hit(18 + x * 64 / 30.0, 16 + y * 68 / 30.0, 100)
+
+
+def list_glyph_hit(x, y):
+    # three rows of "bullet + bar", a plain list glyph for the Technical tab
+    for top in (5, 13.5, 22):
+        if top <= y < top + 3.5 and (3 <= x < 6.5 or 9.5 <= x < 27):
+            return True
+    return False
+
+
 out = sys.argv[1] if len(sys.argv) > 1 else "."
 tile(f"{out}/Icon.png", 57, 10, (72, 204, 142))
 tile(f"{out}/placeholder.png", 256, 22, (112, 118, 128))
 png(f"{out}/Default.png", 320, 480, [[0, 0, 0, 255] * 320 for _ in range(480)])
+glyph(f"{out}/tab_nowplaying.png", 30, note_glyph_hit)
+glyph(f"{out}/tab_technical.png", 30, list_glyph_hit)
 print("images ok")
