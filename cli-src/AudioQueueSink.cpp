@@ -1,6 +1,7 @@
 #include "AudioQueueSink.h"
 
 #include <AudioToolbox/AudioServices.h>
+#include <errno.h>
 #include <string.h>
 #include <sys/time.h>
 
@@ -261,9 +262,11 @@ void AudioQueueSink::start() {
   pthread_mutex_unlock(&queueMutex);
   // Prime every buffer the queue does not own (with silence if nothing is queued yet) and start.
   primeBuffers(q);
-  IOS3_TRACE("AudioQueueStart begin (route '%s')", currentRoute().c_str());
+  if (!startFailed) IOS3_TRACE("AudioQueueStart begin (route '%s')", currentRoute().c_str());
   OSStatus st = AudioQueueStart(q, nullptr);
-  IOS3_TRACE("AudioQueueStart -> %ld", (long)st);
+  // feedPCMFrames() retries this for every chunk (every ~23 ms) while it fails: log changes only.
+  if (st == 0 || !startFailed) IOS3_TRACE("AudioQueueStart -> %ld", (long)st);
+  startFailed = st != 0;
   if (st != 0) {
     pthread_mutex_lock(&queueMutex);
     if (queue == q) running = false;
@@ -314,6 +317,9 @@ double AudioQueueSink::bufferedSeconds() {
 void AudioQueueSink::outputCallback(void* userData, AudioQueueRef q, AudioQueueBufferRef buffer) {
   AudioQueueSink* self = static_cast<AudioQueueSink*>(userData);
   int index = -1;
+  pthread_mutex_lock(&self->mutex);
+  self->stalled = false;
+  pthread_mutex_unlock(&self->mutex);
   pthread_mutex_lock(&self->queueMutex);
   if (self->queue == q) {
     for (int i = 0; i < kNumBuffers; i++) {
@@ -374,7 +380,26 @@ void AudioQueueSink::feedPCMFrames(const uint8_t* data, size_t bytes) {
 
   pthread_mutex_lock(&mutex);
   while (bytes > 0) {
-    while (ringFill == kRingBytes) pthread_cond_wait(&spaceAvailable, &mutex);
+    while (ringFill == kRingBytes) {
+      struct timeval tv;
+      gettimeofday(&tv, nullptr);
+      struct timespec ts = { tv.tv_sec + kStallMs / 1000, tv.tv_usec * 1000 + (kStallMs % 1000) * 1000000L };
+      if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+      int rc = pthread_cond_timedwait(&spaceAvailable, &mutex, &ts);
+      if (rc == ETIMEDOUT && ringFill == kRingBytes) {
+        // The queue stopped completing buffers (mediaserverd restart, an interruption we did not
+        // get a callback for, ...). Never block the player thread forever: drop this chunk and
+        // re-acquire the output once per stall.
+        bool first = !stalled;
+        stalled = true;
+        pthread_mutex_unlock(&mutex);
+        if (first) {
+          IOS3_TRACE("no buffer completion for %ld ms, re-acquiring the audio output", kStallMs);
+          reacquireRoute("stall");
+        }
+        return;
+      }
+    }
     size_t space = kRingBytes - ringFill;
     size_t n = bytes < space ? bytes : space;
     size_t tail = (ringHead + ringFill) % kRingBytes;
