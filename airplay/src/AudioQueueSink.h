@@ -40,7 +40,9 @@ class AudioQueueSink : public AudioSink {
 
   // Drop everything that is still queued (used on seek/flush).
   void flush();
-  // Seconds of audio still buffered (ring + AudioQueue buffers).
+  // Stop the queue (releases the hardware path until the next feedPCMFrames() restarts it).
+  void stop();
+  // Seconds of audio still buffered (ring + the real PCM inside the AudioQueue buffers).
   double bufferedSeconds();
   // Current system audio route name ("Speaker", "LineOut", "Headphone", ...), "" if unknown.
   std::string currentRoute();
@@ -49,12 +51,14 @@ class AudioQueueSink : public AudioSink {
   static const int kNumBuffers = 3;
   static const size_t kBufferBytes = 8 * 1024;   // ~46 ms at 44.1 kHz stereo 16-bit
   static const size_t kRingBytes = 128 * 1024;   // ~0.74 s
+  static const size_t kPrimeBytes = 35280;       // 200 ms: after an underrun, pad silence until this much is back
+  static const long kStallMs = 2000;             // no buffer completion for this long: the queue is stuck
 
   void init();
   static void outputCallback(void* userData, AudioQueueRef queue, AudioQueueBufferRef buffer);
-  void fillBuffer(AudioQueueRef q, AudioQueueBufferRef buffer);
+  void fillBuffer(AudioQueueRef q, int index);  // enqueues buffers[index] unless the queue still owns it
+  void primeBuffers(AudioQueueRef q);           // enqueue every buffer the queue does not own
   void start();
-  void stop();
   bool createQueue();   // AudioQueueNewOutput + buffers for `format`; queueMutex must NOT be held
   void destroyQueue();  // stop + dispose; queueMutex must NOT be held
   void reacquireRoute(const char* why);
@@ -71,17 +75,22 @@ class AudioQueueSink : public AudioSink {
   Options opts;
   AudioQueueRef queue = nullptr;
   AudioQueueBufferRef buffers[kNumBuffers];
+  bool enqueued[kNumBuffers];    // under queueMutex: the queue owns the buffer
+  size_t queuedBytes[kNumBuffers];  // under queueMutex: real PCM (not silence padding) in that buffer
   AudioStreamBasicDescription format;
   bool running = false;       // AudioQueueStart has been called on `queue`
   bool open = false;          // `queue` exists with buffers
   bool interrupted = false;
   bool wasRunningBeforeInterruption = false;
   float lastVolume = 1.0f;
+  bool stalled = false;        // under mutex: a feed timed out; cleared by the next completion
+  bool startFailed = false;    // AudioQueueStart failed last time (log only changes)
   pthread_mutex_t queueMutex;  // guards queue/open/running/interrupted
 
   std::vector<uint8_t> ring;
   size_t ringHead = 0;  // read position
   size_t ringFill = 0;  // bytes available
+  bool priming = true;  // under mutex: play silence until the ring holds kPrimeBytes (start, flush, underrun)
   pthread_mutex_t mutex;
   pthread_cond_t spaceAvailable;
 

@@ -287,6 +287,7 @@ void AudioQueueSink::flush() {
   pthread_mutex_lock(&mutex);
   ringHead = 0;
   ringFill = 0;
+  priming = true;
   pthread_cond_broadcast(&spaceAvailable);
   pthread_mutex_unlock(&mutex);
   pthread_mutex_lock(&queueMutex);
@@ -344,7 +345,8 @@ void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
   size_t want = buffer->mAudioDataBytesCapacity;
 
   pthread_mutex_lock(&mutex);
-  size_t take = ringFill < want ? ringFill : want;
+  if (priming && ringFill >= kPrimeBytes) priming = false;
+  size_t take = priming ? 0 : (ringFill < want ? ringFill : want);
   take -= take % format.mBytesPerFrame;  // keep whole frames
   size_t first = kRingBytes - ringHead;
   if (first > take) first = take;
@@ -352,10 +354,13 @@ void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
   if (take > first) memcpy(out + first, &ring[0], take - first);
   ringHead = (ringHead + take) % kRingBytes;
   ringFill -= take;
+  // Underrun: pad with silence so the queue never starves and stops, then keep padding until the
+  // ring holds kPrimeBytes again. A producer that only keeps up with real time (audiod fed over
+  // the socket) would otherwise get a hole in every other 46 ms buffer instead of one short gap.
+  if (take < want) priming = true;
   pthread_cond_broadcast(&spaceAvailable);
   pthread_mutex_unlock(&mutex);
 
-  // Underrun: pad with silence so the queue never starves and stops.
   if (take < want) memset(out + take, 0, want - take);
   buffer->mAudioDataByteSize = want;
 

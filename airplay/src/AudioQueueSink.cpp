@@ -1,6 +1,7 @@
 #include "AudioQueueSink.h"
 
 #include <AudioToolbox/AudioServices.h>
+#include <errno.h>
 #include <string.h>
 #include <sys/time.h>
 
@@ -18,7 +19,7 @@ void AudioQueueSink::init() {
   pthread_mutex_init(&queueMutex, nullptr);
   pthread_mutex_init(&readyMutex, nullptr);
   pthread_cond_init(&readyCond, nullptr);
-  for (int i = 0; i < kNumBuffers; i++) buffers[i] = nullptr;
+  for (int i = 0; i < kNumBuffers; i++) { buffers[i] = nullptr; enqueued[i] = false; queuedBytes[i] = 0; }
   memset(&format, 0, sizeof format);
   softwareVolumeControl = false;  // we use the AudioQueue volume parameter
 
@@ -211,6 +212,7 @@ bool AudioQueueSink::createQueue() {
     }
   }
   AudioQueueSetParameter(q, kAudioQueueParam_Volume, lastVolume);
+  for (int i = 0; i < kNumBuffers; i++) { enqueued[i] = false; queuedBytes[i] = 0; }
   queue = q;
   open = true;
   running = false;
@@ -228,7 +230,9 @@ void AudioQueueSink::destroyQueue() {
   if (!q) return;
   AudioQueueStop(q, true);     // synchronous: no callbacks after this returns
   AudioQueueDispose(q, true);  // frees the buffers too
-  for (int i = 0; i < kNumBuffers; i++) buffers[i] = nullptr;
+  pthread_mutex_lock(&queueMutex);
+  for (int i = 0; i < kNumBuffers; i++) { buffers[i] = nullptr; enqueued[i] = false; queuedBytes[i] = 0; }
+  pthread_mutex_unlock(&queueMutex);
 }
 
 bool AudioQueueSink::setParams(uint32_t sampleRate, uint8_t channelCount, uint8_t bitDepth) {
@@ -256,11 +260,13 @@ void AudioQueueSink::start() {
   if (!q || running || interrupted) { pthread_mutex_unlock(&queueMutex); return; }
   running = true;  // set before priming so a callback racing us behaves as "running"
   pthread_mutex_unlock(&queueMutex);
-  // Prime every buffer (with silence if nothing is queued yet) and start.
-  for (int i = 0; i < kNumBuffers; i++) fillBuffer(q, buffers[i]);
-  IOS3_TRACE("AudioQueueStart begin (route '%s')", currentRoute().c_str());
+  // Prime every buffer the queue does not own (with silence if nothing is queued yet) and start.
+  primeBuffers(q);
+  if (!startFailed) IOS3_TRACE("AudioQueueStart begin (route '%s')", currentRoute().c_str());
   OSStatus st = AudioQueueStart(q, nullptr);
-  IOS3_TRACE("AudioQueueStart -> %ld", (long)st);
+  // feedPCMFrames() retries this for every chunk (every ~23 ms) while it fails: log changes only.
+  if (st == 0 || !startFailed) IOS3_TRACE("AudioQueueStart -> %ld", (long)st);
+  startFailed = st != 0;
   if (st != 0) {
     pthread_mutex_lock(&queueMutex);
     if (queue == q) running = false;
@@ -281,35 +287,66 @@ void AudioQueueSink::flush() {
   pthread_mutex_lock(&mutex);
   ringHead = 0;
   ringFill = 0;
+  priming = true;
   pthread_cond_broadcast(&spaceAvailable);
   pthread_mutex_unlock(&mutex);
   pthread_mutex_lock(&queueMutex);
-  if (queue && running) AudioQueueReset(queue);  // drops the queued buffers, keeps the queue running
+  AudioQueueRef q = (queue && running) ? queue : nullptr;
   pthread_mutex_unlock(&queueMutex);
+  if (q) {
+    // Drops the queued buffers and keeps the queue running. The callbacks for the dropped
+    // buffers run inside the reset, where enqueueing is refused (kAudioQueueErr_EnqueueDuringReset),
+    // so the queue would be left with nothing to play: re-prime afterwards (a no-op for the
+    // buffers it still owns).
+    AudioQueueReset(q);
+    primeBuffers(q);
+  }
 }
 
 double AudioQueueSink::bufferedSeconds() {
   pthread_mutex_lock(&mutex);
   size_t fill = ringFill;
   pthread_mutex_unlock(&mutex);
+  size_t bytes = fill;
   pthread_mutex_lock(&queueMutex);
-  bool r = running;
+  for (int i = 0; i < kNumBuffers; i++) bytes += queuedBytes[i];
   pthread_mutex_unlock(&queueMutex);
-  size_t bytes = fill + (r ? kNumBuffers * kBufferBytes : 0);
   return format.mBytesPerFrame ? (double)bytes / (format.mBytesPerFrame * format.mSampleRate) : 0;
 }
 
-// Runs on the AudioQueue thread (and on start() for priming).
+// Runs on the AudioQueue thread (and inside AudioQueueReset/Stop for the dropped buffers).
 void AudioQueueSink::outputCallback(void* userData, AudioQueueRef q, AudioQueueBufferRef buffer) {
-  static_cast<AudioQueueSink*>(userData)->fillBuffer(q, buffer);
+  AudioQueueSink* self = static_cast<AudioQueueSink*>(userData);
+  int index = -1;
+  pthread_mutex_lock(&self->mutex);
+  self->stalled = false;
+  pthread_mutex_unlock(&self->mutex);
+  pthread_mutex_lock(&self->queueMutex);
+  if (self->queue == q) {
+    for (int i = 0; i < kNumBuffers; i++) {
+      if (self->buffers[i] == buffer) { self->enqueued[i] = false; self->queuedBytes[i] = 0; index = i; break; }
+    }
+  }
+  pthread_mutex_unlock(&self->queueMutex);
+  if (index >= 0) self->fillBuffer(q, index);  // a dead queue's buffer is just dropped
 }
 
-void AudioQueueSink::fillBuffer(AudioQueueRef q, AudioQueueBufferRef buffer) {
+void AudioQueueSink::primeBuffers(AudioQueueRef q) {
+  for (int i = 0; i < kNumBuffers; i++) fillBuffer(q, i);
+}
+
+void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
+  pthread_mutex_lock(&queueMutex);
+  bool owned = queue == q && buffers[index] && !enqueued[index];
+  AudioQueueBufferRef buffer = owned ? buffers[index] : nullptr;
+  pthread_mutex_unlock(&queueMutex);
+  if (!buffer) return;
   uint8_t* out = static_cast<uint8_t*>(buffer->mAudioData);
   size_t want = buffer->mAudioDataBytesCapacity;
 
   pthread_mutex_lock(&mutex);
-  size_t take = ringFill < want ? ringFill : want;
+  if (priming && ringFill >= kPrimeBytes) priming = false;
+  size_t take = priming ? 0 : (ringFill < want ? ringFill : want);
   take -= take % format.mBytesPerFrame;  // keep whole frames
   size_t first = kRingBytes - ringHead;
   if (first > take) first = take;
@@ -317,15 +354,24 @@ void AudioQueueSink::fillBuffer(AudioQueueRef q, AudioQueueBufferRef buffer) {
   if (take > first) memcpy(out + first, &ring[0], take - first);
   ringHead = (ringHead + take) % kRingBytes;
   ringFill -= take;
+  // Underrun: pad with silence so the queue never starves and stops, then keep padding until the
+  // ring holds kPrimeBytes again. A producer that only keeps up with real time (audiod fed over
+  // the socket) would otherwise get a hole in every other 46 ms buffer instead of one short gap.
+  if (take < want) priming = true;
   pthread_cond_broadcast(&spaceAvailable);
   pthread_mutex_unlock(&mutex);
 
-  // Underrun: pad with silence so the queue never starves and stops.
   if (take < want) memset(out + take, 0, want - take);
   buffer->mAudioDataByteSize = want;
 
   pthread_mutex_lock(&queueMutex);
-  if (queue == q) AudioQueueEnqueueBuffer(q, buffer, 0, nullptr);  // a dead queue's buffer is just dropped
+  if (queue == q) {
+    OSStatus st = AudioQueueEnqueueBuffer(q, buffer, 0, nullptr);
+    if (st == 0) { enqueued[index] = true; queuedBytes[index] = take; }
+    // kAudioQueueErr_EnqueueDuringReset (-66632) is expected inside AudioQueueReset/Stop: the
+    // buffer is ours again and the next primeBuffers() enqueues it. Its data is lost either way.
+    else if (st != kAudioQueueErr_EnqueueDuringReset) IOS3_TRACE("AudioQueueEnqueueBuffer -> %ld", (long)st);
+  }
   pthread_mutex_unlock(&queueMutex);
 }
 
@@ -339,7 +385,26 @@ void AudioQueueSink::feedPCMFrames(const uint8_t* data, size_t bytes) {
 
   pthread_mutex_lock(&mutex);
   while (bytes > 0) {
-    while (ringFill == kRingBytes) pthread_cond_wait(&spaceAvailable, &mutex);
+    while (ringFill == kRingBytes) {
+      struct timeval tv;
+      gettimeofday(&tv, nullptr);
+      struct timespec ts = { tv.tv_sec + kStallMs / 1000, tv.tv_usec * 1000 + (kStallMs % 1000) * 1000000L };
+      if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+      int rc = pthread_cond_timedwait(&spaceAvailable, &mutex, &ts);
+      if (rc == ETIMEDOUT && ringFill == kRingBytes) {
+        // The queue stopped completing buffers (mediaserverd restart, an interruption we did not
+        // get a callback for, ...). Never block the player thread forever: drop this chunk and
+        // re-acquire the output once per stall.
+        bool first = !stalled;
+        stalled = true;
+        pthread_mutex_unlock(&mutex);
+        if (first) {
+          IOS3_TRACE("no buffer completion for %ld ms, re-acquiring the audio output", kStallMs);
+          reacquireRoute("stall");
+        }
+        return;
+      }
+    }
     size_t space = kRingBytes - ringFill;
     size_t n = bytes < space ? bytes : space;
     size_t tail = (ringHead + ringFill) % kRingBytes;
