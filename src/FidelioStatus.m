@@ -137,6 +137,12 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
   return small;
 }
 
+- (NSTimeInterval)fileMtimeAge {
+  NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:@"status.plist"];
+  NSDate* mtime = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL] objectForKey:NSFileModificationDate];
+  return mtime ? [[NSDate date] timeIntervalSinceDate:mtime] : -1;
+}
+
 + (unsigned long)ownRssKB {
   struct task_basic_info info;
   mach_msg_type_number_t count = TASK_BASIC_INFO_COUNT;

@@ -41,6 +41,7 @@
 
 - (void)dealloc {
   [self releaseSubviews];
+  [notice release];
   [super dealloc];
 }
 
@@ -137,7 +138,15 @@
   }
   else if ([st isEqualToString:@"stopped"]) line = @"Stopped";
   else line = @"Waiting for Spotify";
+  if (notice && CFAbsoluteTimeGetCurrent() < noticeUntil) line = notice;
   stateLabel.text = line;
+}
+
+- (void)showNotice:(NSString*)text forSeconds:(NSTimeInterval)seconds {
+  [notice release];
+  notice = [text copy];
+  noticeUntil = CFAbsoluteTimeGetCurrent() + seconds;
+  if (stateLabel) [self update];
 }
 
 @end

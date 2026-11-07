@@ -32,6 +32,7 @@
 - (long long)positionMsNow;         // position_ms advanced by the time since the file was read
 - (long long)durationMs;
 - (NSTimeInterval)fileAge;          // now - updated, seconds (-1 if unknown)
+- (NSTimeInterval)fileMtimeAge;     // now - mtime of status.plist, seconds (-1 if absent)
 
 // Device-side figures
 + (unsigned long)ownRssKB;

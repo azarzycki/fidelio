@@ -12,7 +12,10 @@
   UILabel* elapsedLabel;
   UILabel* remainingLabel;
   UILabel* stateLabel;
+  NSString* notice;         // watchdog note shown instead of the state line until noticeUntil
+  NSTimeInterval noticeUntil;
 }
+- (void)showNotice:(NSString*)text forSeconds:(NSTimeInterval)seconds;
 - (id)initWithStatus:(FidelioStatus*)s;
 - (void)update;
 @end
