@@ -117,7 +117,11 @@
   remainingLabel.text = (hasTrack && dur > 0) ? [NSString stringWithFormat:@"-%@", [FidelioStatus formatTime:dur - pos]] : @"";
 
   NSString* line;
-  if ([st length] == 0) line = status.fileMissing ? @"Waiting for cspot (no status file)" : @"Waiting for Spotify";
+  if ([st length] == 0) {
+    if (status.fileMissing) line = @"Waiting for cspot (no status file)";
+    else if (status.fileUnreadable) line = @"Waiting for cspot (unreadable status file)";
+    else line = @"Waiting for Spotify";
+  }
   else if ([st isEqualToString:@"playing"]) line = @"Playing";
   else if ([st isEqualToString:@"paused"]) line = @"Paused";
   else if ([st isEqualToString:@"stopped"]) line = @"Stopped";
@@ -126,7 +130,10 @@
   NSString* src = [status string:@"source"];
   if ([src length] && ([st isEqualToString:@"playing"] || [st isEqualToString:@"paused"]))
     line = [NSString stringWithFormat:@"%@ via %@", line, [src isEqualToString:@"airplay"] ? @"AirPlay" : ([src isEqualToString:@"spotify"] ? @"Spotify" : src)];
-  if ([status fileAge] > 15 && ![st isEqualToString:@""]) line = [line stringByAppendingString:@" (stale)"];
+  if ([st length]) {
+    if (status.fileUnreadable) line = [line stringByAppendingString:@" (status file unreadable)"];
+    else if ([status fileAge] > 15) line = [line stringByAppendingString:@" (stale)"];
+  }
   stateLabel.text = line;
 }
 

@@ -15,7 +15,7 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
 
 @implementation FidelioStatus
 
-@synthesize dict, cover, fileMissing;
+@synthesize dict, cover, fileMissing, fileUnreadable;
 
 - (id)init {
   if ((self = [super init])) {
@@ -43,8 +43,13 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
     [readTime release];
     readTime = [[NSDate alloc] init];
     fileMissing = NO;
+    fileUnreadable = NO;
   } else {
-    fileMissing = YES;  // keep the last good dict so the screen does not flicker on a partial read
+    // Keep the last good dict so the screen does not go blank. The writer renames the file into
+    // place, so a half-written file is never seen: nil means absent (writer not running yet) or
+    // not a plist dictionary at all (a writer bug worth showing rather than hiding as "no file").
+    fileMissing = ![[NSFileManager defaultManager] fileExistsAtPath:path];
+    fileUnreadable = !fileMissing;
   }
 
   // Cover: reload when the (name, mtime, size) of the file differs from the last load attempt.

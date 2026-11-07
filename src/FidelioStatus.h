@@ -14,11 +14,13 @@
   NSDate* coverMtime;      // mtime of the file at the last load attempt, nil if it was absent
   unsigned long long coverSize;
   NSDate* readTime;        // when `dict` was read (for smooth position)
-  BOOL fileMissing;
+  BOOL fileMissing;        // last refresh: status.plist does not exist
+  BOOL fileUnreadable;     // last refresh: it exists but is not a plist dictionary (writer bug)
 }
 @property(nonatomic, readonly) NSDictionary* dict;
 @property(nonatomic, readonly) UIImage* cover;
 @property(nonatomic, readonly) BOOL fileMissing;
+@property(nonatomic, readonly) BOOL fileUnreadable;
 
 - (void)refresh;  // called once a second
 
