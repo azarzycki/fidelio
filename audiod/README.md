@@ -37,3 +37,33 @@ active sources' audio. `socketsink_producer NAME SOCK SAMPLE MS` streams through
 
 All timers are flags (`--takeover-ms` …) or env (`AUDIOD_TAKEOVER_MS` …); see
 `fidelio-audiod --help`.
+
+## Milestone B1 (play on hardware, real producers)
+
+- `fidelio-audiod` with no `--pcm-out`/`--no-audio` plays through the AudioQueue
+  (`airplay/src/AudioQueueOutput.h` over the shared route-following `AudioQueueSink`);
+  `--audio-route`, `--on-route-change` as in cspot. The idle stop (`IDLE_STOP_MS`) stops
+  the queue; the next active source restarts it.
+- `cspot-ios3` and `fidelio-raop` stream to audiod by default (`--audiod-sock PATH`, env
+  `AUDIOD_SOCK`); `--direct-audio` keeps the old local AudioQueue for standalone debugging.
+  `cspot-ios3 --sink-test N` plays N s of a 440 Hz tone through whichever sink and exits:
+  the quickest way to prove the audiod path on the device without Spotify.
+- Pacing: both producers push as fast as their sink accepts and rely on it blocking (that is
+  how the AudioQueue ring paced them). `SocketSink::write()` therefore blocks until the
+  stream is at most 500 ms (`kLeadMs`) ahead of the monotonic clock; audiod keeps each
+  source's latest second in a ring and pumps the active one into the output only while the
+  output holds < 0.5 s, so the arbiter loop never blocks on the hardware and a takeover
+  starts with the new source's lead already in hand. The AudioQueue sink re-primes 200 ms
+  after an underrun instead of playing a near-empty ring with holes.
+- Volume: proto v1 has no VOLUME message; `SocketSink::setVolume()` is applied as gain
+  before sending (raop's dB volume, cspot's 0..65535).
+- `hosttest/test_producers.py AUDIOD RAOP [CSPOT]`: the host-built fidelio-raop receives a
+  scripted RAOP session (`airplay/hosttest/raop_sender.py`) into audiod and the played PCM is
+  checked byte-exact (with the -15 dB gain) around the FLUSH; cspot's `--sink-test` tone is
+  checked for length, frequency and the STOP release. `AUDIOD_TRACE_RING=1` traces the ring.
+- Known tuning interactions (device decisions, not code defects): after a FLUSH raop
+  re-primes its full cushion (1200 ms by default), longer than `RELEASE_MS` (1000), so audiod
+  releases the source and takes it over again 400 ms into the new audio; raise `RELEASE_MS`
+  or shorten the post-FLUSH re-prime if that matters. A TEARDOWN's flush drops the ≤ 500 ms
+  lead already in audiod. A paused source plays its ≤ 500 ms lead out (the local queue used
+  to play 740 ms).

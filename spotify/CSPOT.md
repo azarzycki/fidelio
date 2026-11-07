@@ -138,3 +138,14 @@ Known unknowns, in the order I would expect to hit them:
 - Replace tremor's generic C with ARM-optimised paths if CPU-bound (tremor has `_ARM_ASSEM_` paths for ARMv6).
 - A `launchd` plist so it starts at boot in the dock.
 - AirPlay/RAOP is the alternative path if Spotify Connect proves too heavy; the same toolchain, dns_sd and AudioQueue sink apply (shairport-sync needs libdispatch-free config; owntone's RAOP code or the older shairport are simpler targets).
+
+## Audio output since audiod Milestone B1 (rev 8)
+
+cspot-ios3 no longer opens the AudioQueue itself: the player thread feeds `fidelio-audiod`
+over `/var/mobile/fidelio/audiod.sock` (`--audiod-sock PATH`, env `AUDIOD_SOCK`), which
+arbitrates between Spotify and AirPlay. `--direct-audio` restores the local AudioQueue
+(`--audio-route` / `--on-route-change` apply to it); `--no-audio` is unchanged.
+`--sink-test N` plays N seconds of a 440 Hz tone through the selected sink and exits (no
+Spotify login needed): run it on the device to prove the audiod path. The CLI now also builds
+on a Linux host (`-DCSPOT_DIR=<cspot tree>`, no AudioQueue) for the audiod host tests.
+See `audiod/README.md`.

@@ -63,3 +63,12 @@ launchd (same pattern as cspot): a plist in `/Library/LaunchDaemons/com.fidelio.
 ## Files
 `dist/fidelio-raop` (signed), `src/` (receiver), `alac/` (Apple ALAC decoder, Apache-2.0), `hosttest/` (Linux protocol test: `raop_sender.py`, `compare.py`, `alac_enc.cpp`), `airport_express_key.pem`, `CMakeLists.txt` (device and host builds).
 Build: `cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<toolchain>/share/armv6-ios3/toolchain.cmake -DMBEDTLS_PREFIX=<mbedtls install>` with `IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1`; host test: `cmake -S . -B build-host -DMBEDTLS_PREFIX=<host mbedtls 3.6.7>`.
+
+## Audio output since audiod Milestone B1
+
+fidelio-raop no longer opens the AudioQueue itself: it streams the decoded PCM to
+`fidelio-audiod` over `/var/mobile/fidelio/audiod.sock` (`--audiod-sock PATH`, env
+`AUDIOD_SOCK`), which arbitrates between AirPlay and Spotify. `--direct-audio` restores the
+local AudioQueue for standalone debugging; `--pcm-out` / `--no-audio` are unchanged. The
+volume from SET_PARAMETER is applied as gain before sending; TEARDOWN sends STOP so audiod
+releases the output immediately. See `audiod/README.md`.

@@ -16,7 +16,11 @@ add_executable(fidelio-audiod src/main.cpp src/Server.cpp src/Arbiter.cpp)
 target_include_directories(fidelio-audiod PRIVATE ${INC})
 target_compile_options(fidelio-audiod PRIVATE -O2 -Wall)
 target_link_libraries(fidelio-audiod PRIVATE audiod_common)
-if(NOT APPLE)
+if(APPLE)
+  # The hardware output: the route-following AudioQueue sink shared with the producers' --direct-audio.
+  target_sources(fidelio-audiod PRIVATE ${REPO}/airplay/src/AudioQueueSink.cpp)
+  target_link_libraries(fidelio-audiod PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")
+else()
   target_link_libraries(fidelio-audiod PRIVATE pthread)
 endif()
 
