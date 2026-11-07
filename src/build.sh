@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 OUT="${1:-build}"
 APP="$OUT/NowPlaying.app"
-rm -rf "$OUT"
+rm -rf "$APP" "$OUT"/*.o   # only our own products: never rm -rf a caller-supplied directory
 mkdir -p "$APP"
 
 CFLAGS="-O2 -Wall -Wno-unused -fno-objc-arc -fobjc-exceptions -x objective-c"
