@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -118,10 +119,12 @@ void Server::handle(Client& c, const Message& m) {
       afterTick();
       break;
     case AUDIOD_MSG_FLUSH:
+      if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: FLUSH from #%d (had %zu frames, head %zu)", c.id, c.ringFrames, c.ringHead);
       c.ringHead = 0; c.ringFrames = 0;
       if (arbiter.activeId() == c.id) out->flush();
       break;
     case AUDIOD_MSG_STOP:
+      if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: STOP from #%d (%zu frames in ring)", c.id, c.ringFrames);
       arbiter.onStop(c.id, now);
       afterTick();
       break;
@@ -169,6 +172,7 @@ void Server::afterTick() {
       lastSilenceMs = 0;
       // Start with the new source's lead (the latest kLeadFrames it sent); anything older is stale.
       if (Client* c = clientById(arbiter.activeId())) {
+        if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: takeover #%d with %zu frames (head %zu)", c->id, c->ringFrames, c->ringHead);
         if (c->ringFrames > kLeadFrames) { c->ringHead = (c->ringHead + c->ringFrames - kLeadFrames) % kRingFrames; c->ringFrames = kLeadFrames; }
       }
     }
@@ -208,6 +212,7 @@ void Server::pump() {
   if (!c) return;
   while (c->ringFrames > 0 && out->bufferedSeconds() < opts.sinkTargetSec) {
     size_t n = c->ringFrames < 882 ? c->ringFrames : 882;  // 20 ms slices
+    if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: pump #%d %zu frames (head %zu, %zu in ring)", c->id, n, c->ringHead, c->ringFrames);
     size_t first = kRingFrames - c->ringHead;
     if (first > n) first = n;
     out->write(&c->ring[c->ringHead * 2], first);
