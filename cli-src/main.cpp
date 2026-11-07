@@ -2,10 +2,14 @@
 // Based on feelfreelinux/cspot targets/cli/main.cpp (1b07a9c), using the squeezelite-esp32
 // cspot fork (ee1720c). Zeroconf discovery via the system dns_sd (bell's Apple MDNSService),
 // HTTP login endpoint via bell's civetweb server, audio via AudioQueue.
+#include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <atomic>
 #include <functional>
@@ -31,6 +35,7 @@
 #include "TrackPlayer.h"
 #include "TrackQueue.h"
 #include "WrappedSemaphore.h"
+#include "cJSON.h"
 #include "civetweb.h"
 #include "ios3_trace.h"
 
@@ -45,12 +50,37 @@ static std::string readFile(const std::string& path) {
   return out;
 }
 
-static bool writeFile(const std::string& path, const std::string& data) {
-  FILE* f = fopen(path.c_str(), "wb");
-  if (!f) return false;
-  fwrite(data.data(), 1, data.size(), f);
-  fclose(f);
+// Owner-only and atomic (tmp + rename): the file holds the reusable auth blob, and the device
+// reboots under memory pressure, so a half-written file must never replace a good one.
+static bool writePrivateFile(const std::string& path, const std::string& data) {
+  std::string tmp = path + ".tmp";
+  int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return false;
+  bool ok = fchmod(fd, 0600) == 0;
+  for (size_t done = 0; ok && done < data.size();) {
+    ssize_t n = write(fd, data.data() + done, data.size() - done);
+    if (n <= 0) ok = false;
+    else done += (size_t)n;
+  }
+  ok = (close(fd) == 0) && ok;
+  if (!ok || rename(tmp.c_str(), path.c_str()) != 0) {
+    unlink(tmp.c_str());
+    return false;
+  }
   return true;
+}
+
+// LoginBlob::loadJson dereferences the fields without checking, so a corrupt file would crash us
+// at every start. Only hand it a document that has what it reads.
+static bool credentialsLookValid(const std::string& json) {
+  cJSON* root = cJSON_ParseWithLength(json.c_str(), json.size());
+  if (!root) return false;
+  cJSON* type = cJSON_GetObjectItem(root, "authType");
+  cJSON* user = cJSON_GetObjectItem(root, "username");
+  cJSON* data = cJSON_GetObjectItem(root, "authData");
+  bool ok = cJSON_IsNumber(type) && cJSON_IsString(user) && cJSON_IsString(data) && data->valuestring[0] != 0;
+  cJSON_Delete(root);
+  return ok;
 }
 
 struct Options {
@@ -270,9 +300,13 @@ int main(int argc, char** argv) {
     haveCredentials = true;
   } else if (!args.credentials.empty()) {
     std::string json = readFile(args.credentials);
-    if (!json.empty()) {
+    if (json.empty()) {
+      // first run: fall through to Zeroconf, the file is written after login
+    } else if (credentialsLookValid(json)) {
       loginBlob->loadJson(json);
       haveCredentials = true;
+    } else {
+      CSPOT_LOG(error, "Credentials file %s is not usable, logging in via Zeroconf instead", args.credentials.c_str());
     }
   }
 
@@ -321,7 +355,8 @@ int main(int argc, char** argv) {
     CSPOT_LOG(error, "Authentication failed");
     return 2;
   }
-  if (!args.credentials.empty()) writeFile(args.credentials, ctx->getCredentialsJson());
+  if (!args.credentials.empty() && !writePrivateFile(args.credentials, ctx->getCredentialsJson()))
+    CSPOT_LOG(error, "Cannot write credentials to %s: %s", args.credentials.c_str(), strerror(errno));
 
   auto handler = std::make_shared<cspot::SpircHandler>(ctx);
   IOS3_TRACE("SpircHandler created");
