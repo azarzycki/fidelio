@@ -98,42 +98,45 @@
 
 - (void)update {
   NSString* st = [status state];
-  NSString* title = [status string:@"title"];
-  NSString* artist = [status string:@"artist"];
-  NSString* album = [status string:@"album"];
-  BOOL hasTrack = [title length] > 0;
+  // Only a live playing/paused state shows track data; anything else (idle, connected, stopped,
+  // no/unreadable/stale status file) shows the placeholder tile and one status line.
+  BOOL stale = status.fileMissing || status.fileUnreadable || [status fileAge] > FIDELIO_STALE_S;
+  BOOL playing = [st isEqualToString:@"playing"], paused = [st isEqualToString:@"paused"];
+  BOOL active = !stale && (playing || paused);
 
-  titleLabel.text = hasTrack ? title : [status string:@"device"];
-  artistLabel.text = hasTrack ? artist : @"";
-  albumLabel.text = hasTrack ? album : @"";
-
-  UIImage* img = status.cover;
-  if (coverView.image != (img ? img : placeholder)) coverView.image = img ? img : placeholder;
-
-  long long dur = [status durationMs];
-  long long pos = [status positionMsNow];
-  progress.progress = dur > 0 ? (float)((double)pos / (double)dur) : 0.0f;
-  elapsedLabel.text = hasTrack ? [FidelioStatus formatTime:pos] : @"";
-  remainingLabel.text = (hasTrack && dur > 0) ? [NSString stringWithFormat:@"-%@", [FidelioStatus formatTime:dur - pos]] : @"";
+  if (active) {
+    titleLabel.text = [status string:@"title"];
+    artistLabel.text = [status string:@"artist"];
+    albumLabel.text = [status string:@"album"];
+    UIImage* img = status.cover;
+    if (coverView.image != (img ? img : placeholder)) coverView.image = img ? img : placeholder;
+    long long dur = [status durationMs];
+    long long pos = [status positionMsNow];
+    progress.progress = dur > 0 ? (float)((double)pos / (double)dur) : 0.0f;
+    elapsedLabel.text = [FidelioStatus formatTime:pos];
+    remainingLabel.text = dur > 0 ? [NSString stringWithFormat:@"-%@", [FidelioStatus formatTime:dur - pos]] : @"";
+  } else {
+    titleLabel.text = @"";
+    artistLabel.text = @"";
+    albumLabel.text = @"";
+    if (coverView.image != placeholder) coverView.image = placeholder;
+    progress.progress = 0.0f;
+    elapsedLabel.text = @"";
+    remainingLabel.text = @"";
+  }
 
   NSString* line;
-  if ([st length] == 0) {
-    if (status.fileMissing) line = @"Waiting for cspot (no status file)";
-    else if (status.fileUnreadable) line = @"Waiting for cspot (unreadable status file)";
-    else line = @"Waiting for Spotify";
+  if (status.fileMissing) line = @"Waiting for cspot (no status file)";
+  else if (status.fileUnreadable) line = @"Waiting for cspot (unreadable status file)";
+  else if (stale) line = @"Waiting for cspot (status not updating)";
+  else if (active) {
+    NSString* src = [status string:@"source"];
+    NSString* via = [src isEqualToString:@"airplay"] ? @"AirPlay" : ([src isEqualToString:@"spotify"] ? @"Spotify" : src);
+    line = playing ? @"Playing" : @"Paused";
+    if ([via length]) line = [NSString stringWithFormat:@"%@ via %@", line, via];
   }
-  else if ([st isEqualToString:@"playing"]) line = @"Playing";
-  else if ([st isEqualToString:@"paused"]) line = @"Paused";
   else if ([st isEqualToString:@"stopped"]) line = @"Stopped";
-  else if ([st isEqualToString:@"connected"]) line = @"Connected - waiting for Spotify";
   else line = @"Waiting for Spotify";
-  NSString* src = [status string:@"source"];
-  if ([src length] && ([st isEqualToString:@"playing"] || [st isEqualToString:@"paused"]))
-    line = [NSString stringWithFormat:@"%@ via %@", line, [src isEqualToString:@"airplay"] ? @"AirPlay" : ([src isEqualToString:@"spotify"] ? @"Spotify" : src)];
-  if ([st length]) {
-    if (status.fileUnreadable) line = [line stringByAppendingString:@" (status file unreadable)"];
-    else if ([status fileAge] > 15) line = [line stringByAppendingString:@" (stale)"];
-  }
   stateLabel.text = line;
 }
 

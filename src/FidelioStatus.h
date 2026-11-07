@@ -4,6 +4,7 @@
 
 #define FIDELIO_DIR @"/var/mobile/fidelio"
 #define FIDELIO_APP_VERSION @"1.1 (source-aware)"
+#define FIDELIO_STALE_S 15.0          // status file older than this: the player is not updating it
 #define FIDELIO_COVER_PX 256.0f       // the cover is shown at 256x256 (non-Retina), so that is all we keep
 #define FIDELIO_COVER_MAX_PX 1600.0f  // decoding is w*h*4 bytes; 1600^2 = 10 MB is the most this device should spare
 
