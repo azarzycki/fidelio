@@ -1,0 +1,6 @@
+build/
+*.o
+# prebuilt app bundle (fetch from Releases, or build with src/build.sh)
+NowPlaying.app/
+.DS_Store
+*.swp
