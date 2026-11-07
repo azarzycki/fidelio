@@ -1,0 +1,18 @@
+diff --git a/ldid.cpp b/ldid.cpp
+index 7813c22..0fca1e2 100644
+--- a/ldid.cpp
++++ b/ldid.cpp
+@@ -2664,7 +2664,12 @@ Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::st
+             uint32_t normal((limit + PageSize_ - 1) / PageSize_);
+ 
+             CodeDirectory directory;
+-            directory.version = Swap(uint32_t(0x00020400));
++            // armv6-ios3 patch: LDID_CD_VERSION=0x20001 emits a pre-2011 CodeDirectory
++            // version number (the header fields after spare2 are then ignored by readers).
++            uint32_t cdVersion(0x00020400);
++            if (const char *cdv = getenv("LDID_CD_VERSION"))
++                cdVersion = uint32_t(strtoul(cdv, NULL, 0));
++            directory.version = Swap(cdVersion);
+             directory.flags = Swap(uint32_t(flags));
+             directory.nSpecialSlots = Swap(special);
+             directory.codeLimit = Swap(uint32_t(limit > UINT32_MAX ? UINT32_MAX : limit));

@@ -1,0 +1,424 @@
+From 5100cf81f86f21c77910047753bb57f7224e399c Mon Sep 17 00:00:00 2001
+From: armv6-ios3 <b@b>
+Date: Fri, 6 Nov 2026 06:38:34 +0000
+Subject: [PATCH 1/4] armv6-ios3: build on iPhone OS 3 (no libdispatch
+ semaphore, ARM endian header, codec glob fix, fstream include)
+
+---
+ bell/CMakeLists.txt                           | 11 ++++
+ bell/main/io/BellTar.cpp                      |  2 +
+ bell/main/platform/WrappedSemaphore.h         |  7 +++
+ bell/main/platform/apple/MDNSService.cpp      |  2 +-
+ bell/main/platform/apple/WrappedSemaphore.cpp | 51 +++++++++++++++++++
+ 5 files changed, 72 insertions(+), 1 deletion(-)
+
+diff --git a/bell/CMakeLists.txt b/bell/CMakeLists.txt
+index 8631feb..cf54aca 100644
+--- a/bell/CMakeLists.txt
++++ b/bell/CMakeLists.txt
+@@ -229,6 +229,17 @@ if(NOT BELL_DISABLE_CODECS)
+         list(APPEND CODEC_FLAGS -DBELL_CODEC_OPUS)
+     endif()
+     
++    # armv6-ios3 patch: the glob above pulls in every decoder; drop the ones whose codec is disabled
++    if(NOT BELL_CODEC_OPUS)
++        list(REMOVE_ITEM SOURCES "${AUDIO_CODEC_DIR}/OPUSDecoder.cpp")
++    endif()
++    if(NOT BELL_CODEC_AAC)
++        list(REMOVE_ITEM SOURCES "${AUDIO_CODEC_DIR}/AACDecoder.cpp")
++    endif()
++    if(NOT BELL_CODEC_MP3)
++        list(REMOVE_ITEM SOURCES "${AUDIO_CODEC_DIR}/MP3Decoder.cpp")
++    endif()
++
+     # Enable global codecs
+     string(REPLACE ";" " " CODEC_FLAGS "${CODEC_FLAGS}")
+     set_source_files_properties("${AUDIO_CODEC_DIR}/AudioCodecs.cpp" PROPERTIES COMPILE_FLAGS "${CODEC_FLAGS}")
+diff --git a/bell/main/io/BellTar.cpp b/bell/main/io/BellTar.cpp
+index aa52bf9..c47cb38 100644
+--- a/bell/main/io/BellTar.cpp
++++ b/bell/main/io/BellTar.cpp
+@@ -1,5 +1,7 @@
+ #include "BellTar.h"
+ 
++#include <fstream>  // for ofstream (libc++ 18 no longer includes it transitively)
++
+ #include <sys/stat.h>  // for mkdir
+ 
+ using namespace bell::BellTar;
+diff --git a/bell/main/platform/WrappedSemaphore.h b/bell/main/platform/WrappedSemaphore.h
+index e6a5b26..e9cdf9d 100644
+--- a/bell/main/platform/WrappedSemaphore.h
++++ b/bell/main/platform/WrappedSemaphore.h
+@@ -3,6 +3,9 @@
+ #ifdef ESP_PLATFORM
+ #include "freertos/FreeRTOS.h"
+ #include "freertos/semphr.h"
++#elif defined(__APPLE__) && defined(BELL_APPLE_NO_DISPATCH)
++// iPhone OS < 4 has no libdispatch: pthread mutex + condvar semaphore
++#include <pthread.h>
+ #elif __APPLE__
+ #include <dispatch/dispatch.h>  // for dispatch_semaphore_t
+ #elif _WIN32
+@@ -18,6 +21,10 @@ class WrappedSemaphore {
+  private:
+ #ifdef ESP_PLATFORM
+   SemaphoreHandle_t semaphoreHandle;
++#elif defined(__APPLE__) && defined(BELL_APPLE_NO_DISPATCH)
++  pthread_mutex_t mutex;
++  pthread_cond_t cond;
++  int count;
+ #elif __APPLE__
+   dispatch_semaphore_t semaphoreHandle;
+ #elif _WIN32
+diff --git a/bell/main/platform/apple/MDNSService.cpp b/bell/main/platform/apple/MDNSService.cpp
+index c872f65..519faa9 100644
+--- a/bell/main/platform/apple/MDNSService.cpp
++++ b/bell/main/platform/apple/MDNSService.cpp
+@@ -4,7 +4,7 @@
+ #include <utility>   // for pair
+ 
+ #include "dns_sd.h"       // for DNSServiceRef, DNSServiceRefDeallocate, DNS...
+-#include "i386/endian.h"  // for htons
++#include <arpa/inet.h>  // for htons (was i386/endian.h, which does not exist on ARM SDKs)
+ 
+ using namespace bell;
+ 
+diff --git a/bell/main/platform/apple/WrappedSemaphore.cpp b/bell/main/platform/apple/WrappedSemaphore.cpp
+index 4fc146f..7566745 100644
+--- a/bell/main/platform/apple/WrappedSemaphore.cpp
++++ b/bell/main/platform/apple/WrappedSemaphore.cpp
+@@ -2,6 +2,55 @@
+ 
+ using namespace bell;
+ 
++#ifdef BELL_APPLE_NO_DISPATCH
++// iPhone OS 3 (no libdispatch): counting semaphore on pthread mutex/condvar.
++#include <errno.h>
++#include <sys/time.h>
++
++WrappedSemaphore::WrappedSemaphore(int maxVal) : count(0) {
++  pthread_mutex_init(&mutex, nullptr);
++  pthread_cond_init(&cond, nullptr);
++}
++
++WrappedSemaphore::~WrappedSemaphore() {
++  pthread_cond_destroy(&cond);
++  pthread_mutex_destroy(&mutex);
++}
++
++int WrappedSemaphore::wait() {
++  pthread_mutex_lock(&mutex);
++  while (count == 0)
++    pthread_cond_wait(&cond, &mutex);
++  count--;
++  pthread_mutex_unlock(&mutex);
++  return 0;
++}
++
++int WrappedSemaphore::twait(long milliseconds) {
++  struct timeval now;
++  gettimeofday(&now, nullptr);
++  struct timespec ts;
++  ts.tv_sec = now.tv_sec + milliseconds / 1000;
++  ts.tv_nsec = now.tv_usec * 1000 + (milliseconds % 1000) * 1000000L;
++  if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
++  int rc = 0;
++  pthread_mutex_lock(&mutex);
++  while (count == 0 && rc == 0)
++    rc = pthread_cond_timedwait(&cond, &mutex, &ts);
++  if (rc == 0) count--;
++  pthread_mutex_unlock(&mutex);
++  return rc == 0 ? 0 : -1;  // same convention as dispatch_semaphore_wait: non-zero on timeout
++}
++
++void WrappedSemaphore::give() {
++  pthread_mutex_lock(&mutex);
++  count++;
++  pthread_cond_signal(&cond);
++  pthread_mutex_unlock(&mutex);
++}
++
++#else
++
+ WrappedSemaphore::WrappedSemaphore(int count) {
+   semaphoreHandle = dispatch_semaphore_create(0);
+ }
+@@ -25,3 +74,5 @@ int WrappedSemaphore::twait(long milliseconds) {
+ void WrappedSemaphore::give() {
+   dispatch_semaphore_signal(semaphoreHandle);
+ }
++
++#endif  // BELL_APPLE_NO_DISPATCH
+-- 
+2.43.0
+
+
+From 2f251ceca0116f2526c84b5e3251d12ff493ba1f Mon Sep 17 00:00:00 2001
+From: armv6-ios3 <b@b>
+Date: Fri, 6 Nov 2026 23:11:28 +0000
+Subject: [PATCH 2/4] armv6-ios3: SO_REUSEPORT on Apple listeners, civetweb
+ errors into bell log, optional num_threads cap
+
+---
+ bell/external/civetweb/civetweb.c | 17 +++++++++++++++++
+ bell/main/io/BellHTTPServer.cpp   | 19 ++++++++++++++++++-
+ 2 files changed, 35 insertions(+), 1 deletion(-)
+
+diff --git a/bell/external/civetweb/civetweb.c b/bell/external/civetweb/civetweb.c
+index 5a7cb2d..671876b 100644
+--- a/bell/external/civetweb/civetweb.c
++++ b/bell/external/civetweb/civetweb.c
+@@ -15935,6 +15935,23 @@ set_ports_option(struct mg_context *phys_ctx)
+ 			    "cannot set socket option SO_REUSEADDR (entry %i)",
+ 			    portsTotal);
+ 		}
++#if defined(__APPLE__) && defined(SO_REUSEPORT)
++		/* armv6-ios3 patch: on XNU a bind() can still be refused while the
++		 * previous instance's accepted connections sit in TIME_WAIT. With
++		 * SO_REUSEPORT on the listener (inherited by accepted sockets) a
++		 * restarted server rebinds immediately. */
++		if (setsockopt(so.sock,
++		               SOL_SOCKET,
++		               SO_REUSEPORT,
++		               (SOCK_OPT_TYPE)&on,
++		               sizeof(on))
++		    != 0) {
++			mg_cry_ctx_internal(
++			    phys_ctx,
++			    "cannot set socket option SO_REUSEPORT (entry %i)",
++			    portsTotal);
++		}
++#endif
+ #endif
+ 
+ #if defined(USE_X_DOM_SOCKET)
+diff --git a/bell/main/io/BellHTTPServer.cpp b/bell/main/io/BellHTTPServer.cpp
+index feb34a5..583a8e4 100644
+--- a/bell/main/io/BellHTTPServer.cpp
++++ b/bell/main/io/BellHTTPServer.cpp
+@@ -188,6 +188,16 @@ bool BellHTTPServer::handlePost(CivetServer* server,
+   }
+ }
+ 
++// armv6-ios3 patch: route civetweb's internal errors (e.g. "cannot bind to 7864: 48
++// (Address already in use)") into the bell log; without a log_message callback and
++// without an error_log_file they are silently dropped and a failed mg_start only
++// surfaces as "CivetException null".
++static int civetLogMessage(const struct mg_connection* conn, const char* message) {
++  (void)conn;
++  BELL_LOG(error, "HttpServer", "civetweb: %s", message);
++  return 1;  // handled, do not also write to civetweb's error log file
++}
++
+ BellHTTPServer::BellHTTPServer(int serverPort) {
+   std::lock_guard lock(initMutex);
+   mg_init_library(0);
+@@ -197,7 +207,14 @@ BellHTTPServer::BellHTTPServer(int serverPort) {
+ 
+   civetWebOptions.push_back("listening_ports");
+   civetWebOptions.push_back(port);
+-  server = std::make_unique<CivetServer>(civetWebOptions);
++#ifdef BELL_HTTP_NUM_THREADS
++  // small devices: civetweb's default is 50 worker threads (50 x 512 KB stacks)
++  civetWebOptions.push_back("num_threads");
++  civetWebOptions.push_back(BELL_HTTP_NUM_THREADS);
++#endif
++  CivetCallbacks callbacks;
++  callbacks.log_message = civetLogMessage;
++  server = std::make_unique<CivetServer>(civetWebOptions, &callbacks);
+ }
+ 
+ BellHTTPServer::~BellHTTPServer() {
+-- 
+2.43.0
+
+
+From bb34f6ded4ae08f7a529a649d085f56eb6860d62 Mon Sep 17 00:00:00 2001
+From: armv6-ios3 <b@b>
+Date: Sat, 7 Nov 2026 03:55:32 +0000
+Subject: [PATCH 3/4] armv6-ios3: flush log lines, explicit Task stack sizes
+ (BELL_TASK_STACK_FLOOR), fix civetweb USE_STACK_SIZE branch
+
+---
+ bell/external/civetweb/civetweb.c        | 13 +++++++++++--
+ bell/main/utilities/include/BellLogger.h |  3 +++
+ bell/main/utilities/include/BellTask.h   | 19 +++++++++++++++++++
+ 3 files changed, 33 insertions(+), 2 deletions(-)
+
+diff --git a/bell/external/civetweb/civetweb.c b/bell/external/civetweb/civetweb.c
+index 671876b..0236cf3 100644
+--- a/bell/external/civetweb/civetweb.c
++++ b/bell/external/civetweb/civetweb.c
+@@ -5891,10 +5891,19 @@ mg_start_thread_with_id(mg_thread_func_t func,
+ #elif defined(USE_STACK_SIZE) && (USE_STACK_SIZE > 1)
+ 	/* Compile-time option to control stack size,
+ 	 * e.g. -DUSE_STACK_SIZE=16384 */
+-	(void)pthread_attr_setstacksize(&attr, USE_STACK_SIZE);
++	/* armv6-ios3 patch: this branch referenced an undeclared `attr` (the
++	 * squeezelite fork dropped the attr setup when adding the ESP path). */
++	{
++		pthread_attr_t attr;
++		(void)pthread_attr_init(&attr);
++		(void)pthread_attr_setstacksize(&attr, USE_STACK_SIZE);
++		result = pthread_create(&thread_id, &attr, func, param);
++		(void)pthread_attr_destroy(&attr);
++	}
++#else
++	result = pthread_create(&thread_id, NULL, func, param);
+ #endif /* defined(USE_STACK_SIZE) && USE_STACK_SIZE > 1 */
+ 
+-	result = pthread_create(&thread_id, NULL, func, param);
+ 	if ((result == 0) && (threadidptr != NULL)) {
+ 		*threadidptr = thread_id;
+ 	}
+diff --git a/bell/main/utilities/include/BellLogger.h b/bell/main/utilities/include/BellLogger.h
+index 7e33688..30ea14f 100644
+--- a/bell/main/utilities/include/BellLogger.h
++++ b/bell/main/utilities/include/BellLogger.h
+@@ -45,6 +45,7 @@ class BellLogger : public bell::AbstractLogger {
+     vprintf(format, args);
+     va_end(args);
+     printf("\n");
++    fflush(stdout);  // armv6-ios3 patch: a line must survive a reboot when stdout is a pipe/file
+   };
+ 
+   void error(std::string filename, int line, std::string submodule,
+@@ -65,6 +66,7 @@ class BellLogger : public bell::AbstractLogger {
+     vprintf(format, args);
+     va_end(args);
+     printf("\n");
++    fflush(stdout);  // armv6-ios3 patch: a line must survive a reboot when stdout is a pipe/file
+   };
+ 
+   void info(std::string filename, int line, std::string submodule,
+@@ -85,6 +87,7 @@ class BellLogger : public bell::AbstractLogger {
+     vprintf(format, args);
+     va_end(args);
+     printf("\n");
++    fflush(stdout);  // armv6-ios3 patch: a line must survive a reboot when stdout is a pipe/file
+   };
+ 
+   void printTimestamp() {
+diff --git a/bell/main/utilities/include/BellTask.h b/bell/main/utilities/include/BellTask.h
+index 0607399..852ebca 100644
+--- a/bell/main/utilities/include/BellTask.h
++++ b/bell/main/utilities/include/BellTask.h
+@@ -65,6 +65,25 @@ class Task {
+     thread = CreateThread(NULL, stackSize,
+                           (LPTHREAD_START_ROUTINE)taskEntryFunc, this, 0, NULL);
+     return thread != NULL;
++#elif defined(BELL_TASK_STACK_FLOOR)
++    // armv6-ios3 patch: explicit stack sizes instead of Darwin's 512 KB default.
++    // stackSize is the ESP32 figure (1-48 KB), far too small for a desktop libc;
++    // use max(BELL_TASK_STACK_FLOOR, 4 * stackSize), capped at 512 KB.
++    {
++      size_t sz = (size_t)stackSize * 4;
++      if (sz < (size_t)BELL_TASK_STACK_FLOOR) sz = BELL_TASK_STACK_FLOOR;
++      if (sz > 512 * 1024) sz = 512 * 1024;
++      pthread_attr_t attr;
++      pthread_attr_init(&attr);
++      pthread_attr_setstacksize(&attr, sz);
++      int rc = pthread_create(&thread, &attr, taskEntryFunc, this);
++      pthread_attr_destroy(&attr);
++      if (!rc) {
++        pthread_detach(thread);
++        return true;
++      }
++      return false;
++    }
+ #else
+     if (!pthread_create(&thread, NULL, taskEntryFunc, this)) {
+         pthread_detach(thread);
+-- 
+2.43.0
+
+
+From e72a3f29b6426e113cb8b40746ce69290be66db5 Mon Sep 17 00:00:00 2001
+From: armv6-ios3 <b@b>
+Date: Sat, 7 Nov 2026 04:38:44 +0000
+Subject: [PATCH 4/4] armv6-ios3: expose last AP address (Session) and
+ negotiated TLS suite (TLSSocket) for the status display
+
+---
+ bell/main/io/TLSSocket.cpp       | 13 +++++++++++++
+ bell/main/io/include/TLSSocket.h |  5 +++++
+ include/Session.h                |  2 ++
+ src/Session.cpp                  |  1 +
+ 4 files changed, 21 insertions(+)
+
+diff --git a/bell/main/io/TLSSocket.cpp b/bell/main/io/TLSSocket.cpp
+index 489748d..1e8ddc7 100644
+--- a/bell/main/io/TLSSocket.cpp
++++ b/bell/main/io/TLSSocket.cpp
+@@ -13,6 +13,10 @@
+ /**
+  * Platform TLSSocket implementation for the mbedtls
+  */
++#include <mutex>
++static std::mutex s_negotiatedMutex;
++static std::string s_negotiated;
++
+ bell::TLSSocket::TLSSocket() {
+   this->isClosed = false;
+   mbedtls_net_init(&server_fd);
+@@ -75,6 +79,15 @@ void bell::TLSSocket::open(const std::string& hostUrl, uint16_t port) {
+       throw std::runtime_error("mbedtls_ssl_handshake error");
+     }
+   }
++  {
++    std::lock_guard<std::mutex> lock(s_negotiatedMutex);
++    s_negotiated = std::string(mbedtls_ssl_get_version(&ssl)) + " " + mbedtls_ssl_get_ciphersuite(&ssl);
++  }
++}
++
++std::string bell::TLSSocket::lastNegotiated() {
++  std::lock_guard<std::mutex> lock(s_negotiatedMutex);
++  return s_negotiated;
+ }
+ 
+ size_t bell::TLSSocket::read(uint8_t* buf, size_t len) {
+diff --git a/bell/main/io/include/TLSSocket.h b/bell/main/io/include/TLSSocket.h
+index c3c43a5..1d44abe 100644
+--- a/bell/main/io/include/TLSSocket.h
++++ b/bell/main/io/include/TLSSocket.h
+@@ -19,6 +19,11 @@
+ 
+ namespace bell {
+ class TLSSocket : public bell::Socket {
++ public:
++  // armv6-ios3 patch: "TLSv1.3 TLS1-3-CHACHA20-POLY1305-SHA256" of the most recent
++  // successful handshake in this process (status display), "" before the first one.
++  static std::string lastNegotiated();
++
+  private:
+   mbedtls_net_context server_fd;
+   mbedtls_entropy_context entropy;
+diff --git a/include/Session.h b/include/Session.h
+index df7f03c..b8f2139 100644
+--- a/include/Session.h
++++ b/include/Session.h
+@@ -33,6 +33,8 @@ class Session {
+ 
+   void connect(std::unique_ptr<cspot::PlainConnection> connection);
+   void connectWithRandomAp();
++  // armv6-ios3 patch: "host:port" of the access point of the last successful connect()
++  std::string lastApAddress;
+   void close();
+   virtual bool triggerTimeout() = 0;
+   std::vector<uint8_t> authenticate(std::shared_ptr<LoginBlob> blob);
+diff --git a/src/Session.cpp b/src/Session.cpp
+index 74bd063..2033304 100644
+--- a/src/Session.cpp
++++ b/src/Session.cpp
+@@ -66,6 +66,7 @@ void Session::connectWithRandomAp() {
+ 
+   CSPOT_LOG(debug, "Connecting with AP <%s>", apAddr.c_str());
+   conn->connect(apAddr);
++  lastApAddress = apAddr;  // armv6-ios3 patch: for the status display
+ 
+   this->connect(std::move(conn));
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,16 @@
+diff --git a/cctools/ld64/src/ld/Options.cpp b/cctools/ld64/src/ld/Options.cpp
+index d65d86b..dbabbdc 100644
+--- a/cctools/ld64/src/ld/Options.cpp
++++ b/cctools/ld64/src/ld/Options.cpp
+@@ -3938,6 +3938,11 @@ void Options::parse(int argc, const char* argv[])
+ 				fVersionLoadCommandForcedOn = true;
+ 				fVersionLoadCommandForcedOff = false;
+ 			}
++			// armv6-ios3 patch: allow suppressing LC_VERSION_MIN_* like pre-2010 ld64
++			else if ( strcmp(arg, "-no_version_load_command") == 0 ) {
++				fVersionLoadCommandForcedOn = false;
++				fVersionLoadCommandForcedOff = true;
++			}
+ 			else if ( strcmp(arg, "-function_starts") == 0 ) {
+ 				fFunctionStartsForcedOn = true;
+ 				fFunctionStartsForcedOff = false;
