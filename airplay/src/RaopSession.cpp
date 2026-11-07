@@ -159,6 +159,7 @@ void RaopSession::teardown() {
   if (playerThreadUp) pthread_join(playerThread, nullptr);
   audioThreadUp = controlThreadUp = timingThreadUp = playerThreadUp = false;
   out->flush();
+  out->idle();  // audiod: STOP (release the output now instead of after RELEASE_MS)
   IOS3_TRACE("session torn down: %s", stats().c_str());
 }
 

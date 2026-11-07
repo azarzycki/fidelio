@@ -107,8 +107,10 @@ check(code == 200, "ANNOUNCE 200")
 
 # --- SETUP
 audio_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); audio_s.bind(("0.0.0.0", 0))
-ctrl_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); ctrl_s.bind(("0.0.0.0", 0)); ctrl_s.settimeout(0.05)
-tim_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); tim_s.bind(("0.0.0.0", 0)); tim_s.settimeout(0.05)
+# Non-blocking: the audio loop polls these once per packet; a 50 ms timeout here made the sender
+# ~10x slower than real time, which only an unpaced file sink could follow.
+ctrl_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); ctrl_s.bind(("0.0.0.0", 0)); ctrl_s.setblocking(False)
+tim_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); tim_s.bind(("0.0.0.0", 0)); tim_s.setblocking(False)
 code, rh, _ = request("SETUP", uri, {"Transport": f"RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;control_port={ctrl_s.getsockname()[1]};timing_port={tim_s.getsockname()[1]}"})
 check(code == 200, "SETUP 200")
 tr = dict(p.split("=", 1) for p in rh.get("transport", "").split(";") if "=" in p)
@@ -145,11 +147,13 @@ if args.codec == "alac":
     alac_proc = subprocess.Popen([args.alac_tool], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
 def pcm_frames(i):
-    # 440 Hz left / 660 Hz right, distinct per packet so order errors show up
+    # 440 Hz left / 660 Hz right plus a per-packet DC tag: the tones alone repeat every 2205 frames
+    # (50 ms), which made packet-order analysis ambiguous; the tag makes every packet unique.
+    tag = ((i * 2654435761) & 0xFFFF) % 1000 - 500
     out = bytearray()
     for k in range(FRAMES):
         t = (i * FRAMES + k) / 44100.0
-        l = int(12000 * math.sin(2 * math.pi * 440 * t)); r = int(8000 * math.sin(2 * math.pi * 660 * t))
+        l = int(12000 * math.sin(2 * math.pi * 440 * t)) + tag; r = int(8000 * math.sin(2 * math.pi * 660 * t)) - tag
         out += struct.pack("<hh", l, r)
     return bytes(out)
 
@@ -191,7 +195,7 @@ def service_control():
                         resp = struct.pack(">BBH", 0x80, 0xD6, s) + p[:1] + b"\x60" + p[2:]
                         ctrl_s.sendto(resp, addr)
                         resent.append(s)
-    except socket.timeout:
+    except (socket.timeout, BlockingIOError):
         pass
 
 def service_timing():
@@ -203,7 +207,7 @@ def service_timing():
                 ntp = struct.pack(">II", int(now), int((now % 1) * 2**32))
                 tim_s.sendto(struct.pack(">BBH", 0x80, 0xD3, 7) + b"\0" * 4 + data[24:32] + ntp + ntp, addr)
                 timing_answered.append(1)
-    except socket.timeout:
+    except (socket.timeout, BlockingIOError):
         pass
 
 resent, timing_answered = [], []

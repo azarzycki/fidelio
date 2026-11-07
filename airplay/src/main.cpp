@@ -1,7 +1,8 @@
 // fidelio-raop: AirPlay v1 / RAOP audio receiver for ARMv6 iPhone OS 3.1.3.
 // Advertises _raop._tcp via the system mDNSResponder, speaks RTSP, receives RTP audio
-// (ALAC or L16, optionally AES-128-CBC), plays through the AudioQueue sink, and writes the
-// same status files the Fidelio now-playing app reads.
+// (ALAC or L16, optionally AES-128-CBC), streams the PCM to fidelio-audiod (the arbiter that owns
+// the AudioQueue; --direct-audio plays through a local AudioQueue instead), and writes the same
+// status files the Fidelio now-playing app reads.
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,8 @@
 #ifdef __APPLE__
 #include "AudioQueueOutput.h"
 #endif
+#include "SocketSink.h"
+#include "audiod/proto.h"
 #include "Mdns.h"
 #include "RtspServer.h"
 #include "StatusFile.h"
@@ -28,7 +31,9 @@ struct Options {
   int latencyMs = 1200;
   bool noAudio = false;
   bool help = false;
-  std::string pcmOut;  // --pcm-out FILE: write decoded PCM to a file instead of AudioQueue
+  std::string pcmOut;  // --pcm-out FILE: write decoded PCM to a file instead of playing
+  bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
+  std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
 };
 
 static Options parse(int argc, char** argv) {
@@ -43,6 +48,8 @@ static Options parse(int argc, char** argv) {
     else if (a == "--no-status") o.statusDir.clear();
     else if (a == "--no-audio") o.noAudio = true;
     else if (a == "--pcm-out") o.pcmOut = next("--pcm-out");
+    else if (a == "--direct-audio") o.directAudio = true;
+    else if (a == "--audiod-sock") o.audiodSock = next("--audiod-sock");
     else if (a == "--latency-ms") o.latencyMs = atoi(next("--latency-ms").c_str());
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); exit(1); }
   }
@@ -65,13 +72,15 @@ int main(int argc, char** argv) {
   Options o = parse(argc, argv);
   if (o.help) {
     printf("Usage: fidelio-raop [OPTION]...\n"
-           "AirPlay v1 / RAOP audio receiver for iPhone OS 3 (ARMv6), AudioQueue output.\n"
+           "AirPlay v1 / RAOP audio receiver for iPhone OS 3 (ARMv6); plays through fidelio-audiod.\n"
            "  -n, --name NAME       advertised name (default: Fidelio (AirPlay))\n"
            "  --port PORT           RTSP port (default 5000; 0 = any free port)\n"
            "  --latency-ms MS       jitter buffer depth before playback starts (default 1200, max ~3800)\n"
            "  --status-dir DIR      status.json/status.plist/cover.jpg (default /var/mobile/fidelio); --no-status disables\n"
-           "  --no-audio            decode and discard (no AudioQueue), for isolation tests\n"
-           "  --pcm-out FILE        write the decoded 44.1 kHz/16/stereo PCM to FILE instead of playing\n");
+           "  --audiod-sock PATH    fidelio-audiod socket (default %s; env AUDIOD_SOCK)\n"
+           "  --direct-audio        play through a local AudioQueue instead of fidelio-audiod (standalone debugging)\n"
+           "  --no-audio            decode and discard, for isolation tests\n"
+           "  --pcm-out FILE        write the decoded 44.1 kHz/16/stereo PCM to FILE instead of playing\n", AUDIOD_DEFAULT_SOCK);
     return 0;
   }
   IOS3_TRACE("fidelio-raop start: name='%s' port=%d latency=%d ms no-audio=%d status=%s", o.name.c_str(), o.port, o.latencyMs,
@@ -84,12 +93,15 @@ int main(int argc, char** argv) {
     if (!fo->ok()) { IOS3_TRACE("cannot open %s", o.pcmOut.c_str()); return 2; }
     out.reset(fo);
     IOS3_TRACE("PCM file output: %s", o.pcmOut.c_str());
-  } else {
+  } else if (o.directAudio) {
 #ifdef __APPLE__
-    out.reset(new AudioQueueOutput()); IOS3_TRACE("AudioQueue output created");
+    out.reset(new AudioQueueOutput()); IOS3_TRACE("direct AudioQueue output created");
 #else
-    IOS3_TRACE("host build: no AudioQueue, use --pcm-out or --no-audio"); return 2;
+    IOS3_TRACE("host build: no AudioQueue, use --pcm-out, --no-audio or audiod"); return 2;
 #endif
+  } else {
+    out.reset(new SocketSink("airplay", o.audiodSock));
+    IOS3_TRACE("streaming to fidelio-audiod at %s", o.audiodSock.c_str());
   }
 
   StatusFile status(o.statusDir, o.name);
