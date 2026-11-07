@@ -23,7 +23,7 @@
   [super viewDidLoad];
   self.tableView.backgroundColor = [UIColor blackColor];
   self.tableView.separatorColor = [UIColor colorWithWhite:0.22f alpha:1];
-  self.tableView.rowHeight = 34;
+  self.tableView.rowHeight = 30;  // 14 rows x 30 = 420 px: fits the 431 px above the tab bar (34 did not)
   self.tableView.allowsSelection = NO;
   [self update];
 }
