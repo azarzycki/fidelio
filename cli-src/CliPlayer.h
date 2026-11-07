@@ -9,7 +9,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "AudioQueueSink.h"
 #include "BellTask.h"
@@ -34,9 +35,11 @@ class CliPlayer : public bell::Task {
   std::unique_ptr<AudioQueueSink> audioSink;
   std::shared_ptr<bell::CentralAudioBuffer> centralAudioBuffer;
 
-  // trackHash -> track identifier, so the sink thread can tell spirc which track started
+  // trackHash -> track identifier, so the sink thread can tell spirc which track started.
+  // Newest last; only the few most recent tracks can still have chunks in the 0.75 s buffer.
+  static const size_t kMaxTrackIds = 4;
   std::mutex idMutex;
-  std::unordered_map<size_t, std::string> trackIds;
+  std::vector<std::pair<size_t, std::string>> trackIds;
 
   std::atomic<bool> pauseRequested{false};
   std::atomic<bool> isPaused{true};

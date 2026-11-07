@@ -28,8 +28,10 @@ CliPlayer::CliPlayer(std::unique_ptr<AudioQueueSink> sink, std::shared_ptr<cspot
         size_t hash = std::hash<std::string_view>()(trackId);
         {
           std::scoped_lock lock(idMutex);
-          auto it = trackIds.find(hash);
-          if (it == trackIds.end()) trackIds.emplace(hash, std::string(trackId));
+          if (trackIds.empty() || trackIds.back().first != hash) {
+            if (trackIds.size() >= kMaxTrackIds) trackIds.erase(trackIds.begin());
+            trackIds.emplace_back(hash, std::string(trackId));
+          }
         }
         return this->centralAudioBuffer->writePCM(data, bytes, hash);
       });
@@ -111,8 +113,8 @@ void CliPlayer::runTask() {
       std::string id;
       {
         std::scoped_lock l(idMutex);
-        auto it = trackIds.find(lastHash);
-        if (it != trackIds.end()) id = it->second;
+        for (auto& e : trackIds)
+          if (e.first == lastHash) id = e.second;
       }
       this->handler->notifyAudioReachedPlayback(id);
     }
