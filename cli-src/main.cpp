@@ -59,6 +59,7 @@ struct Options {
   int port = 7864;
   bool help = false;
   bool noAudio = false;
+  AudioQueueSink::Options audio;  // --audio-route, --on-route-change
   std::string statusDir = "/var/mobile/fidelio";  // "" disables the status files
 };
 
@@ -82,6 +83,19 @@ static Options parseArgs(int argc, char** argv) {
     else if (a == "--no-audio") o.noAudio = true;
     else if (a == "--status-dir") o.statusDir = next("--status-dir");
     else if (a == "--no-status") o.statusDir.clear();
+    else if (a == "--audio-route") {
+      std::string v = next("--audio-route");
+      if (v == "auto") o.audio.route = AudioQueueSink::ROUTE_AUTO;
+      else if (v == "speaker") o.audio.route = AudioQueueSink::ROUTE_SPEAKER;
+      else if (v == "lineout") o.audio.route = AudioQueueSink::ROUTE_LINEOUT;
+      else throw std::invalid_argument("--audio-route must be auto|speaker|lineout");
+    } else if (a == "--on-route-change") {
+      std::string v = next("--on-route-change");
+      if (v == "recreate") o.audio.recovery = AudioQueueSink::RECOVER_RECREATE;
+      else if (v == "restart") o.audio.recovery = AudioQueueSink::RECOVER_RESTART;
+      else if (v == "none") o.audio.recovery = AudioQueueSink::RECOVER_NONE;
+      else throw std::invalid_argument("--on-route-change must be recreate|restart|none");
+    }
     else throw std::invalid_argument("unknown option " + a);
   }
   return o;
@@ -180,6 +194,13 @@ int main(int argc, char** argv) {
                  "  --client-id ID / --client-secret SECRET\n"
                  "                           Spotify developer app credentials; this cspot fork fetches\n"
                  "                           its Web API token from accounts.spotify.com with them\n"
+                 "  --audio-route auto|speaker|lineout\n"
+                 "                           auto/lineout: follow the system route (dock line-out when docked,\n"
+                 "                           speaker otherwise); speaker: force the built-in speaker (iOS 3 can\n"
+                 "                           only override towards the speaker)\n"
+                 "  --on-route-change recreate|restart|none\n"
+                 "                           what to do when the audio route changes or an interruption ends:\n"
+                 "                           recreate the AudioQueue (default), stop/start it, or nothing\n"
                  "  --no-audio               diagnostic: no AudioQueue sink and no player thread;\n"
                  "                           decoded audio is discarded, Spirc events are logged\n"
                  "  --status-dir DIR         write status.json / status.plist / cover.jpg there\n"
@@ -196,7 +217,7 @@ int main(int argc, char** argv) {
 
   std::unique_ptr<AudioQueueSink> audioSink;
   if (!args.noAudio) {
-    audioSink = std::make_unique<AudioQueueSink>();
+    audioSink = std::make_unique<AudioQueueSink>(args.audio);
     IOS3_TRACE("AudioQueueSink created");
   }
   auto loggedInSemaphore = std::make_shared<bell::WrappedSemaphore>(1);
