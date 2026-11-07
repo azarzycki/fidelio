@@ -161,7 +161,9 @@ void StatusWriter::onEvent(const cspot::SpircHandler::Event& event) {
         pendingStartMs = (uint32_t)std::get<int>(event.data);
         baseMs = pendingStartMs;
         baseTime = nowMs();
-        clockRunning = false;  // starts when the audio really reaches the sink (TRACK_INFO)
+        // spirc follows PLAYBACK_START with PLAY_PAUSE, which starts the clock; TRACK_INFO
+        // (the audio reaching the sink) then re-bases it on pendingStartMs.
+        clockRunning = false;
         if (state != "paused") state = "playing";
         break;
       case E::TRACK_INFO: {
@@ -190,6 +192,7 @@ void StatusWriter::onEvent(const cspot::SpircHandler::Event& event) {
       case E::SEEK:
         baseMs = (uint32_t)std::get<int>(event.data);
         baseTime = nowMs();
+        if (pendingStart) pendingStartMs = baseMs;  // a seek while loading: the track starts there
         break;
       case E::DISC:
         clockRunning = false;
