@@ -133,6 +133,9 @@ class ZeroconfAuthenticator {
   std::shared_ptr<cspot::LoginBlob> blob;
   std::function<void()> onAuthSuccess;
   std::function<void()> onClose;
+  // Set by the first accepted addUser. The blob is then owned by the session (it is reused for
+  // every reconnect), so later POSTs must not rewrite it; we do not support switching users.
+  std::atomic<bool> authenticated{false};
 
   void registerHandlers() {
     server = std::make_unique<bell::BellHTTPServer>(serverPort);
@@ -147,6 +150,10 @@ class ZeroconfAuthenticator {
     });
     server->registerPost("/spotify_info", [this](struct mg_connection* conn) {
       IOS3_TRACE("zeroconf POST received");
+      if (authenticated) {
+        IOS3_TRACE("zeroconf POST after login, ignored");
+        return server->makeJsonResponse(kOkJson);
+      }
       auto requestInfo = mg_get_request_info(conn);
       long long length = requestInfo->content_length;
       if (length <= 0) {
@@ -183,6 +190,7 @@ class ZeroconfAuthenticator {
         return server->makeJsonResponse(kBadRequestJson);
       }
       IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
+      authenticated = true;
       onAuthSuccess();
       return server->makeJsonResponse(kOkJson);
     });
