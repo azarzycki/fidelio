@@ -1,5 +1,6 @@
 #pragma once
-// Player thread: pulls decoded PCM from cspot's CentralAudioBuffer and feeds the AudioQueue sink.
+// Player thread: pulls decoded PCM from cspot's CentralAudioBuffer and feeds the sink (fidelio-audiod
+// over the socket, or the local AudioQueue with --direct-audio).
 // Adapted from feelfreelinux/cspot targets/cli/CliPlayer (1b07a9c) for the squeezelite-esp32
 // cspot fork API (notifyAudioReachedPlayback takes the track identifier).
 #include <stddef.h>
@@ -12,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "AudioQueueSink.h"
+#include "PlayerSink.h"
 #include "BellTask.h"
 #include "StatusWriter.h"
 
@@ -25,14 +26,14 @@ class SpircHandler;
 
 class CliPlayer : public bell::Task {
  public:
-  CliPlayer(std::unique_ptr<AudioQueueSink> sink, std::shared_ptr<cspot::SpircHandler> spircHandler,
+  CliPlayer(std::unique_ptr<PlayerSink> sink, std::shared_ptr<cspot::SpircHandler> spircHandler,
             StatusWriter* status);
   void disconnect();
 
  private:
   std::shared_ptr<cspot::SpircHandler> handler;
   StatusWriter* status;  // may be null
-  std::unique_ptr<AudioQueueSink> audioSink;
+  std::unique_ptr<PlayerSink> audioSink;
   std::shared_ptr<bell::CentralAudioBuffer> centralAudioBuffer;
 
   // trackHash -> track identifier, so the sink thread can tell spirc which track started.

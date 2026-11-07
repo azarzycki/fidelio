@@ -19,9 +19,21 @@ set(BELL_DISABLE_WEBSERVER OFF)
 # 116 MB device: 1 civetweb worker, 128 KB thread stacks (civetweb USE_STACK_SIZE, bell Tasks)
 add_compile_definitions(BELL_APPLE_NO_DISPATCH BELL_HTTP_NUM_THREADS="1" BELL_TASK_STACK_FLOOR=131072 USE_STACK_SIZE=131072)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../cspot ${CMAKE_CURRENT_BINARY_DIR}/cspot)
+# The cspot library tree (squeezelite-esp32 components/spotify/cspot + spotify/patches): ../cspot
+# by default (a checkout or symlink next to cli-src), or -DCSPOT_DIR=...
+set(CSPOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../cspot CACHE PATH "cspot library tree")
+add_subdirectory(${CSPOT_DIR} ${CMAKE_CURRENT_BINARY_DIR}/cspot)
 
+# Shared with fidelio-audiod and fidelio-raop: the audiod wire framing and the SocketSink output.
+set(COMMON ${CMAKE_CURRENT_SOURCE_DIR}/../../common)
 file(GLOB SOURCES "*.cpp")
-add_executable(cspot-ios3 ${SOURCES})
-target_link_libraries(cspot-ios3 PUBLIC cspot "-framework AudioToolbox" "-framework CoreFoundation")
-target_include_directories(cspot-ios3 PRIVATE ".")
+if(NOT APPLE)
+  list(FILTER SOURCES EXCLUDE REGEX "AudioQueueSink")  # host build: audiod / --no-audio only
+endif()
+add_executable(cspot-ios3 ${SOURCES} ${COMMON}/AudiodFraming.cpp ${COMMON}/SocketSink.cpp)
+target_include_directories(cspot-ios3 PRIVATE "." ${COMMON} ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+if(APPLE)
+  target_link_libraries(cspot-ios3 PUBLIC cspot "-framework AudioToolbox" "-framework CoreFoundation")
+else()
+  target_link_libraries(cspot-ios3 PUBLIC cspot pthread)
+endif()

@@ -1,7 +1,11 @@
 #include "StatusWriter.h"
 
 #include <errno.h>
+#ifdef __APPLE__
 #include <mach/mach_time.h>
+#else
+#include <time.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -71,10 +75,15 @@ static bool writeAtomic(const std::string& path, std::string_view data) {
 }
 
 uint64_t StatusWriter::nowMs() {
+#ifdef __APPLE__
   static mach_timebase_info_data_t tb;  // filled once, from the constructor, before any other thread calls this
   if (tb.denom == 0) mach_timebase_info(&tb);
   uint64_t t = mach_absolute_time();
   return (t / tb.denom) * tb.numer / 1000000ull + ((t % tb.denom) * tb.numer / tb.denom) / 1000000ull;
+#else  // host build
+  struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * 1000ull + (uint64_t)ts.tv_nsec / 1000000ull;
+#endif
 }
 
 StatusWriter::StatusWriter(const std::string& d, const std::string& deviceName, int bitrateKbps)

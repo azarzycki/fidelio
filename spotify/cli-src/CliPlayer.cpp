@@ -12,7 +12,7 @@
 #include "StreamInfo.h"
 #include "TrackPlayer.h"
 
-CliPlayer::CliPlayer(std::unique_ptr<AudioQueueSink> sink, std::shared_ptr<cspot::SpircHandler> handler,
+CliPlayer::CliPlayer(std::unique_ptr<PlayerSink> sink, std::shared_ptr<cspot::SpircHandler> handler,
                      StatusWriter* status)
     : bell::Task("player", 1024, 0, 0) {
   this->handler = handler;
@@ -102,6 +102,7 @@ void CliPlayer::runTask() {
       if (this->playlistEnd && this->audioSink->bufferedSeconds() < 0.05) {
         this->handler->notifyAudioEnded();
         this->playlistEnd = false;
+        this->audioSink->audioEnded();  // audiod: STOP, so the output is released right away
         if (this->status) this->status->audioEnded();
       }
       BELL_SLEEP_MS(10);

@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -26,6 +27,8 @@
 #include "BellUtils.h"  // for BELL_SLEEP_MS
 #include "CSpotContext.h"
 #include "CliPlayer.h"
+#include "PlayerSink.h"
+#include "audiod/proto.h"
 #include "Logger.h"
 #include "LoginBlob.h"
 #include "MDNSService.h"
@@ -90,7 +93,12 @@ struct Options {
   int port = 7864;
   bool help = false;
   bool noAudio = false;
-  AudioQueueSink::Options audio;  // --audio-route, --on-route-change
+  bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
+  std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
+  int sinkTestSec = 0;       // --sink-test N: play N s of a 440 Hz tone through the sink and exit
+#ifdef __APPLE__
+  AudioQueueSink::Options audio;  // --audio-route, --on-route-change (direct audio only)
+#endif
   std::string statusDir = "/var/mobile/fidelio";  // "" disables the status files
 };
 
@@ -112,20 +120,27 @@ static Options parseArgs(int argc, char** argv) {
     else if (a == "--client-id") o.clientId = next("--client-id");
     else if (a == "--client-secret") o.clientSecret = next("--client-secret");
     else if (a == "--no-audio") o.noAudio = true;
+    else if (a == "--direct-audio") o.directAudio = true;
+    else if (a == "--audiod-sock") o.audiodSock = next("--audiod-sock");
+    else if (a == "--sink-test") o.sinkTestSec = atoi(next("--sink-test").c_str());
     else if (a == "--status-dir") o.statusDir = next("--status-dir");
     else if (a == "--no-status") o.statusDir.clear();
     else if (a == "--audio-route") {
       std::string v = next("--audio-route");
+#ifdef __APPLE__
       if (v == "auto") o.audio.route = AudioQueueSink::ROUTE_AUTO;
       else if (v == "speaker") o.audio.route = AudioQueueSink::ROUTE_SPEAKER;
       else if (v == "lineout") o.audio.route = AudioQueueSink::ROUTE_LINEOUT;
       else throw std::invalid_argument("--audio-route must be auto|speaker|lineout");
+#endif
     } else if (a == "--on-route-change") {
       std::string v = next("--on-route-change");
+#ifdef __APPLE__
       if (v == "recreate") o.audio.recovery = AudioQueueSink::RECOVER_RECREATE;
       else if (v == "restart") o.audio.recovery = AudioQueueSink::RECOVER_RESTART;
       else if (v == "none") o.audio.recovery = AudioQueueSink::RECOVER_NONE;
       else throw std::invalid_argument("--on-route-change must be recreate|restart|none");
+#endif
     }
     else throw std::invalid_argument("unknown option " + a);
   }
@@ -249,7 +264,7 @@ int main(int argc, char** argv) {
   }
   if (args.help) {
     std::cout << "Usage: cspot-ios3 [OPTION]...\n"
-                 "Spotify Connect receiver for iPhone OS 3 (ARMv6), playing through AudioQueue.\n\n"
+                 "Spotify Connect receiver for iPhone OS 3 (ARMv6), playing through fidelio-audiod.\n\n"
                  "Run without -u/-c to be discovered via Bonjour by the Spotify app on the LAN.\n"
                  "  -n, --name NAME          device name shown in Spotify (default: iPhone Fidelio)\n"
                  "  -u, --username USER      log in with username/password instead of Zeroconf\n"
@@ -260,6 +275,10 @@ int main(int argc, char** argv) {
                  "  --client-id ID / --client-secret SECRET\n"
                  "                           Spotify developer app credentials; this cspot fork fetches\n"
                  "                           its Web API token from accounts.spotify.com with them\n"
+                 "  --audiod-sock PATH       fidelio-audiod socket (default " AUDIOD_DEFAULT_SOCK "; env AUDIOD_SOCK)\n"
+                 "  --direct-audio           play through a local AudioQueue instead of fidelio-audiod\n"
+                 "                           (standalone debugging; the two options below apply to it)\n"
+                 "  --sink-test SECONDS      play a 440 Hz tone through the sink for that long and exit\n"
                  "  --audio-route auto|speaker|lineout\n"
                  "                           auto/lineout: follow the system route (dock line-out when docked,\n"
                  "                           speaker otherwise); speaker: force the built-in speaker (iOS 3 can\n"
@@ -273,7 +292,7 @@ int main(int argc, char** argv) {
                  "                           (default /var/mobile/fidelio); --no-status disables\n";
     return 0;
   }
-  IOS3_TRACE("cspot-ios3 rev5 start (no-audio=%d, bitrate=%d, port=%d)", (int)args.noAudio, args.bitrate, args.port);
+  IOS3_TRACE("cspot-ios3 rev8 start (no-audio=%d, bitrate=%d, port=%d)", (int)args.noAudio, args.bitrate, args.port);
 
   std::unique_ptr<StatusWriter> status;
   if (!args.statusDir.empty()) {
@@ -281,10 +300,38 @@ int main(int argc, char** argv) {
     IOS3_TRACE("StatusWriter writing to %s", args.statusDir.c_str());
   }
 
-  std::unique_ptr<AudioQueueSink> audioSink;
+  std::unique_ptr<PlayerSink> audioSink;
   if (!args.noAudio) {
-    audioSink = std::make_unique<AudioQueueSink>(args.audio);
-    IOS3_TRACE("AudioQueueSink created");
+    if (args.directAudio) {
+#ifdef __APPLE__
+      audioSink = std::make_unique<LocalQueueSink>(args.audio);
+#else
+      fprintf(stderr, "--direct-audio: there is no AudioQueue on the host\n");
+      return 2;
+#endif
+    } else {
+      audioSink = std::make_unique<AudiodSink>(args.audiodSock);
+    }
+    IOS3_TRACE("audio sink: %s", audioSink->describe().c_str());
+  }
+  if (args.sinkTestSec > 0) {
+    // No Spotify at all: just prove the audio path (host: into audiod; device: dock/speaker).
+    if (!audioSink) { fprintf(stderr, "--sink-test needs a sink (drop --no-audio)\n"); return 2; }
+    IOS3_TRACE("sink test: %d s of a 440 Hz tone", args.sinkTestSec);
+    std::vector<int16_t> tone(882 * 2);
+    double phase = 0;
+    for (int c = 0; c < args.sinkTestSec * 50; c++) {
+      for (int i = 0; i < 882; i++) {
+        int16_t v = (int16_t)(8000 * sin(phase));
+        tone[2 * i] = tone[2 * i + 1] = v;
+        phase += 2 * M_PI * 440 / 44100;
+      }
+      audioSink->feedPCMFrames(reinterpret_cast<const uint8_t*>(tone.data()), tone.size() * 2);
+    }
+    while (audioSink->bufferedSeconds() > 0.05) usleep(20000);
+    audioSink->audioEnded();
+    IOS3_TRACE("sink test done");
+    return 0;
   }
   auto loggedInSemaphore = std::make_shared<bell::WrappedSemaphore>(1);
   auto zeroconfServer = std::make_unique<ZeroconfAuthenticator>();

@@ -1,2 +1,7 @@
 audiod/build-host/
 audiod/build-ios/
+spotify/cspot/
+spotify/build-host/
+spotify/build-ios/
+airplay/build-host/
+airplay/build-ios/
