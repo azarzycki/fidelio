@@ -52,7 +52,8 @@ class AudioQueueSink : public AudioSink {
 
   void init();
   static void outputCallback(void* userData, AudioQueueRef queue, AudioQueueBufferRef buffer);
-  void fillBuffer(AudioQueueRef q, AudioQueueBufferRef buffer);
+  void fillBuffer(AudioQueueRef q, int index);  // enqueues buffers[index] unless the queue still owns it
+  void primeBuffers(AudioQueueRef q);           // enqueue every buffer the queue does not own
   void start();
   void stop();
   bool createQueue();   // AudioQueueNewOutput + buffers for `format`; queueMutex must NOT be held
@@ -71,6 +72,7 @@ class AudioQueueSink : public AudioSink {
   Options opts;
   AudioQueueRef queue = nullptr;
   AudioQueueBufferRef buffers[kNumBuffers];
+  bool enqueued[kNumBuffers];    // under queueMutex: the queue owns the buffer
   AudioStreamBasicDescription format;
   bool running = false;       // AudioQueueStart has been called on `queue`
   bool open = false;          // `queue` exists with buffers
