@@ -4,10 +4,12 @@
 
 #define FIDELIO_DIR @"/var/mobile/fidelio"
 #define FIDELIO_APP_VERSION @"1.1 (source-aware)"
+#define FIDELIO_COVER_PX 256.0f       // the cover is shown at 256x256 (non-Retina), so that is all we keep
+#define FIDELIO_COVER_MAX_PX 1600.0f  // decoding is w*h*4 bytes; 1600^2 = 10 MB is the most this device should spare
 
 @interface FidelioStatus : NSObject {
   NSDictionary* dict;      // last parsed status.plist, or nil
-  UIImage* cover;          // current cover, or nil
+  UIImage* cover;          // current cover scaled to FIDELIO_COVER_PX square, or nil
   NSString* coverName;     // "cover.jpg" or ""
   NSDate* coverMtime;      // mtime of the file at the last load attempt, nil if it was absent
   unsigned long long coverSize;
@@ -34,6 +36,7 @@
 + (NSTimeInterval)uptime;
 + (NSString*)wifiAddress;
 + (NSString*)batteryString;
++ (UIImage*)newCoverFromFile:(NSString*)path;  // +1; FIDELIO_COVER_PX square, nil if unreadable/too big. Main thread only.
 + (NSString*)formatTime:(long long)ms;        // mm:ss
 + (NSString*)formatDuration:(NSTimeInterval)s;  // 1d 02:03:04 / 02:03:04
 @end

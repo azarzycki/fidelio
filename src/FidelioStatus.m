@@ -65,7 +65,7 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
   BOOL changed = ![name isEqualToString:coverName] || !SameDate(mtime, coverMtime) || size != coverSize;
   if (changed) {
     [cover release];
-    cover = mtime ? [[UIImage alloc] initWithContentsOfFile:coverPath] : nil;
+    cover = mtime ? [FidelioStatus newCoverFromFile:coverPath] : nil;
     [coverName release];
     coverName = [name copy];
     [coverMtime release];
@@ -106,6 +106,30 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
   long long updated = [self integer:@"updated"];
   if (!updated) return -1;
   return [[NSDate date] timeIntervalSince1970] - (NSTimeInterval)updated;
+}
+
+// UIImage keeps the file-backed CGImage, and the first draw decodes it to a w*h*4 bitmap that
+// stays resident (a 640x640 Spotify cover is 1.6 MB, a 1400x1400 AirPlay/iTunes one 7.8 MB,
+// 3000x3000 is 36 MB -- a jetsam kill on 116 MB). Decode once into a FIDELIO_COVER_PX square
+// (aspect-fill, 256 KB), then drop the original. Dimensions come from the JPEG header, so
+// oversized files are refused before anything is decoded. UIGraphics contexts are
+// main-thread-only on iPhone OS 3; refresh runs from the main-thread timer.
++ (UIImage*)newCoverFromFile:(NSString*)path {
+  UIImage* img = [[UIImage alloc] initWithContentsOfFile:path];
+  if (!img) return nil;
+  CGSize sz = img.size;
+  if (sz.width < 1 || sz.height < 1 || sz.width > FIDELIO_COVER_MAX_PX || sz.height > FIDELIO_COVER_MAX_PX) {
+    [img release];
+    return nil;
+  }
+  CGFloat scale = FIDELIO_COVER_PX / (sz.width < sz.height ? sz.width : sz.height);
+  CGFloat w = sz.width * scale, h = sz.height * scale;
+  UIGraphicsBeginImageContext(CGSizeMake(FIDELIO_COVER_PX, FIDELIO_COVER_PX));
+  [img drawInRect:CGRectMake((FIDELIO_COVER_PX - w) / 2, (FIDELIO_COVER_PX - h) / 2, w, h)];
+  UIImage* small = [UIGraphicsGetImageFromCurrentImageContext() retain];
+  UIGraphicsEndImageContext();
+  [img release];
+  return small;
 }
 
 + (unsigned long)ownRssKB {

@@ -2,7 +2,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 // Layout for a 320x480 portrait screen with the status bar hidden and a 49 px tab bar: 431 px usable.
-#define COVER_SIZE 256.0f
+#define COVER_SIZE FIDELIO_COVER_PX  // FidelioStatus scales the cover to exactly this
 
 @implementation NowPlayingViewController
 
