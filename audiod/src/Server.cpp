@@ -240,6 +240,7 @@ void Server::run() {
     uint64_t now = nowMs();
     arbiter.tick(now);
     afterTick();
+    out->tick();
     // Keep the output primed with silence between sources so the queue (and the route) stays up
     // until the idle stop; paced by wall clock in 40 ms slices.
     if (opts.feedSilence && arbiter.activeId() < 0 && arbiter.outputRunning()) {

@@ -10,6 +10,16 @@
 // AudioQueue is torn down and recreated on the new route (the ring buffer survives, so playback
 // continues with ~0.8 s of audio in hand); "restart" only stops/starts the queue; "none" is the
 // old behaviour, kept for A/B testing on the device.
+//
+// Invariant (B1.1): while someone wants playback (audio has been fed and stop() not called), the
+// queue is (re)started within ~1 s whatever sequence of interruption-begin / route-change /
+// possibly MISSING interruption-end events arrives. `wantPlaying` is that intent, separate from
+// the transient running/interrupted flags; a route change while "interrupted" ends the
+// interruption (the end callback never came on the device); tick() (audiod's 20 ms loop) and
+// feedPCMFrames() run a watchdog that clears an interruption older than kInterruptGraceMs and
+// retries AudioQueueStart every kStartRetryMs while it fails (a genuine call keeps failing until
+// it ends; the next success resumes). Seen on hardware: begin-interruption, two route changes,
+// no end -> recreated-but-never-started queue, "shows playing, no sound".
 #include <AudioToolbox/AudioQueue.h>
 #include <AudioToolbox/AudioServices.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -40,8 +50,11 @@ class AudioQueueSink : public AudioSink {
 
   // Drop everything that is still queued (used on seek/flush).
   void flush();
-  // Stop the queue (releases the hardware path until the next feedPCMFrames() restarts it).
+  // Stop the queue (releases the hardware path until the next feedPCMFrames() restarts it) and
+  // drop the playback intent: nothing restarts it until audio is fed again.
   void stop();
+  // Watchdog step; call periodically (audiod: every 20 ms) so recovery does not depend on feeds.
+  void tick();
   // Seconds of audio still buffered (ring + the real PCM inside the AudioQueue buffers).
   double bufferedSeconds();
   // Current system audio route name ("Speaker", "LineOut", "Headphone", ...), "" if unknown.
@@ -52,6 +65,9 @@ class AudioQueueSink : public AudioSink {
   static const size_t kBufferBytes = 8 * 1024;   // ~46 ms at 44.1 kHz stereo 16-bit
   static const size_t kRingBytes = 128 * 1024;   // ~0.74 s
   static const size_t kPrimeBytes = 35280;       // 200 ms: after an underrun, pad silence until this much is back
+  static const long kInterruptGraceMs = 1000;    // an interruption with no end callback is forgotten after this
+  static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails
+  static const long kRecoverRetryMs = 1000;      // retry re-acquiring a missing queue this often
   static const long kStallMs = 2000;             // no buffer completion for this long: the queue is stuck
 
   void init();
@@ -59,6 +75,8 @@ class AudioQueueSink : public AudioSink {
   void fillBuffer(AudioQueueRef q, int index);  // enqueues buffers[index] unless the queue still owns it
   void primeBuffers(AudioQueueRef q);           // enqueue every buffer the queue does not own
   void start();
+  void ensurePlaying(const char* from);  // the watchdog: wantPlaying && !running -> clear stale interruption, start
+  static uint64_t nowMs();
   bool createQueue();   // AudioQueueNewOutput + buffers for `format`; queueMutex must NOT be held
   void destroyQueue();  // stop + dispose; queueMutex must NOT be held
   void reacquireRoute(const char* why);
@@ -82,6 +100,10 @@ class AudioQueueSink : public AudioSink {
   bool open = false;          // `queue` exists with buffers
   bool interrupted = false;
   bool wasRunningBeforeInterruption = false;
+  bool wantPlaying = false;          // under queueMutex: audio has been fed since the last stop()
+  uint64_t interruptedSinceMs = 0;   // under queueMutex
+  uint64_t lastStartAttemptMs = 0;   // watchdog bookkeeping (feed/tick callers only)
+  uint64_t lastRecoverMs = 0;
   float lastVolume = 1.0f;
   bool stalled = false;        // under mutex: a feed timed out; cleared by the next completion
   bool startFailed = false;    // AudioQueueStart failed last time (log only changes)

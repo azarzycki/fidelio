@@ -20,6 +20,8 @@ class AudioOutput {
   // No more audio for a while (end of playlist, TEARDOWN, audiod's idle stop): a producer sink tells
   // audiod (STOP), the hardware sink stops the queue. The next write() resumes. Optional.
   virtual void idle() {}
+  // Periodic housekeeping (audiod calls it every 20 ms): the hardware sink runs its recovery watchdog.
+  virtual void tick() {}
 };
 
 #include <stdio.h>

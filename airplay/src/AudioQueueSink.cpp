@@ -9,6 +9,12 @@
 
 #include "ios3_trace.h"
 
+uint64_t AudioQueueSink::nowMs() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  return (uint64_t)tv.tv_sec * 1000ull + tv.tv_usec / 1000;
+}
+
 AudioQueueSink::AudioQueueSink() : opts() { init(); }
 AudioQueueSink::AudioQueueSink(const Options& options) : opts(options) { init(); }
 
@@ -137,6 +143,11 @@ void AudioQueueSink::onRouteChange(const void* data) {
                                    "wake from sleep", "no suitable route for category" };
   const char* why = (reason >= 0 && reason < 8) ? reasons[reason] : "?";
   IOS3_TRACE("audio route change: '%s' -> '%s' (reason %ld: %s)", oldRoute, currentRoute().c_str(), reason, why);
+  pthread_mutex_lock(&queueMutex);
+  bool stuck = interrupted;
+  interrupted = false;  // the system has settled on a route: whatever interrupted us is over, end callback or not
+  pthread_mutex_unlock(&queueMutex);
+  if (stuck) IOS3_TRACE("route change while interrupted: treating the interruption as ended (no end callback came)");
   reacquireRoute("route change");
 }
 
@@ -144,8 +155,9 @@ void AudioQueueSink::onInterruption(UInt32 state) {
   if (state == kAudioSessionBeginInterruption) {
     pthread_mutex_lock(&queueMutex);
     interrupted = true;
-    wasRunningBeforeInterruption = running;
-    if (queue && running) AudioQueuePause(queue);
+    interruptedSinceMs = nowMs();
+    wasRunningBeforeInterruption = running || wantPlaying;
+    if (queue && running) { AudioQueuePause(queue); running = false; }
     pthread_mutex_unlock(&queueMutex);
     IOS3_TRACE("audio interruption began (was %s)", wasRunningBeforeInterruption ? "playing" : "idle");
   } else if (state == kAudioSessionEndInterruption) {
@@ -164,7 +176,7 @@ void AudioQueueSink::onInterruption(UInt32 state) {
 void AudioQueueSink::reacquireRoute(const char* why) {
   OSStatus act = AudioSessionSetActive(true);
   pthread_mutex_lock(&queueMutex);
-  bool wasRunning = running;
+  bool wasRunning = running || wantPlaying;  // resume whenever playback is wanted, not only if it was running
   RouteRecovery mode = opts.recovery;
   pthread_mutex_unlock(&queueMutex);
   if (mode == RECOVER_NONE) {
@@ -279,8 +291,42 @@ void AudioQueueSink::stop() {
   AudioQueueRef q = queue;
   bool r = running;
   running = false;
+  wantPlaying = false;
   pthread_mutex_unlock(&queueMutex);
   if (q && r) AudioQueueStop(q, true);
+}
+
+void AudioQueueSink::tick() { ensurePlaying("tick"); }
+
+// The invariant: playback wanted -> the queue runs, within ~1 s, whatever callbacks did or did not
+// arrive. Called from every feed and from tick(). Never blocks.
+void AudioQueueSink::ensurePlaying(const char* from) {
+  pthread_mutex_lock(&queueMutex);
+  bool want = wantPlaying, have = open, isRunning = running, isInterrupted = interrupted;
+  uint64_t since = interruptedSinceMs;
+  pthread_mutex_unlock(&queueMutex);
+  if (!want || isRunning) return;
+  uint64_t now = nowMs();
+  if (!have) {
+    if (now - lastRecoverMs < (uint64_t)kRecoverRetryMs) return;
+    lastRecoverMs = now;
+    IOS3_TRACE("%s: playback wanted but there is no AudioQueue: re-acquiring", from);
+    reacquireRoute("no queue");  // destroy/create/start
+    return;
+  }
+  if (isInterrupted) {
+    if (now - since < (uint64_t)kInterruptGraceMs) return;  // a real interruption: give its end callback a chance
+    pthread_mutex_lock(&queueMutex);
+    interrupted = false;
+    pthread_mutex_unlock(&queueMutex);
+    OSStatus act = AudioSessionSetActive(true);
+    IOS3_TRACE("%s: interruption began %llu ms ago and never ended: clearing it (AudioSessionSetActive -> %ld) and restarting", from,
+               (unsigned long long)(now - since), (long)act);
+  }
+  if (startFailed && now - lastStartAttemptMs < (uint64_t)kStartRetryMs) return;  // do not hammer a failing start
+  lastStartAttemptMs = now;
+  if (startFailed) AudioSessionSetActive(true);  // a failed start usually means the session was taken away
+  start();
 }
 
 void AudioQueueSink::flush() {
@@ -377,11 +423,11 @@ void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
 
 void AudioQueueSink::feedPCMFrames(const uint8_t* data, size_t bytes) {
   pthread_mutex_lock(&queueMutex);
+  wantPlaying = true;
   bool haveQueue = open;
-  bool needStart = open && !running && !interrupted;
   pthread_mutex_unlock(&queueMutex);
-  if (!haveQueue) return;
-  if (needStart) start();
+  ensurePlaying("feed");
+  if (!haveQueue) return;  // ensurePlaying() is re-acquiring it; this chunk is dropped
 
   pthread_mutex_lock(&mutex);
   while (bytes > 0) {
