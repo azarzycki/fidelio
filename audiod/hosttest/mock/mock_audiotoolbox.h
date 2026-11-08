@@ -95,7 +95,8 @@ enum {
   kAudioSessionProperty_AudioCategory = 'acat',
   kAudioSessionProperty_AudioRouteChange = 'roch',
   kAudioSessionProperty_OverrideAudioRoute = 'ovrd',
-  kAudioSessionProperty_AudioRoute = 'rout'
+  kAudioSessionProperty_AudioRoute = 'rout',
+  kAudioSessionProperty_OtherAudioIsPlaying = 'othr'
 };
 enum { kAudioSessionCategory_MediaPlayback = 'medi' };
 enum { kAudioSessionOverrideAudioRoute_None = 0, kAudioSessionOverrideAudioRoute_Speaker = 'spkr' };
@@ -124,4 +125,5 @@ int liveQueues();                     // queues created and not yet disposed
 void setAsyncResetDelivery(bool on);  // Reset/Stop hand the dropped buffers back from the queue thread a few ms later (device behaviour)
 void refuseNextEnqueues(int n);       // the next n AudioQueueEnqueueBuffer calls fail with kAudioQueueErr_EnqueueDuringReset (strands buffers)
 int queuedBuffers();                  // buffers the live queue currently owns
+void setOtherAudioPlaying(bool on);   // what kAudioSessionProperty_OtherAudioIsPlaying reports (another app owns the audio)
 }  // namespace mock

@@ -70,6 +70,7 @@ static std::atomic<unsigned long> gCompleted{0};
 static std::atomic<int> gStopDelayMs{0}, gLive{0};
 static std::atomic<bool> gCompleting{true}, gAsyncReset{false};
 static std::atomic<int> gRefuse{0};
+static std::atomic<bool> gOtherAudio{false};
 static std::string gRoute = "USB";
 static AudioSessionInterruptionListener gIntListener = nullptr;
 static void* gIntUd = nullptr;
@@ -174,6 +175,7 @@ OSStatus AudioSessionInitialize(CFRunLoopRef, CFStringRef, AudioSessionInterrupt
 }
 OSStatus AudioSessionSetProperty(AudioSessionPropertyID, UInt32, const void*) { return 0; }
 OSStatus AudioSessionGetProperty(AudioSessionPropertyID id, UInt32* size, void* out) {
+  if (id == kAudioSessionProperty_OtherAudioIsPlaying && size && *size == sizeof(UInt32)) { *(UInt32*)out = gOtherAudio ? 1 : 0; return 0; }
   if (id == kAudioSessionProperty_AudioRoute && size && *size == sizeof(CFStringRef)) {
     std::lock_guard<std::mutex> g(gMock);
     *(CFStringRef*)out = new __CFString{ strdup(gRoute.c_str()) };  // leaks a little per call: test only
@@ -208,6 +210,7 @@ void fireRouteChange() {
 unsigned long completedBuffers() { return gCompleted; }
 void setStopDelayMs(int ms) { gStopDelayMs = ms; }
 void setAsyncResetDelivery(bool on) { gAsyncReset = on; }
+void setOtherAudioPlaying(bool on) { gOtherAudio = on; }
 void refuseNextEnqueues(int n) { gRefuse = n; }
 int queuedBuffers() { std::lock_guard<std::mutex> g(gMock); if (!gLiveQueue) return 0; std::lock_guard<std::mutex> l(gLiveQueue->m); return (int)gLiveQueue->queued.size(); }
 void setCompleting(bool on) { gCompleting = on; }

@@ -220,6 +220,35 @@ int main() {
   snprintf(m, sizeof m, "rendering resumes: running=%d, %lu completions in 400 ms", (int)mock::queueRunning(), c1 - c0);
   CHECK(mock::queueRunning() && c1 - c0 >= 10, m);
 
+  // 14. (B1.4 A) yield: the interruption never ends but ANOTHER APP IS PLAYING (the user pressed play
+  //     in the Music app). The watchdog must not clear/restart while that is true; once the other
+  //     audio stops it resumes after the grace window, and the stale ring is dropped on resume.
+  mock::setOtherAudioPlaying(true);
+  int startsBefore = mock::startCalls();
+  sink.takeResumed();  // consume what the earlier resumes left
+  mock::fireInterruption(kAudioSessionBeginInterruption);
+  settle(sink);
+  CHECK(!mock::queueRunning(), "interruption with other audio playing pauses the queue");
+  driveMs(sink, 2500);
+  snprintf(m, sizeof m, "yields while other audio plays: after 2.5 s still paused, %d new AudioQueueStart (expect 0), %.2f s buffered",
+           mock::startCalls() - startsBefore, sink.bufferedSeconds());
+  CHECK(!mock::queueRunning() && mock::startCalls() == startsBefore, m);
+  bool resumedSeen = sink.takeResumed();
+  CHECK(!resumedSeen, "no resume signalled while yielding");
+  mock::setOtherAudioPlaying(false);
+  t = untilRunning(sink, 2500);
+  double buffered = sink.bufferedSeconds();
+  snprintf(m, sizeof m, "other audio stopped: resumed after %ld ms (grace ~1000), %.2f s buffered right after (stale lead dropped: expect < 0.3)", t, buffered);
+  CHECK(t >= 800 && t <= 1700 && buffered < 0.3, m);
+  CHECK(sink.takeResumed() && !sink.takeResumed(), "resume signalled exactly once to the caller");
+
+  // 15. (B1.4 B) soak: normal playback must never trigger a spurious no-completion re-acquire
+  //     (a completion stamped a few ms after the tick's clock read used to underflow to 2^64 ms).
+  gen = sink.queueGeneration();
+  driveMs(sink, 3000);
+  snprintf(m, sizeof m, "3 s of normal playback: generation %lu -> %lu (no spurious re-acquire), running=%d", gen, sink.queueGeneration(), (int)mock::queueRunning());
+  CHECK(sink.queueGeneration() == gen && mock::queueRunning(), m);
+
   printf(fails ? "\n%d FAILURES\n" : "\nall AudioQueueSink recovery checks passed\n", fails);
   return fails ? 1 : 0;
 }

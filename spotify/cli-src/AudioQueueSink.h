@@ -26,6 +26,11 @@
 // kInterruptGraceMs, retries AudioQueueStart every kStartRetryMs while it fails, re-acquires a
 // missing queue, and re-acquires a queue that is "running" but has completed no buffer for
 // kNoCompletionMs (mediaserverd restart, silent wedge).
+//
+// Yielding (B1.4): a stuck interruption is only "forgotten" if no other audio is playing
+// (kAudioSessionProperty_OtherAudioIsPlaying). While another app plays (the user pressed play in
+// the Music app) the sink stays paused and the grace timer is held; it resumes once other audio
+// has been off for the grace window, or on a real END callback. Any resume drops the ring.
 #include <AudioToolbox/AudioQueue.h>
 #include <AudioToolbox/AudioServices.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -67,6 +72,9 @@ class AudioQueueSink : public AudioSink {
   std::string currentRoute();
   // Lifecycle changes so far (queue creations), for diagnostics and tests.
   unsigned long queueGeneration();
+  // True once after the queue resumed from an interruption or a yield: the ring was dropped, and the
+  // caller should drop whatever stale audio it buffered meanwhile too (audiod: the source ring).
+  bool takeResumed();
 
   static const long kInterruptGraceMs = 1000;    // an interruption with no end callback is forgotten after this
   static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails
@@ -87,6 +95,8 @@ class AudioQueueSink : public AudioSink {
 
   // --- owner thread, lifecycleMutex held
   void ensurePlaying(const char* from);  // the watchdog and flag processor
+  bool otherAudioIsPlaying();            // AudioSession query: another app owns the audio right now
+  void resumeFromInterruption(const char* why);  // drop the stale ring, flag the resume for the caller
   void reacquireRoute(const char* why);  // destroy/create (or stop) + start if wanted
   bool createQueue();
   void destroyQueue();
@@ -126,6 +136,7 @@ class AudioQueueSink : public AudioSink {
   bool interruptionEndPending = false;  // set by the callback, consumed by ensurePlaying()
   bool routeChangePending = false;      // set by the callback, consumed by ensurePlaying()
   bool wantPlaying = false;             // audio has been fed since the last stop()
+  bool resumedPending = false;          // set on resume, consumed by takeResumed()
   uint64_t lastCompletionMs = 0;        // last buffer the queue handed back
   uint64_t startedAtMs = 0;             // AudioQueueStart success; 0 = not running
   bool completedSinceStart = false;     // a buffer has come back since the last start
@@ -138,6 +149,7 @@ class AudioQueueSink : public AudioSink {
   uint64_t lastStartAttemptMs = 0;
   uint64_t lastRecoverMs = 0;
   int noCompletionRecoveries = 0;  // consecutive "no completions" re-acquires (reset by a completion)
+  bool yieldLogged = false;        // "yielding" traced once per yield
 
   // --- ring, under `mutex`
   std::vector<uint8_t> ring;

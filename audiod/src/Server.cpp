@@ -283,6 +283,12 @@ void Server::run() {
     arbiter.tick(now);
     afterTick();
     out->tick();
+    if (out->resumed()) {
+      // The output was paused (interruption / yielding to another app) and just resumed: the active
+      // source's ring holds audio from before the pause. Drop it; the producer keeps sending current audio.
+      if (Client* c = clientById(arbiter.activeId())) { c->ringHead = 0; c->ringFrames = 0; }
+      IOS3_TRACE("output resumed: stale buffered audio of the active source dropped");
+    }
     // Keep the output primed with silence between sources so the queue (and the route) stays up
     // until the idle stop; paced by wall clock in 40 ms slices.
     if (opts.feedSilence && arbiter.activeId() < 0 && arbiter.outputRunning()) {

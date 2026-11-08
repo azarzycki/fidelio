@@ -22,6 +22,9 @@ class AudioOutput {
   virtual void idle() {}
   // Periodic housekeeping (audiod calls it every 20 ms): the hardware sink runs its recovery watchdog.
   virtual void tick() {}
+  // True once after the hardware sink resumed from an interruption / yield: the caller should drop
+  // the audio it buffered meanwhile (it is from before the interruption).
+  virtual bool resumed() { return false; }
 };
 
 #include <stdio.h>

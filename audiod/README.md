@@ -151,3 +151,21 @@ steal and a 2 s gap that may.
 - Tests: `aqsink_test` adds a 40-flush storm with the dropped buffers delivered asynchronously,
   stranded buffers via refused enqueues, and start-OK-but-never-renders (recovery with backoff,
   no tight loop); `test_silence.py` adds the same-name reconnect and the resume-after-zeros case.
+
+## B1.4 (hardware findings on b13)
+
+- **Yield to other audio** — the stuck-interruption recovery (interruption-begin with no END
+  callback, forgotten after 1 s) now first asks `kAudioSessionProperty_OtherAudioIsPlaying`,
+  every tick while interrupted. While another app plays (the user pressed play in the Music app)
+  the sink stays paused and the grace timer is held; it resumes once other audio has been off for
+  the grace window, or on a real END callback. Voice Control / alerts (no other audio) still
+  auto-recover in ~1 s. While yielded, audiod keeps draining every producer (the pump just stops
+  at the 0.5 s sink cap), so SocketSink pacing never hard-blocks a producer; on any resume the
+  sink ring and the active source's ring are dropped (`AudioOutput::resumed()`), so playback
+  continues with current audio instead of a stale half second.
+- **Watchdog underflow** — `lastCompletionMs` is stamped on the queue thread and can be a few ms
+  ahead of the tick's clock read; the elapsed time is now clamped at 0 (the device showed one
+  spurious "no completion for 2^64 ms" re-acquire right after a start).
+- Tests: `aqsink_test` adds the yield case (2.5 s with other audio: paused, zero starts; then
+  resume ~1 s after it stops with the stale lead dropped) and a 3 s soak with no spurious
+  re-acquire.

@@ -363,10 +363,14 @@ void AudioQueueSink::ensurePlaying(const char* from) {
   // 2. the route changed: the system has settled on a route, so whatever interrupted us is over
   //    (its end callback never came on the device); re-acquire the output on the new route
   if (routeChange) {
-    if (isInterrupted) IOS3_TRACE("route change while interrupted: treating the interruption as ended (no end callback came)");
-    pthread_mutex_lock(&queueMutex);
-    interrupted = false;
-    pthread_mutex_unlock(&queueMutex);
+    if (isInterrupted) {
+      IOS3_TRACE("route change while interrupted: treating the interruption as ended (no end callback came)");
+      pthread_mutex_lock(&queueMutex);
+      interrupted = false;
+      pthread_mutex_unlock(&queueMutex);
+      yieldLogged = false;
+      if (want) resumeFromInterruption("route change");
+    }
     reacquireRoute("route change");
     return;
   }
@@ -377,9 +381,11 @@ void AudioQueueSink::ensurePlaying(const char* from) {
     pthread_mutex_lock(&queueMutex);
     interrupted = false;
     pthread_mutex_unlock(&queueMutex);
-    isInterrupted = false;
     IOS3_TRACE("interruption end processed: AudioSessionSetActive -> %ld%s", (long)act, isRunning ? ", already playing" : "");
+    yieldLogged = false;
     if (isRunning) return;
+    if (isInterrupted && want) resumeFromInterruption("interruption end");
+    isInterrupted = false;
   }
   if (!want) return;
   // 4. no queue at all: re-acquire (rate-limited)
@@ -403,25 +409,40 @@ void AudioQueueSink::ensurePlaying(const char* from) {
     uint64_t window = firstPending ? (uint64_t)kFirstCompletionMs : (uint64_t)kNoCompletionMs;
     uint64_t backoff = (uint64_t)kRecoverRetryMs << (noCompletionRecoveries > 4 ? 4 : noCompletionRecoveries);
     if (backoff > (uint64_t)kMaxRecoverBackoffMs) backoff = kMaxRecoverBackoffMs;
-    if (lastDone && now - lastDone > window && now - lastRecoverMs >= backoff) {
+    // lastDone is stamped on the queue thread and can be a few ms AHEAD of this tick's `now`:
+    // never let the subtraction wrap (seen on the device as a 2^64 ms "no completion").
+    uint64_t sinceDone = now > lastDone ? now - lastDone : 0;
+    if (lastDone && sinceDone > window && now - lastRecoverMs >= backoff) {
       lastRecoverMs = now;
       noCompletionRecoveries++;
       IOS3_TRACE("%s: queue is running but has completed no buffer for %llu ms%s: re-acquiring (recovery #%d, next after %llu ms)", from,
-                 (unsigned long long)(now - lastDone), firstPending ? " since AudioQueueStart" : "", noCompletionRecoveries,
+                 (unsigned long long)sinceDone, firstPending ? " since AudioQueueStart" : "", noCompletionRecoveries,
                  (unsigned long long)(backoff * 2 > (uint64_t)kMaxRecoverBackoffMs ? (uint64_t)kMaxRecoverBackoffMs : backoff * 2));
       reacquireRoute("no completions");
     }
     return;
   }
-  // 6. not running: a stuck interruption is forgotten after the grace period
+  // 6. not running: a stuck interruption is forgotten after the grace period -- unless another app
+  //    is actually playing (the user pressed play in the Music app): then we yield for as long as it
+  //    plays, holding the timer, and resume once it has been quiet for the grace window (or on END).
   if (isInterrupted) {
-    if (now - since < (uint64_t)kInterruptGraceMs) return;  // a real interruption: give its end callback a chance
+    if (otherAudioIsPlaying()) {  // checked every tick while interrupted: the grace window only runs while no other audio plays
+      pthread_mutex_lock(&queueMutex);
+      interruptedSinceMs = now;  // hold: the grace window restarts when the other audio stops
+      pthread_mutex_unlock(&queueMutex);
+      if (!yieldLogged) { IOS3_TRACE("%s: interrupted and other audio is playing: yielding until it stops", from); yieldLogged = true; }
+      return;
+    }
+    uint64_t held = now > since ? now - since : 0;  // `since` is stamped on the session thread
+    if (held < (uint64_t)kInterruptGraceMs) return;  // a real interruption: give its end callback a chance
     pthread_mutex_lock(&queueMutex);
     interrupted = false;
     pthread_mutex_unlock(&queueMutex);
     OSStatus act = AudioSessionSetActive(true);
-    IOS3_TRACE("%s: interruption began %llu ms ago and never ended: clearing it (AudioSessionSetActive -> %ld) and restarting", from,
-               (unsigned long long)(now - since), (long)act);
+    IOS3_TRACE("%s: interruption began %llu ms ago and never ended, no other audio playing: clearing it (AudioSessionSetActive -> %ld) and restarting",
+               from, (unsigned long long)held, (long)act);
+    yieldLogged = false;
+    resumeFromInterruption(from);
   }
   // 7. start, retrying every kStartRetryMs while it fails (a genuine interruption keeps it failing)
   if (startFailed && now - lastStartAttemptMs < (uint64_t)kStartRetryMs) return;
@@ -468,6 +489,35 @@ double AudioQueueSink::bufferedSeconds() {
   for (int i = 0; i < kNumBuffers; i++) bytes += queuedBytes[i];
   pthread_mutex_unlock(&queueMutex);
   return format.mBytesPerFrame ? (double)bytes / (format.mBytesPerFrame * format.mSampleRate) : 0;
+}
+
+bool AudioQueueSink::takeResumed() {
+  pthread_mutex_lock(&queueMutex);
+  bool r = resumedPending;
+  resumedPending = false;
+  pthread_mutex_unlock(&queueMutex);
+  return r;
+}
+
+bool AudioQueueSink::otherAudioIsPlaying() {
+  UInt32 v = 0, size = sizeof v;
+  if (AudioSessionGetProperty(kAudioSessionProperty_OtherAudioIsPlaying, &size, &v) != 0) return false;
+  return v != 0;
+}
+
+// The audio in the ring (and whatever the caller buffered) is from before the interruption: drop
+// it so playback resumes with current audio instead of a stale half second.
+void AudioQueueSink::resumeFromInterruption(const char* why) {
+  pthread_mutex_lock(&mutex);
+  ringHead = 0;
+  ringFill = 0;
+  priming = true;
+  pthread_cond_broadcast(&spaceAvailable);
+  pthread_mutex_unlock(&mutex);
+  pthread_mutex_lock(&queueMutex);
+  resumedPending = true;
+  pthread_mutex_unlock(&queueMutex);
+  IOS3_TRACE("%s: resuming; buffered audio from before the interruption dropped", why);
 }
 
 unsigned long AudioQueueSink::queueGeneration() {
