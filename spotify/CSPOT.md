@@ -148,4 +148,5 @@ arbitrates between Spotify and AirPlay. `--direct-audio` restores the local Audi
 `--sink-test N` plays N seconds of a 440 Hz tone through the selected sink and exits (no
 Spotify login needed): run it on the device to prove the audiod path. The CLI now also builds
 on a Linux host (`-DCSPOT_DIR=<cspot tree>`, no AudioQueue) for the audiod host tests.
-See `audiod/README.md`.
+Since B1.1 the volume goes to audiod as a VOLUME message and the status files are
+`status-spotify.json` / `status-spotify.plist` / `cover-spotify.jpg`. See `audiod/README.md`.

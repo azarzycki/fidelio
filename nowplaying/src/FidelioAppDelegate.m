@@ -49,12 +49,12 @@ extern char** environ;
 }
 
 - (void)watchdog {
-  if (status.dict) everValid = YES;
-  // Age of the status: by its own "updated" field when it parses, by the file's mtime when it
-  // exists but does not parse. A file that is simply absent is not a hang (cspot not started yet).
-  NSTimeInterval age = [status fileAge];
-  if (age < 0 && !status.fileMissing) age = [status fileMtimeAge];
-  BOOL stale = age > FIDELIO_WATCHDOG_STALE_S && (everValid || !status.fileMissing);
+  // The watchdog is about cspot only, so it watches status-spotify.plist whichever source the
+  // display shows: by its own "updated" field when it parses, by the file's mtime otherwise. A
+  // file that is simply absent is not a hang (cspot not started yet).
+  NSTimeInterval age = [status spotifyStatusAge];
+  if (age >= 0) everValid = YES;
+  BOOL stale = everValid && age > FIDELIO_WATCHDOG_STALE_S;
   if (!stale) return;
   NSTimeInterval now = CFAbsoluteTimeGetCurrent();
   if (lastProd != 0 && now - lastProd < FIDELIO_WATCHDOG_COOLDOWN_S) return;

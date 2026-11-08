@@ -18,7 +18,7 @@
   NowPlayingViewController* nowPlaying;
   TechnicalViewController* technical;
   NSTimer* timer;
-  BOOL everValid;            // a parseable status.plist has been seen since launch
+  BOOL everValid;            // status-spotify.plist has been seen since launch
   NSTimeInterval lastProd;   // CFAbsoluteTime of the last killall, 0 = never
 }
 - (void)watchdog;

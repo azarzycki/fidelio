@@ -67,3 +67,26 @@ All timers are flags (`--takeover-ms` …) or env (`AUDIOD_TAKEOVER_MS` …); se
   or shorten the post-FLUSH re-prime if that matters. A TEARDOWN's flush drops the ≤ 500 ms
   lead already in audiod. A paused source plays its ≤ 500 ms lead out (the local queue used
   to play 740 ms).
+
+## B1.1 (fix round after the first hardware run)
+
+- **Recovery invariant** (`airplay/src/AudioQueueSink.*`, shared): while audio is being fed and
+  `stop()` has not been called, the queue is (re)started within ~1 s whatever interruption-begin /
+  route-change / missing interruption-end sequence arrives: `wantPlaying` intent, a route change
+  ends a stuck interruption, `tick()` (audiod's loop) runs a watchdog that clears an interruption
+  older than 1 s and retries `AudioQueueStart` every 500 ms while it fails. Host-tested against a
+  mock AudioToolbox: `hosttest/aqsink_test.cpp` (`hosttest/mock/`), replaying the device trace.
+- **Silence detection**: a frame counts as sound only if its peak |sample| exceeds
+  `--silence-threshold` (512; env `AUDIOD_SILENCE_THRESHOLD`; 0 = any frame). `producing` and the
+  release use the last *loud* frame, so a paused AirPlay sender streaming digital silence is idle:
+  it cannot steal, and if it is active it is released after `RELEASE_MS`.
+- **VOLUME message** (proto type 6, `AudiodVolume{float linear}`): the producer's volume no longer
+  scales the PCM in SocketSink; audiod applies it at the output (AudioQueue volume parameter;
+  FileOutput scales for the host tests) so the silence threshold means the same at every volume.
+  Sent after HELLO (if not 1.0) and on every change.
+- **Tuning defaults**: `producingGapMs` 1000 (was 120), `releaseMs` 1500 (was 1000, covers raop's
+  post-FLUSH re-prime), SocketSink lead 750 ms (was 500; producers `--audiod-lead-ms`, env
+  `AUDIOD_LEAD_MS`; audiod `--lead-ms` must match what a takeover starts with).
+- **Status ownership**: producers write `status-spotify.*` / `status-airplay.*` and
+  `cover-spotify.jpg` / `cover-airplay.jpg`; the now-playing app (1.2) reads `active-source` and
+  shows only that source (see `nowplaying/APP.md`).

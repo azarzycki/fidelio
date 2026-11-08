@@ -103,7 +103,9 @@
   // no/unreadable/stale status file) shows the placeholder tile and one status line.
   BOOL stale = status.fileMissing || status.fileUnreadable || [status fileAge] > FIDELIO_STALE_S;
   BOOL playing = [st isEqualToString:@"playing"], paused = [st isEqualToString:@"paused"];
-  BOOL active = !stale && (playing || paused);
+  // audiod decides who owns the speaker: with it idle, a player that still claims "playing" (a
+  // paused AirPlay sender streaming silence, a source that lost the arbitration) is not shown.
+  BOOL active = !stale && (playing || paused) && ![status audiodIdle];
 
   if (active) {
     titleLabel.text = [status string:@"title"];
@@ -127,17 +129,19 @@
   }
 
   NSString* line;
-  if (status.fileMissing) line = @"Waiting for cspot (no status file)";
-  else if (status.fileUnreadable) line = @"Waiting for cspot (unreadable status file)";
-  else if (stale) line = @"Waiting for cspot (status not updating)";
+  if (status.fileMissing) line = @"Waiting for a player (no status file)";
+  else if (status.fileUnreadable) line = @"Waiting for a player (unreadable status file)";
+  else if (stale) line = @"Waiting for a player (status not updating)";
   else if (active) {
-    NSString* src = [status string:@"source"];
+    NSString* src = [status activeSource];
+    if (![src length]) src = [status string:@"source"];
     NSString* via = [src isEqualToString:@"airplay"] ? @"AirPlay" : ([src isEqualToString:@"spotify"] ? @"Spotify" : src);
     line = playing ? @"Playing" : @"Paused";
     if ([via length]) line = [NSString stringWithFormat:@"%@ via %@", line, via];
   }
+  else if ([status audiodIdle]) line = @"Idle";
   else if ([st isEqualToString:@"stopped"]) line = @"Stopped";
-  else line = @"Waiting for Spotify";
+  else line = @"Waiting for Spotify or AirPlay";
   if (notice && CFAbsoluteTimeGetCurrent() < noticeUntil) line = notice;
   stateLabel.text = line;
 }

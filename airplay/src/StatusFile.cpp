@@ -137,9 +137,9 @@ void StatusFile::poke() { wake(); }
 
 void StatusFile::setCover(const std::vector<uint8_t>& jpeg) {
   if (!enabled) return;
-  bool ok = writeAtomic(dir + "/cover.jpg", jpeg.data(), jpeg.size());
-  { std::scoped_lock l(mutex); cover = ok ? "cover.jpg" : ""; }
-  if (!ok) IOS3_TRACE("cover.jpg write failed: %s", strerror(errno));
+  bool ok = writeAtomic(dir + "/cover-airplay.jpg", jpeg.data(), jpeg.size());
+  { std::scoped_lock l(mutex); cover = ok ? "cover-airplay.jpg" : ""; }
+  if (!ok) IOS3_TRACE("cover-airplay.jpg write failed: %s", strerror(errno));
   wake();
 }
 
@@ -177,7 +177,8 @@ void StatusFile::writeFiles() {
   pi("rss_kb", (long long)rss); pi("updated", now);
   p += "</dict>\n</plist>\n";
 
-  if (!writeAtomic(dir + "/status.json", j.data(), j.size()) || !writeAtomic(dir + "/status.plist", p.data(), p.size())) {
+  // Per-source files (B1.1): the now-playing app reads audiod's active-source, then status-<source>.plist.
+  if (!writeAtomic(dir + "/status-airplay.json", j.data(), j.size()) || !writeAtomic(dir + "/status-airplay.plist", p.data(), p.size())) {
     static bool warned = false;
     if (!warned) { IOS3_TRACE("status: cannot write to %s: %s", dir.c_str(), strerror(errno)); warned = true; }
   }

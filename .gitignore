@@ -6,3 +6,4 @@ spotify/build-ios/
 airplay/build-host/
 airplay/build-ios/
 airplay/hosttest/airport_express_pub.pem
+nowplaying/build-ios/

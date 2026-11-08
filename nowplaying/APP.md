@@ -4,8 +4,12 @@ A native UIKit app for iPhone OS 3.1 (armv6) that shows what cspot-ios3 is playi
 
 **Not run on hardware by me.** What is verified: it compiles and links, the Mach-O and Objective-C metadata are the 2009 shapes (non-fragile ABI sections, `__objc_classlist`, no PIE, no dyld-info), and the Info.plist keys are the iOS 3.1 ones.
 
-## What the app reads
-`/var/mobile/fidelio/status.plist` — polled once per second with `[NSDictionary dictionaryWithContentsOfFile:]`. iOS 3 has no JSON parser in Foundation (NSJSONSerialization is iOS 5), so cspot-ios3 rev 4 writes **both** `status.json` (your contract, for scripts) and `status.plist` (XML plist, same keys/values) atomically, each as `.tmp` + `rename()`. The app reads only the plist. A partial read (file missing for a moment) keeps the last good dictionary, so the screen never flickers.
+## What the app reads (1.2, audiod)
+`/var/mobile/fidelio/active-source` — written by fidelio-audiod: `spotify`, `airplay` or `none`. The app shows **only** that source's status; with `none` it shows "Idle" even if a player still claims to be playing (a paused AirPlay sender streaming silence, a source that lost the arbitration). Without the file (audiod not running) it shows whichever `status-*.plist` changed most recently.
+
+`/var/mobile/fidelio/status-spotify.plist` / `status-airplay.plist` — the per-source status (cspot-ios3 and fidelio-raop no longer share one `status.plist`); same keys as below, `cover` names `cover-spotify.jpg` / `cover-airplay.jpg`. The watchdog (`killall -9 cspot-ios3` when the status goes stale) watches `status-spotify.plist` regardless of what is shown.
+
+Original contract, per source: `status.plist` — polled once per second with `[NSDictionary dictionaryWithContentsOfFile:]`. iOS 3 has no JSON parser in Foundation (NSJSONSerialization is iOS 5), so cspot-ios3 rev 4 writes **both** `status.json` (your contract, for scripts) and `status.plist` (XML plist, same keys/values) atomically, each as `.tmp` + `rename()`. The app reads only the plist. A partial read (file missing for a moment) keeps the last good dictionary, so the screen never flickers.
 
 `/var/mobile/fidelio/cover.jpg` — reloaded when the `cover` field or the file's modification date changes.
 

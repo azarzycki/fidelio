@@ -70,5 +70,6 @@ fidelio-raop no longer opens the AudioQueue itself: it streams the decoded PCM t
 `fidelio-audiod` over `/var/mobile/fidelio/audiod.sock` (`--audiod-sock PATH`, env
 `AUDIOD_SOCK`), which arbitrates between AirPlay and Spotify. `--direct-audio` restores the
 local AudioQueue for standalone debugging; `--pcm-out` / `--no-audio` are unchanged. The
-volume from SET_PARAMETER is applied as gain before sending; TEARDOWN sends STOP so audiod
-releases the output immediately. See `audiod/README.md`.
+volume from SET_PARAMETER is sent to audiod as a VOLUME message (audiod applies it at the output);
+TEARDOWN sends STOP so audiod releases the output immediately. Since B1.1 the status files are
+`status-airplay.json` / `status-airplay.plist` / `cover-airplay.jpg`. See `audiod/README.md`.

@@ -233,11 +233,11 @@ bool StatusWriter::fetchCover(const std::string& url, std::string& outName) {
       return false;
     }
     std::string_view data = response->body();  // the response's own buffer; no copies
-    if (!writeAtomic(dir + "/cover.jpg", data)) {
-      CSPOT_LOG(error, "cover: cannot write %s/cover.jpg: %s", dir.c_str(), strerror(errno));
+    if (!writeAtomic(dir + "/cover-spotify.jpg", data)) {
+      CSPOT_LOG(error, "cover: cannot write %s/cover-spotify.jpg: %s", dir.c_str(), strerror(errno));
       return false;
     }
-    outName = "cover.jpg";
+    outName = "cover-spotify.jpg";
     IOS3_TRACE("cover saved (%u bytes) from %s", (unsigned)data.size(), url.c_str());
     return true;
   } catch (const std::exception& e) {
@@ -297,7 +297,9 @@ void StatusWriter::writeFiles() {
   pi("rss_kb", (long long)rss); pi("updated", (long long)now);
   p += "</dict>\n</plist>\n";
 
-  if (!writeAtomic(dir + "/status.json", j) || !writeAtomic(dir + "/status.plist", p)) {
+  // Per-source files (B1.1): cspot and fidelio-raop no longer overwrite one shared status; the
+  // now-playing app reads audiod's active-source and then status-<source>.plist.
+  if (!writeAtomic(dir + "/status-spotify.json", j) || !writeAtomic(dir + "/status-spotify.plist", p)) {
     static bool warned = false;
     if (!warned) {
       CSPOT_LOG(error, "StatusWriter: cannot write to %s: %s", dir.c_str(), strerror(errno));

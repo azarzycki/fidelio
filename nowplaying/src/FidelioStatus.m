@@ -15,11 +15,21 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
 
 @implementation FidelioStatus
 
-@synthesize dict, cover, fileMissing, fileUnreadable;
+@synthesize dict, cover, fileMissing, fileUnreadable, activeSource, shownSource;
+
+static NSString* StatusPath(NSString* source) {
+  return [FIDELIO_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"status-%@.plist", source]];
+}
+
+static NSDate* Mtime(NSString* path) {
+  return [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL] objectForKey:NSFileModificationDate];
+}
 
 - (id)init {
   if ((self = [super init])) {
     coverName = @"";
+    activeSource = @"";
+    shownSource = @"spotify";
     [UIDevice currentDevice].batteryMonitoringEnabled = YES;
   }
   return self;
@@ -31,11 +41,39 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
   [coverName release];
   [coverMtime release];
   [readTime release];
+  [activeSource release];
+  [shownSource release];
   [super dealloc];
 }
 
+- (BOOL)audiodIdle {
+  return [activeSource isEqualToString:@"none"];
+}
+
+// Which status file to show: audiod's active source; when none is active (or audiod is not running)
+// the source whose status file changed most recently, so the Technical tab still has data.
+- (NSString*)pickSource {
+  if ([activeSource length] && ![activeSource isEqualToString:@"none"]) return activeSource;
+  NSDate* sp = Mtime(StatusPath(@"spotify"));
+  NSDate* ap = Mtime(StatusPath(@"airplay"));
+  if (ap && (!sp || [ap compare:sp] == NSOrderedDescending)) return @"airplay";
+  return @"spotify";
+}
+
 - (void)refresh {
-  NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:@"status.plist"];
+  NSString* act = [NSString stringWithContentsOfFile:[FIDELIO_DIR stringByAppendingPathComponent:@"active-source"]
+                                            encoding:NSUTF8StringEncoding error:NULL];
+  act = act ? [act stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+  [activeSource release];
+  activeSource = [act copy];
+  NSString* src = [self pickSource];
+  if (![src isEqualToString:shownSource]) {
+    [shownSource release];
+    shownSource = [src copy];
+    [dict release];
+    dict = nil;  // never show the other source's track
+  }
+  NSString* path = StatusPath(shownSource);
   NSDictionary* d = [NSDictionary dictionaryWithContentsOfFile:path];
   if (d) {
     [dict release];
@@ -138,8 +176,17 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
 }
 
 - (NSTimeInterval)fileMtimeAge {
-  NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:@"status.plist"];
-  NSDate* mtime = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL] objectForKey:NSFileModificationDate];
+  NSDate* mtime = Mtime(StatusPath(shownSource));
+  return mtime ? [[NSDate date] timeIntervalSinceDate:mtime] : -1;
+}
+
+- (NSTimeInterval)spotifyStatusAge {
+  NSString* path = StatusPath(@"spotify");
+  NSDictionary* d = [NSDictionary dictionaryWithContentsOfFile:path];
+  id u = [d objectForKey:@"updated"];
+  long long updated = [u respondsToSelector:@selector(longLongValue)] ? [u longLongValue] : 0;
+  if (updated) return [[NSDate date] timeIntervalSince1970] - (NSTimeInterval)updated;
+  NSDate* mtime = Mtime(path);
   return mtime ? [[NSDate date] timeIntervalSinceDate:mtime] : -1;
 }
 
