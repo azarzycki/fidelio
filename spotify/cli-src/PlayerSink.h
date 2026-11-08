@@ -24,7 +24,9 @@ class PlayerSink {
 
 class AudiodSink : public PlayerSink {
  public:
-  explicit AudiodSink(const std::string& sockPath) : sink("spotify", sockPath), path(sockPath) {}
+  AudiodSink(const std::string& sockPath, unsigned leadMs = 0) : sink("spotify", sockPath), path(sockPath) {
+    if (leadMs) sink.setLeadMs(leadMs);
+  }
   void feedPCMFrames(const uint8_t* d, size_t bytes) override { sink.write(reinterpret_cast<const int16_t*>(d), bytes / 4); }
   void volumeChanged(uint16_t v) override { sink.setVolume(v / 65535.0f); }
   void flush() override { sink.flush(); }

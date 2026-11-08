@@ -25,6 +25,7 @@ struct ServerOptions {
   bool feedSilence = true;     // keep the output fed with silence while nothing is active
   int tickMs = 20;
   double sinkTargetSec = 0.5;  // pump the active source into the output while it holds less than this
+  unsigned leadMs = 750;       // the producers' SocketSink lead: what a takeover starts with (ring trim)
 };
 
 class Server {
@@ -46,9 +47,10 @@ class Server {
     std::vector<int16_t> ring;  // kRingFrames stereo frames: the source's latest audio
     size_t ringHead = 0, ringFrames = 0;
     unsigned long overflowFrames = 0;
+    float volume = 1.0f;        // from VOLUME; applied to the output while this source is active
   };
-  static const size_t kRingFrames = 44100;  // 1 s of slack for the active source
-  static const size_t kLeadFrames = 22050;  // 500 ms = SocketSink::kLeadMs: what a takeover starts with
+  static const size_t kRingFrames = 66150;  // 1.5 s: the lead plus slack for the active source
+  size_t leadFrames = 33075;                // opts.leadMs in frames
   static volatile sig_atomic_t stopRequested;
   void acceptClient();
   void readClient(Client& c);

@@ -35,6 +35,8 @@ int main(int argc, char** argv) {
   t.holdMs = envOr("AUDIOD_HOLD_MS", t.holdMs);
   t.releaseMs = envOr("AUDIOD_RELEASE_MS", t.releaseMs);
   t.idleStopMs = envOr("AUDIOD_IDLE_STOP_MS", t.idleStopMs);
+  t.silenceThreshold = (int)envOr("AUDIOD_SILENCE_THRESHOLD", (uint64_t)t.silenceThreshold);
+  so.leadMs = (unsigned)envOr("AUDIOD_LEAD_MS", so.leadMs);
   if (getenv("AUDIOD_SOCK")) so.sockPath = getenv("AUDIOD_SOCK");
   std::string pcmOut;
   bool noAudio = false, feedSilenceSet = false;
@@ -58,11 +60,14 @@ int main(int argc, char** argv) {
              "  --no-silence / --silence do not / do feed silence between sources (default: on for\n"
              "                           --pcm-out, off for the AudioQueue, which pads itself)\n"
              "  --tick-ms MS             arbitration tick (default 20)\n"
-             "  --producing-gap-ms MS    (default 120)  env AUDIOD_PRODUCING_GAP_MS\n"
+             "  --producing-gap-ms MS    (default 1000) env AUDIOD_PRODUCING_GAP_MS\n"
              "  --takeover-ms MS         (default 400)  env AUDIOD_TAKEOVER_MS\n"
              "  --hold-ms MS             (default 1500) env AUDIOD_HOLD_MS\n"
-             "  --release-ms MS          (default 1000) env AUDIOD_RELEASE_MS\n"
-             "  --idle-stop-ms MS        (default 5000) env AUDIOD_IDLE_STOP_MS\n", AUDIOD_DEFAULT_SOCK);
+             "  --release-ms MS          (default 1500) env AUDIOD_RELEASE_MS\n"
+             "  --idle-stop-ms MS        (default 5000) env AUDIOD_IDLE_STOP_MS\n"
+             "  --silence-threshold N    (default 512)  env AUDIOD_SILENCE_THRESHOLD; a frame counts as sound only if\n"
+             "                           its peak |sample| exceeds N (0 = any frame); pre-volume samples\n"
+             "  --lead-ms MS             (default 750)  env AUDIOD_LEAD_MS; the producers' SocketSink lead\n", AUDIOD_DEFAULT_SOCK);
       return 0;
     }
     else if (a == "--sock") so.sockPath = next("--sock");
@@ -96,6 +101,8 @@ int main(int argc, char** argv) {
     else if (a == "--hold-ms") t.holdMs = strtoull(next(a.c_str()), nullptr, 10);
     else if (a == "--release-ms") t.releaseMs = strtoull(next(a.c_str()), nullptr, 10);
     else if (a == "--idle-stop-ms") t.idleStopMs = strtoull(next(a.c_str()), nullptr, 10);
+    else if (a == "--silence-threshold") t.silenceThreshold = atoi(next(a.c_str()));
+    else if (a == "--lead-ms") so.leadMs = (unsigned)atoi(next(a.c_str()));
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 1; }
   }
 

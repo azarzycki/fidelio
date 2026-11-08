@@ -25,12 +25,15 @@ void Arbiter::removeSource(int id, uint64_t now) {
   tick(now);
 }
 
-void Arbiter::onAudio(int id, size_t bytes, uint64_t now) {
+void Arbiter::onAudio(int id, size_t bytes, uint64_t now, bool loud) {
   auto it = sources.find(id);
   if (it == sources.end()) return;
   Source& s = it->second;
-  if (!producing(s, now)) s.producingSinceMs = now;  // a new producing run after a gap (or the first)
-  s.haveAudio = true;
+  if (loud) {
+    if (!producing(s, now)) s.producingSinceMs = now;  // a new producing run after a gap (or the first)
+    s.haveLoud = true;
+    s.lastLoudMs = now;
+  }
   s.lastAudioMs = now;
   s.bytes += bytes;
   tick(now);
@@ -39,7 +42,7 @@ void Arbiter::onAudio(int id, size_t bytes, uint64_t now) {
 void Arbiter::onStop(int id, uint64_t now) {
   auto it = sources.find(id);
   if (it == sources.end()) return;
-  it->second.haveAudio = false;  // not producing from now on
+  it->second.haveLoud = false;  // not producing from now on
   if (id == active) release(now, "stop");
   tick(now);
 }
@@ -65,7 +68,7 @@ void Arbiter::tick(uint64_t now) {
   // 1. release a quiet active source
   if (active >= 0) {
     const Source& a = sources[active];
-    if (!a.haveAudio || now - a.lastAudioMs >= tun.releaseMs) release(now, "quiet " + std::to_string(now - a.lastAudioMs) + " ms");
+    if (!a.haveLoud || now - a.lastLoudMs >= tun.releaseMs) release(now, "quiet " + std::to_string(now - a.lastLoudMs) + " ms");
   }
   // 2. takeover by the most recent qualified challenger
   bool allowed = active < 0 || now - activeSinceMs >= tun.holdMs;

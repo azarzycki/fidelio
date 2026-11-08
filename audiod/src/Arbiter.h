@@ -3,7 +3,9 @@
 // unit-tested: feed it source events with timestamps, ask it who is active.
 //
 // Rules implemented:
-//   producing(s)   = now - s.lastAudio < producingGapMs
+//   loud           an AUDIO frame counts only if its peak |sample| exceeds silenceThreshold: a
+//                  paused AirPlay sender keeps streaming digital silence and must look idle.
+//   producing(s)   = now - s.lastLoud < producingGapMs
 //   takeover       a non-active source that has been continuously producing for >= takeoverMs
 //                  becomes active when: nobody is active, or the active source has been quiet
 //                  >= releaseMs, or the active source has held for >= holdMs.
@@ -12,7 +14,7 @@
 //                  active source did does not steal it: "most-recent-active-source-wins" means the
 //                  newest stream, so two sources that both keep streaming do not ping-pong every
 //                  holdMs.
-//   release        active quiet >= releaseMs (or STOP / disconnect) -> no active source.
+//   release        active quiet (no loud frame) >= releaseMs (or STOP / disconnect) -> no active source.
 //   idle stop      no active source for >= idleStopMs -> the output is stopped (route released).
 #include <stdint.h>
 
@@ -23,19 +25,21 @@
 namespace audiod {
 
 struct Tunables {
-  uint64_t producingGapMs = 120;
+  uint64_t producingGapMs = 1000;  // B1.1: was 120; tolerate decoder/network hiccups within a track
   uint64_t takeoverMs = 400;
   uint64_t holdMs = 1500;
-  uint64_t releaseMs = 1000;
+  uint64_t releaseMs = 1500;       // B1.1: was 1000; covers raop's ~1200 ms post-FLUSH re-prime
   uint64_t idleStopMs = 5000;
+  int silenceThreshold = 512;      // peak |sample| a frame must exceed to count as sound (0 = any frame)
 };
 
 struct Source {
   int id = 0;            // connection id (unique per process lifetime)
   std::string name;      // from HELLO
   uint8_t priority = 0;
-  bool haveAudio = false;
-  uint64_t lastAudioMs = 0;        // last AUDIO received
+  bool haveLoud = false;           // a loud frame has been seen since the last STOP
+  uint64_t lastAudioMs = 0;        // last AUDIO received (any content)
+  uint64_t lastLoudMs = 0;         // last AUDIO whose peak exceeded silenceThreshold
   uint64_t producingSinceMs = 0;   // start of the current producing run (reset after a gap)
   uint64_t bytes = 0;
 };
@@ -53,7 +57,7 @@ class Arbiter {
 
   void addSource(int id, const std::string& name, uint8_t priority, uint64_t now);
   void removeSource(int id, uint64_t now);        // disconnect: releases it if active
-  void onAudio(int id, size_t bytes, uint64_t now);  // AUDIO frame received
+  void onAudio(int id, size_t bytes, uint64_t now, bool loud);  // AUDIO frame received; loud = peak > threshold
   void onStop(int id, uint64_t now);               // STOP message
   // Advance time: evaluates release / takeover / idle stop. Call on every AUDIO and on a timer.
   void tick(uint64_t now);
@@ -61,7 +65,7 @@ class Arbiter {
   int activeId() const { return active; }
   std::string activeName() const;
   bool outputRunning() const { return outputOn; }
-  bool producing(const Source& s, uint64_t now) const { return s.haveAudio && now - s.lastAudioMs < tun.producingGapMs; }
+  bool producing(const Source& s, uint64_t now) const { return s.haveLoud && now - s.lastLoudMs < tun.producingGapMs; }
   const Source* source(int id) const;
   // Events produced since the last drain (the server logs/forwards them).
   std::vector<Event> drainEvents();

@@ -25,22 +25,33 @@ class AudioOutput {
 };
 
 #include <stdio.h>
-// Writes the raw interleaved 16-bit host-endian PCM to a file (device: --pcm-out for verification;
-// host test build: the only real output).
+#include <vector>
+// Writes the interleaved 16-bit host-endian PCM to a file (device: --pcm-out for verification;
+// host test build: the only real output). The volume is applied as gain, like the AudioQueue's
+// volume parameter would be, so the file holds what the hardware would have played.
 class FileOutput : public AudioOutput {
  public:
   explicit FileOutput(const char* path) : f(fopen(path, "wb")) {}
   ~FileOutput() override { if (f) fclose(f); }
   bool ok() const { return f != nullptr; }
-  void write(const int16_t* frames, size_t n) override { if (f) { fwrite(frames, 4, n, f); fflush(f); frames_ += n; } }
+  void write(const int16_t* frames, size_t n) override {
+    if (!f) return;
+    if (volume_ < 0.999f) {
+      scaled_.resize(n * 2);
+      for (size_t i = 0; i < n * 2; i++) scaled_[i] = (int16_t)(frames[i] * volume_);
+      frames = scaled_.data();
+    }
+    fwrite(frames, 4, n, f); fflush(f); frames_ += n;
+  }
   void flush() override { flushes_++; }
-  void setVolume(float v) override { volume_ = v; }
+  void setVolume(float v) override { volume_ = v < 0 ? 0.f : v > 1 ? 1.f : v; }
   double bufferedSeconds() override { return 0; }
  private:
   FILE* f;
   size_t frames_ = 0;
   int flushes_ = 0;
-  float volume_ = -1;
+  float volume_ = 1.0f;
+  std::vector<int16_t> scaled_;
 };
 
 class NullOutput : public AudioOutput {

@@ -23,7 +23,8 @@ enum AudiodMsgType {
   AUDIOD_MSG_AUDIO = 2,   // client -> server, interleaved S16LE stereo PCM
   AUDIOD_MSG_FLUSH = 3,   // client -> server, drop this source's buffered audio
   AUDIOD_MSG_STOP  = 4,   // client -> server, source stopping (optional)
-  AUDIOD_MSG_META  = 5    // client -> server, now-playing text (optional, v2)
+  AUDIOD_MSG_META  = 5,   // client -> server, now-playing text (optional, v2)
+  AUDIOD_MSG_VOLUME = 6   // client -> server, this source's playback volume (AudiodVolume)
 };
 
 #pragma pack(push, 1)
@@ -43,6 +44,13 @@ typedef struct {
   uint32_t sampleRate;     // AUDIOD_SAMPLE_RATE
   char     name[AUDIOD_NAME_MAX];  // nul-padded source id, e.g. "spotify" / "airplay"
 } AudiodHello;
+
+// VOLUME payload. The producer's volume (RAOP dB -> linear, Spotify 0..65535 -> linear) travels
+// separately from the PCM so audiod sees full-scale samples for silence detection and applies the
+// gain at the output. Sent after HELLO and on every change; 1.0 if never sent.
+typedef struct {
+  float linear;            // 0.0 .. 1.0 (IEEE 754 single, little-endian)
+} AudiodVolume;
 
 // META payload (v2). Nul-padded UTF-8; truncate on overflow.
 typedef struct {

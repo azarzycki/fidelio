@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -33,6 +34,15 @@ uint64_t SocketSink::nowMs() {
 
 SocketSink::SocketSink(const std::string& n, const std::string& p, uint8_t prio) : name(n), sockPath(p), priority(prio) {
   signal(SIGPIPE, SIG_IGN);  // a dead audiod must not kill the producer (Darwin has no MSG_NOSIGNAL)
+  const char* e = getenv("AUDIOD_LEAD_MS");
+  if (e && *e) leadMsCap = (unsigned)atoi(e);
+}
+
+bool SocketSink::sendVolume() {
+  if (fd < 0) return true;
+  AudiodVolume v = { volume };
+  if (!audiod::writeFrame(fd, AUDIOD_MSG_VOLUME, &v, sizeof v)) { disconnect("volume"); return false; }
+  return true;
 }
 
 SocketSink::~SocketSink() {
@@ -68,8 +78,9 @@ bool SocketSink::ensureConnected() {
   fd = s;
   backoffMs = 200;
   reconnectCount++;
-  fprintf(stdout, "SocketSink[%s]: connected to %s (connection #%lu)\n", name.c_str(), sockPath.c_str(), reconnectCount);
+  fprintf(stdout, "SocketSink[%s]: connected to %s (connection #%lu, lead %u ms)\n", name.c_str(), sockPath.c_str(), reconnectCount, leadMsCap);
   fflush(stdout);
+  if (volume < 0.999f && !sendVolume()) return false;  // audiod starts every source at 1.0
   return true;
 }
 
@@ -92,7 +103,7 @@ void SocketSink::pace(size_t framesAboutToSend) {
   uint64_t now = nowMs();
   if (!timelineStartMs || now - lastWriteMs > kGapResetMs) { timelineStartMs = now; timelineFrames = 0; }
   long ahead = leadMs(now) + (long)(framesAboutToSend * 1000 / 44100);
-  if (ahead > (long)kLeadMs) usleep((useconds_t)((ahead - kLeadMs) * 1000));
+  if (ahead > (long)leadMsCap) usleep((useconds_t)((ahead - leadMsCap) * 1000));
 }
 
 double SocketSink::bufferedSeconds() {
@@ -105,11 +116,6 @@ void SocketSink::write(const int16_t* frames, size_t numFrames) {
   lastWriteMs = nowMs();
   timelineFrames += numFrames;
   if (!ensureConnected()) { droppedFrames += numFrames; return; }
-  if (volume < 0.999f) {
-    scaled.resize(numFrames * 2);
-    for (size_t i = 0; i < numFrames * 2; i++) scaled[i] = (int16_t)(frames[i] * volume);
-    frames = scaled.data();
-  }
   while (numFrames > 0) {
     size_t n = numFrames < kMaxFramesPerMsg ? numFrames : kMaxFramesPerMsg;
     if (!audiod::writeFrame(fd, AUDIOD_MSG_AUDIO, frames, n * 4)) {
@@ -141,4 +147,5 @@ void SocketSink::setVolume(float linear) {
   if (linear < 0) linear = 0;
   if (linear > 1) linear = 1;
   volume = linear;
+  sendVolume();
 }

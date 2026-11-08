@@ -34,6 +34,7 @@ struct Options {
   std::string pcmOut;  // --pcm-out FILE: write decoded PCM to a file instead of playing
   bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
+  int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
 };
 
 static Options parse(int argc, char** argv) {
@@ -50,6 +51,7 @@ static Options parse(int argc, char** argv) {
     else if (a == "--pcm-out") o.pcmOut = next("--pcm-out");
     else if (a == "--direct-audio") o.directAudio = true;
     else if (a == "--audiod-sock") o.audiodSock = next("--audiod-sock");
+    else if (a == "--audiod-lead-ms") o.audiodLeadMs = atoi(next("--audiod-lead-ms").c_str());
     else if (a == "--latency-ms") o.latencyMs = atoi(next("--latency-ms").c_str());
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); exit(1); }
   }
@@ -78,6 +80,7 @@ int main(int argc, char** argv) {
            "  --latency-ms MS       jitter buffer depth before playback starts (default 1200, max ~3800)\n"
            "  --status-dir DIR      status.json/status.plist/cover.jpg (default /var/mobile/fidelio); --no-status disables\n"
            "  --audiod-sock PATH    fidelio-audiod socket (default %s; env AUDIOD_SOCK)\n"
+           "  --audiod-lead-ms MS   how far ahead of real time to stream to audiod (default 750; env AUDIOD_LEAD_MS)\n"
            "  --direct-audio        play through a local AudioQueue instead of fidelio-audiod (standalone debugging)\n"
            "  --no-audio            decode and discard, for isolation tests\n"
            "  --pcm-out FILE        write the decoded 44.1 kHz/16/stereo PCM to FILE instead of playing\n", AUDIOD_DEFAULT_SOCK);
@@ -100,7 +103,9 @@ int main(int argc, char** argv) {
     IOS3_TRACE("host build: no AudioQueue, use --pcm-out, --no-audio or audiod"); return 2;
 #endif
   } else {
-    out.reset(new SocketSink("airplay", o.audiodSock));
+    SocketSink* ss = new SocketSink("airplay", o.audiodSock);
+    if (o.audiodLeadMs > 0) ss->setLeadMs((unsigned)o.audiodLeadMs);
+    out.reset(ss);
     IOS3_TRACE("streaming to fidelio-audiod at %s", o.audiodSock.c_str());
   }
 

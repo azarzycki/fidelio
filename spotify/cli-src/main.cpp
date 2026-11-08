@@ -96,6 +96,7 @@ struct Options {
   bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
   int sinkTestSec = 0;       // --sink-test N: play N s of a 440 Hz tone through the sink and exit
+  int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
 #ifdef __APPLE__
   AudioQueueSink::Options audio;  // --audio-route, --on-route-change (direct audio only)
 #endif
@@ -122,6 +123,7 @@ static Options parseArgs(int argc, char** argv) {
     else if (a == "--no-audio") o.noAudio = true;
     else if (a == "--direct-audio") o.directAudio = true;
     else if (a == "--audiod-sock") o.audiodSock = next("--audiod-sock");
+    else if (a == "--audiod-lead-ms") o.audiodLeadMs = atoi(next("--audiod-lead-ms").c_str());
     else if (a == "--sink-test") o.sinkTestSec = atoi(next("--sink-test").c_str());
     else if (a == "--status-dir") o.statusDir = next("--status-dir");
     else if (a == "--no-status") o.statusDir.clear();
@@ -276,6 +278,7 @@ int main(int argc, char** argv) {
                  "                           Spotify developer app credentials; this cspot fork fetches\n"
                  "                           its Web API token from accounts.spotify.com with them\n"
                  "  --audiod-sock PATH       fidelio-audiod socket (default " AUDIOD_DEFAULT_SOCK "; env AUDIOD_SOCK)\n"
+                 "  --audiod-lead-ms MS      how far ahead of real time to stream to audiod (default 750; env AUDIOD_LEAD_MS)\n"
                  "  --direct-audio           play through a local AudioQueue instead of fidelio-audiod\n"
                  "                           (standalone debugging; the two options below apply to it)\n"
                  "  --sink-test SECONDS      play a 440 Hz tone through the sink for that long and exit\n"
@@ -310,7 +313,7 @@ int main(int argc, char** argv) {
       return 2;
 #endif
     } else {
-      audioSink = std::make_unique<AudiodSink>(args.audiodSock);
+      audioSink = std::make_unique<AudiodSink>(args.audiodSock, (unsigned)(args.audiodLeadMs > 0 ? args.audiodLeadMs : 0));
     }
     IOS3_TRACE("audio sink: %s", audioSink->describe().c_str());
   }

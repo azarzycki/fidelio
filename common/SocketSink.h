@@ -8,7 +8,8 @@
 // accepts and rely on it blocking; the AudioQueue ring did that. write() therefore sleeps so the
 // stream stays at most kLeadMs ahead of the monotonic clock, counted from the first write after a
 // flush or a gap. bufferedSeconds() reports that lead, which keeps cspot's end-of-track detection
-// working. Volume: there is no VOLUME message, so setVolume() is applied as gain before sending.
+// working. Volume travels as a VOLUME message (audiod applies it at the output), so audiod's
+// silence detection sees the producer's full-scale samples whatever the listening volume.
 #include <stdint.h>
 
 #include <string>
@@ -24,13 +25,15 @@ class SocketSink : public AudioOutput {
 
   void write(const int16_t* frames, size_t numFrames) override;
   void flush() override;
-  void setVolume(float linear) override;  // software gain (applied to the PCM before sending)
+  void setVolume(float linear) override;  // sent as VOLUME (and again after every reconnect)
   double bufferedSeconds() override;      // how far ahead of real time the stream is (0..kLeadMs)
   void idle() override;                   // waits out the lead, then sends STOP; the connection stays open
   void stop() { idle(); }
 
-  static const unsigned kLeadMs = 500;    // how far a producer may run ahead of real time
-  static const unsigned kGapResetMs = 500;  // a pause longer than this starts a new timeline
+  static const unsigned kDefaultLeadMs = 750;  // how far a producer may run ahead of real time (env AUDIOD_LEAD_MS)
+  static const unsigned kGapResetMs = 500;     // a pause longer than this starts a new timeline
+  void setLeadMs(unsigned ms) { leadMsCap = ms; }
+  unsigned leadMsCap_() const { return leadMsCap; }
 
   bool connected() const { return fd >= 0; }
   unsigned long reconnects() const { return reconnectCount; }
@@ -49,7 +52,8 @@ class SocketSink : public AudioOutput {
   unsigned long reconnectCount = 0;
   unsigned long droppedFrames = 0;
   float volume = 1.0f;
-  std::vector<int16_t> scaled;  // scratch for the gain
+  unsigned leadMsCap = kDefaultLeadMs;
+  bool sendVolume();
   uint64_t timelineStartMs = 0;  // 0 = no timeline yet
   uint64_t timelineFrames = 0;   // frames sent on the current timeline
   uint64_t lastWriteMs = 0;

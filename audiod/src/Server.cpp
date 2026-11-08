@@ -36,8 +36,16 @@ uint64_t Server::nowMs() {
 #endif
 }
 
+static int16_t peakOf(const int16_t* s, size_t n) {
+  int peak = 0;
+  for (size_t i = 0; i < n; i++) { int v = s[i] < 0 ? -s[i] : s[i]; if (v > peak) peak = v; }
+  return (int16_t)(peak > 32767 ? 32767 : peak);
+}
+
 Server::Server(const ServerOptions& o, const Tunables& t, AudioOutput* output) : opts(o), arbiter(t), out(output) {
   startMs = nowMs();
+  leadFrames = (size_t)opts.leadMs * 44100 / 1000;
+  if (leadFrames > kRingFrames) leadFrames = kRingFrames;
   if (!opts.eventLog.empty()) eventFile = fopen(opts.eventLog.c_str(), "w");
 }
 
@@ -58,10 +66,10 @@ bool Server::listen() {
   if (bind(listenFd, (sockaddr*)&a, sizeof a) != 0) { IOS3_TRACE("bind %s: %s", opts.sockPath.c_str(), strerror(errno)); return false; }
   chmod(opts.sockPath.c_str(), 0660);
   if (::listen(listenFd, 8) != 0) return false;
-  IOS3_TRACE("listening on %s (gap %llu, takeover %llu, hold %llu, release %llu, idle-stop %llu ms)", opts.sockPath.c_str(),
-             (unsigned long long)arbiter.tunables().producingGapMs, (unsigned long long)arbiter.tunables().takeoverMs,
+  IOS3_TRACE("listening on %s (gap %llu, takeover %llu, hold %llu, release %llu, idle-stop %llu ms; silence threshold %d; lead %u ms)",
+             opts.sockPath.c_str(), (unsigned long long)arbiter.tunables().producingGapMs, (unsigned long long)arbiter.tunables().takeoverMs,
              (unsigned long long)arbiter.tunables().holdMs, (unsigned long long)arbiter.tunables().releaseMs,
-             (unsigned long long)arbiter.tunables().idleStopMs);
+             (unsigned long long)arbiter.tunables().idleStopMs, arbiter.tunables().silenceThreshold, opts.leadMs);
   writeActiveSourceFile("none");
   return true;
 }
@@ -112,12 +120,24 @@ void Server::handle(Client& c, const Message& m) {
     return;
   }
   switch (m.type) {
-    case AUDIOD_MSG_AUDIO:
+    case AUDIOD_MSG_AUDIO: {
       if (m.payload.size() % 4 != 0) { dropClient(c.fd, "AUDIO length not a multiple of a frame"); return; }
-      ringAppend(c, reinterpret_cast<const int16_t*>(m.payload.data()), m.payload.size() / 4);
-      arbiter.onAudio(c.id, m.payload.size(), now);
+      const int16_t* pcm = reinterpret_cast<const int16_t*>(m.payload.data());
+      int thr = arbiter.tunables().silenceThreshold;
+      bool loud = thr <= 0 || peakOf(pcm, m.payload.size() / 2) > thr;
+      ringAppend(c, pcm, m.payload.size() / 4);
+      arbiter.onAudio(c.id, m.payload.size(), now, loud);
       afterTick();
       break;
+    }
+    case AUDIOD_MSG_VOLUME: {
+      if (m.payload.size() != sizeof(AudiodVolume)) { dropClient(c.fd, "bad VOLUME length"); return; }
+      AudiodVolume v;
+      memcpy(&v, m.payload.data(), sizeof v);
+      c.volume = v.linear < 0 ? 0.f : v.linear > 1 ? 1.f : v.linear;
+      if (arbiter.activeId() == c.id) out->setVolume(c.volume);
+      break;
+    }
     case AUDIOD_MSG_FLUSH:
       if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: FLUSH from #%d (had %zu frames, head %zu)", c.id, c.ringFrames, c.ringHead);
       c.ringHead = 0; c.ringFrames = 0;
@@ -170,10 +190,11 @@ void Server::afterTick() {
     if (e.kind == Event::TAKEOVER) {
       out->flush();
       lastSilenceMs = 0;
-      // Start with the new source's lead (the latest kLeadFrames it sent); anything older is stale.
+      // Start with the new source's lead (the latest leadFrames it sent); anything older is stale.
       if (Client* c = clientById(arbiter.activeId())) {
         if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: takeover #%d with %zu frames (head %zu)", c->id, c->ringFrames, c->ringHead);
-        if (c->ringFrames > kLeadFrames) { c->ringHead = (c->ringHead + c->ringFrames - kLeadFrames) % kRingFrames; c->ringFrames = kLeadFrames; }
+        if (c->ringFrames > leadFrames) { c->ringHead = (c->ringHead + c->ringFrames - leadFrames) % kRingFrames; c->ringFrames = leadFrames; }
+        out->setVolume(c->volume);
       }
     }
     if (e.kind == Event::RELEASE) { out->flush(); lastSilenceMs = e.atMs; }
