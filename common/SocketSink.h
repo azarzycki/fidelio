@@ -36,7 +36,13 @@ class SocketSink : public AudioOutput {
   void idle() override;                   // waits out the lead, then sends STOP; the connection stays open
   void stop() { idle(); }
 
-  static const unsigned kDefaultLeadMs = 750;  // how far a producer may run ahead of real time (env AUDIOD_LEAD_MS)
+  // How far a producer may run ahead of the wall clock (env AUDIOD_LEAD_MS). Since B1.5 the active
+  // source is paced by audiod reading it only as fast as the output consumes (i.e. by the hardware,
+  // like the local AudioQueue ring used to), so this cap matters for a source audiod is NOT playing:
+  // it bounds how much of its own buffer (raop's 1.2 s jitter buffer) it drains ahead while waiting
+  // to become active. It must stay below that buffer, and above audiod's downstream capacity
+  // (output 0.45 s + staging 40 ms + two small kernel buffers) so backpressure, not this clock, binds.
+  static const unsigned kDefaultLeadMs = 750;
   static const unsigned kGapResetMs = 500;     // a pause longer than this starts a new timeline
   void setLeadMs(unsigned ms) { std::lock_guard<std::mutex> l(m); leadMsCap = ms; }
 
@@ -44,7 +50,7 @@ class SocketSink : public AudioOutput {
   unsigned long reconnects() const { std::lock_guard<std::mutex> l(m); return reconnectCount; }
   unsigned long dropped() const { std::lock_guard<std::mutex> l(m); return droppedFrames; }
   static const int kSendTimeoutMs = 500;        // a send blocked this long = audiod stuck: drop and reconnect
-  static const int kSendBufBytes = 256 * 1024;  // ~1.5 s of PCM the kernel can hold while audiod is busy
+  static const int kSendBufBytes = 8 * 1024;    // 46 ms: small on purpose, this is where the active producer blocks (B1.5)
 
  private:
   // the following assume `m` is held

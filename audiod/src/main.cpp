@@ -10,6 +10,7 @@
 #include <string>
 
 #include "AudioOutput.h"
+#include "PacedFileOutput.h"
 #ifdef __APPLE__
 #include "AudioQueueOutput.h"
 #endif
@@ -40,6 +41,7 @@ int main(int argc, char** argv) {
   so.leadMs = (unsigned)envOr("AUDIOD_LEAD_MS", so.leadMs);
   if (getenv("AUDIOD_SOCK")) so.sockPath = getenv("AUDIOD_SOCK");
   std::string pcmOut;
+  double pacedPpm = 0; bool paced = false;  // --pcm-out-paced: host model of the AudioQueue's consumption
   bool noAudio = false, feedSilenceSet = false;
   so.statusDir = "/var/mobile/fidelio";
 #ifdef __APPLE__
@@ -54,6 +56,9 @@ int main(int argc, char** argv) {
              "  --sock PATH              listen here (default %s; env AUDIOD_SOCK)\n"
              "  --pcm-out FILE           write the played PCM to FILE instead of the AudioQueue (host test)\n"
              "  --no-audio               discard the played PCM\n"
+             "  --pcm-out-paced PPM      with --pcm-out: consume at 44100*(1+PPM/1e6) frames/s in 46 ms bursts like the\n"
+             "                           AudioQueue, so the pump and the backpressure run as on the device (host test)\n"
+             "  --no-backpressure        read the active source as fast as it sends (the b14 behaviour; comparison)\n"
              "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
              "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
              "  --status-dir DIR         write DIR/active-source (default /var/mobile/fidelio); --no-status disables\n"
@@ -76,6 +81,8 @@ int main(int argc, char** argv) {
     else if (a == "--sock") so.sockPath = next("--sock");
     else if (a == "--pcm-out") pcmOut = next("--pcm-out");
     else if (a == "--no-audio") noAudio = true;
+    else if (a == "--pcm-out-paced") { paced = true; pacedPpm = atof(next(a.c_str())); }
+    else if (a == "--no-backpressure") so.backpressure = false;
     else if (a == "--status-dir") so.statusDir = next("--status-dir");
     else if (a == "--no-status") so.statusDir.clear();
     else if (a == "--event-log") so.eventLog = next("--event-log");
@@ -113,7 +120,7 @@ int main(int argc, char** argv) {
   std::unique_ptr<AudioOutput> out;
   if (noAudio) out.reset(new NullOutput());
   else if (!pcmOut.empty()) {
-    FileOutput* fo = new FileOutput(pcmOut.c_str());
+    FileOutput* fo = paced ? new PacedFileOutput(pcmOut.c_str(), pacedPpm) : new FileOutput(pcmOut.c_str());
     if (!fo->ok()) { IOS3_TRACE("cannot open %s", pcmOut.c_str()); return 2; }
     out.reset(fo);
   } else {

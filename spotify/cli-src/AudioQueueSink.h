@@ -75,6 +75,8 @@ class AudioQueueSink : public AudioSink {
   // True once after the queue resumed from an interruption or a yield: the ring was dropped, and the
   // caller should drop whatever stale audio it buffered meanwhile too (audiod: the source ring).
   bool takeResumed();
+  // The queue is running and not interrupted: audio fed now will be heard.
+  bool isConsuming();
 
   static const long kInterruptGraceMs = 1000;    // an interruption with no end callback is forgotten after this
   static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails

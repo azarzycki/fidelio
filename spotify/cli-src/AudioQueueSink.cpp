@@ -499,6 +499,13 @@ bool AudioQueueSink::takeResumed() {
   return r;
 }
 
+bool AudioQueueSink::isConsuming() {
+  pthread_mutex_lock(&queueMutex);
+  bool c = running && !interrupted;
+  pthread_mutex_unlock(&queueMutex);
+  return c;
+}
+
 bool AudioQueueSink::otherAudioIsPlaying() {
   UInt32 v = 0, size = sizeof v;
   if (AudioSessionGetProperty(kAudioSessionProperty_OtherAudioIsPlaying, &size, &v) != 0) return false;

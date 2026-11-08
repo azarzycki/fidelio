@@ -25,6 +25,9 @@ class AudioOutput {
   // True once after the hardware sink resumed from an interruption / yield: the caller should drop
   // the audio it buffered meanwhile (it is from before the interruption).
   virtual bool resumed() { return false; }
+  // The output is actually consuming audio right now (not paused by an interruption / yield). audiod
+  // applies backpressure to the active producer only while this is true.
+  virtual bool consuming() { return true; }
 };
 
 #include <stdio.h>

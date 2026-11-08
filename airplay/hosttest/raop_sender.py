@@ -35,6 +35,7 @@ ap.add_argument("--alac-tool")
 ap.add_argument("--expect-pcm")
 ap.add_argument("--packets", type=int, default=400)
 ap.add_argument("--volume", type=float, default=-15.0, help="SET_PARAMETER volume in dB (-144 = the AirPlay mute sentinel)")
+ap.add_argument("--jitter", action="store_true", help="model a jittery WiFi: hold packets ~250 ms every ~2 s, then send them in a burst")
 args = ap.parse_args()
 
 sock = socket.create_connection((args.host, args.port), timeout=5)
@@ -226,6 +227,7 @@ for i in range(N):
     service_control(); service_timing()
     # real-time pacing: one packet per 7.98 ms
     target = t0 + (i + 1) * FRAMES / 44100.0
+    if args.jitter and i % 250 == 120: target += 0.25  # a 250 ms stall; the next packets go out back-to-back to catch up
     d = target - time.time()
     if d > 0: time.sleep(d)
 for _ in range(10): service_control(); service_timing(); time.sleep(0.05)

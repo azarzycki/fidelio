@@ -23,6 +23,7 @@ class AudioQueueOutput : public AudioOutput {
   void idle() override { sink->stop(); }  // releases the hardware path; the next write() restarts the queue
   void tick() override { sink->tick(); }  // recovery watchdog (interruption with no end, missing queue)
   bool resumed() override { return sink->takeResumed(); }
+  bool consuming() override { return sink->isConsuming(); }
   AudioQueueSink* queueSink() { return sink.get(); }
 
  private:

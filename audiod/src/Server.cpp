@@ -61,7 +61,10 @@ bool Server::listen() {
   // Accepted sockets inherit this; set on the listener so a reconnecting producer never starts on
   // the default (small) buffer. ~1.5 s of PCM the kernel can hold while this loop is in a slow
   // CoreAudio call. The kernel may clamp it (kern.ipc.maxsockbuf): the effective size is logged.
-  int rcvbuf = 256 * 1024;
+  // Deliberately small (B1.5): with backpressure the active producer blocks on this buffer, and the
+  // total downstream of raop's jitter buffer (sink 0.5 s + kernel buffers) must stay well below its
+  // latency or the jitter buffer can never hold a cushion. 8 KB = 46 ms per side (Linux doubles it).
+  int rcvbuf = 8 * 1024;
   setsockopt(listenFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);
   sockaddr_un a;
   memset(&a, 0, sizeof a);
@@ -76,6 +79,7 @@ bool Server::listen() {
              (unsigned long long)arbiter.tunables().holdMs, (unsigned long long)arbiter.tunables().releaseMs,
              (unsigned long long)arbiter.tunables().quietReleaseMs, (unsigned long long)arbiter.tunables().idleStopMs,
              arbiter.tunables().silenceThreshold, opts.leadMs);
+  IOS3_TRACE("backpressure on the active source: %s", opts.backpressure ? "on" : "off (b14 behaviour)");
   writeActiveSourceFile("none");
   return true;
 }
@@ -83,7 +87,7 @@ bool Server::listen() {
 void Server::acceptClient() {
   int fd = accept(listenFd, nullptr, nullptr);
   if (fd < 0) return;
-  int rcvbuf = 256 * 1024;
+  int rcvbuf = 8 * 1024;
   setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);  // in case the listener's did not carry over
   int eff = 0; socklen_t el = sizeof eff;
   getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &eff, &el);
@@ -270,7 +274,17 @@ void Server::run() {
   while (!stopRequested) {
     std::vector<pollfd> pfds;
     pfds.push_back({listenFd, POLLIN, 0});
-    for (auto& kv : clients) pfds.push_back({kv.first, POLLIN, 0});
+    // Backpressure: do not read the active source while its staging ring already holds audio the
+    // output has no room for; its producer then blocks on the kernel buffers and is paced by the
+    // output's real consumption. Not while the output is paused (interruption / yield): then it is
+    // drained and overwritten like an inactive source, so it never hard-blocks.
+    int activeId = arbiter.activeId();
+    bool gateActive = opts.backpressure && activeId >= 0 && arbiter.outputRunning() && out->consuming();
+    for (auto& kv : clients) {
+      short ev = POLLIN;
+      if (gateActive && kv.second.id == activeId && kv.second.ringFrames >= kStagingFrames) ev = 0;
+      pfds.push_back({kv.first, ev, 0});
+    }
     int rc = poll(pfds.data(), pfds.size(), opts.tickMs);
     if (rc < 0) { if (errno == EINTR) continue; IOS3_TRACE("poll: %s", strerror(errno)); return; }
     for (size_t i = 1; i < pfds.size(); i++) {

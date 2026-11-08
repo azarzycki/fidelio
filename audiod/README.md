@@ -175,3 +175,26 @@ steal and a 2 s gap that may.
   (`--airplay-volume auto`, default); real -30..0 dB values are still honoured; `honor` keeps the
   old mute, `ignore` always plays at unity. Tested: a -144 dB session comes out byte-exact
   unscaled through audiod and arbitrates normally.
+
+## B1.5 (AirPlay dropouts through the arbiter)
+
+- **Backpressure on the active source.** audiod reads the active source's socket only while its
+  staging ring (40 ms) is nearly empty and the output is consuming (`AudioOutput::consuming()`),
+  so that producer blocks on the kernel socket buffers (deliberately small: 8 KB each side) exactly
+  as it used to block on the local AudioQueue ring: whoever is playing is paced by true hardware
+  consumption, not by SocketSink's wall clock. Inactive sources are always drained (and overwritten
+  in their 2 s ring) so they never block; while the output is paused (interruption / yield) the
+  active source is drained too. `--no-backpressure` restores the b14 behaviour for comparison.
+- **The cap matters.** SocketSink's wall-clock lead (750 ms) now only bounds how far a source that
+  is *not* playing drains its own buffer while waiting to become active. It must stay below raop's
+  jitter buffer (1.2 s) and above audiod's downstream capacity (output 0.45 s + staging + kernel
+  buffers), or backpressure never binds. The pump target is 0.45 s for that reason.
+- **What the host model shows** (`hosttest/test_pacing.py`: a paced output model
+  `--pcm-out-paced PPM` consuming in 46 ms bursts at a chosen skew, a jittery sender with a 250 ms
+  stall every 2 s, 20 s sessions): raop underruns 2 (b14 behaviour) vs 1 (backpressure) at
+  +-0.3 % skew and at +2 % drift; the output never starves. During development the same model
+  with a 1500 ms cap gave 132 vs 8-14: draining a source past its jitter-buffer cushion before it
+  becomes active turns every later network stall into an underrun, which is the arbiter-specific
+  amplifier confirmed in code (timeline resets after a gap, FLUSH or reconnect burst a full lead).
+  Steady-state wall-vs-hardware drift is parts per million and was not reproduced as a cause; the
+  device residual has to be measured with `--no-backpressure` vs default.

@@ -1,9 +1,13 @@
 #pragma once
 // fidelio-audiod server: a Unix-socket listener and a single poll() loop that drains every client
 // (so a producer never blocks), feeds the arbiter, and writes only the active source's PCM to the
-// one AudioOutput. Every source's latest 500 ms (its SocketSink lead) is kept in a per-client ring;
-// the active one is pumped into the output only while the output holds < 0.5 s, so the loop never
-// blocks on the hardware and a takeover starts with the new source's lead in hand.
+// one AudioOutput. Every source's latest lead is kept in a per-client ring; the active one is pumped
+// into the output only while the output holds < 0.5 s, so the loop never blocks on the hardware and
+// a takeover starts with the new source's lead in hand. Backpressure (B1.5): the ACTIVE source's
+// socket is read only while its staging ring is nearly empty and the output is consuming, so its
+// producer blocks on the (small) kernel socket buffers exactly as it used to block on the local
+// AudioQueue ring: whoever is playing is paced by true consumption, not by a wall clock. Inactive
+// sources are always drained (and overwritten in their ring) so they never block.
 // Silence is fed while no source is active until the idle stop (host file output only).
 #include <signal.h>
 #include <stdint.h>
@@ -24,8 +28,9 @@ struct ServerOptions {
   std::string eventLog;        // machine-readable transition log ("" = off)
   bool feedSilence = true;     // keep the output fed with silence while nothing is active
   int tickMs = 20;
-  double sinkTargetSec = 0.5;  // pump the active source into the output while it holds less than this
+  double sinkTargetSec = 0.45;  // pump the active source into the output while it holds less than this (< SocketSink lead - staging - kernel buffers)
   unsigned leadMs = 750;       // the producers' SocketSink lead: what a takeover starts with (ring trim)
+  bool backpressure = true;    // read the active source only as fast as the output consumes (B1.5)
 };
 
 class Server {
@@ -49,7 +54,8 @@ class Server {
     unsigned long overflowFrames = 0;
     float volume = 1.0f;        // from VOLUME; applied to the output while this source is active
   };
-  static const size_t kRingFrames = 66150;  // 1.5 s: the lead plus slack for the active source
+  static const size_t kRingFrames = 88200;  // 2 s: an inactive source's lead (up to SocketSink's cap) plus slack
+  static const size_t kStagingFrames = 1764;  // 40 ms: with backpressure the active source's ring is only a staging area
   size_t leadFrames = 33075;                // opts.leadMs in frames
   static volatile sig_atomic_t stopRequested;
   void acceptClient();
