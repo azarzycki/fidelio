@@ -169,3 +169,9 @@ steal and a 2 s gap that may.
 - Tests: `aqsink_test` adds the yield case (2.5 s with other audio: paused, zero starts; then
   resume ~1 s after it stops with the stale lead dropped) and a 3 s soak with no spurious
   re-acquire.
+- **AirPlay -144 dB is not mute** (amendment C, corrected) — senders without remote volume
+  (CenturyPlay) send the -144 dB sentinel permanently and shape loudness in the PCM; applying it
+  as gain (B1.1 moved the volume into audiod) muted them. fidelio-raop now maps it to unity
+  (`--airplay-volume auto`, default); real -30..0 dB values are still honoured; `honor` keeps the
+  old mute, `ignore` always plays at unity. Tested: a -144 dB session comes out byte-exact
+  unscaled through audiod and arbitrates normally.

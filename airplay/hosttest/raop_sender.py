@@ -34,6 +34,7 @@ ap.add_argument("--encrypt", action="store_true")
 ap.add_argument("--alac-tool")
 ap.add_argument("--expect-pcm")
 ap.add_argument("--packets", type=int, default=400)
+ap.add_argument("--volume", type=float, default=-15.0, help="SET_PARAMETER volume in dB (-144 = the AirPlay mute sentinel)")
 args = ap.parse_args()
 
 sock = socket.create_connection((args.host, args.port), timeout=5)
@@ -125,7 +126,7 @@ code, rh, _ = request("RECORD", uri, {"Session": "1", "Range": "npt=0-", "RTP-In
 check(code == 200 and rh.get("audio-latency") == "11025", "RECORD 200 with Audio-Latency 11025")
 
 # --- SET_PARAMETER volume / metadata / artwork / progress, GET_PARAMETER
-code, _, _ = request("SET_PARAMETER", uri, {"Session": "1"}, b"volume: -15.000000\r\n")
+code, _, _ = request("SET_PARAMETER", uri, {"Session": "1"}, f"volume: {args.volume:.6f}\r\n".encode())
 check(code == 200, "SET_PARAMETER volume")
 def dmap(tag, data): return tag.encode() + struct.pack(">I", len(data)) + data
 meta = dmap("mlit", dmap("minm", "Tëst Title".encode()) + dmap("asar", "Some Artist".encode()) + dmap("asal", "An Album".encode()))
@@ -138,7 +139,7 @@ start = rtp_base - 30 * 44100; end = start + 200 * 44100
 code, _, _ = request("SET_PARAMETER", uri, {"Session": "1"}, f"progress: {start}/{rtp_base}/{end}\r\n".encode())
 check(code == 200, "SET_PARAMETER progress")
 code, _, body = request("GET_PARAMETER", uri, {"Session": "1"}, b"volume\r\n")
-check(code == 200 and b"volume: -15" in body, f"GET_PARAMETER volume -> {body!r}")
+check(code == 200 and f"volume: {args.volume:.1f}".encode()[:11] in body, f"GET_PARAMETER volume -> {body!r}")
 
 # --- audio
 expect = open(args.expect_pcm, "wb") if args.expect_pcm else None

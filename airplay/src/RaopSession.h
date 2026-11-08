@@ -38,6 +38,14 @@ class RaopSession {
   void teardown();
   void setVolumeDb(float db);
   float volumeDb() const { return volDb; }
+  // How the sender's SET_PARAMETER volume maps to the output gain (B1.4 C). AirPlay volume is
+  // -30..0 dB, and -144 dB is the "mute" sentinel -- which Android senders such as CenturyPlay send
+  // permanently because they do not use remote volume at all (they shape loudness in the PCM).
+  //   AUTO   (default) honor -30..0 dB; treat <= -144 as "no remote volume": unity gain
+  //   HONOR  apply every value, including -144 dB as mute (the pre-B1.4 behaviour)
+  //   IGNORE always unity: the sender alone controls loudness
+  enum VolumeMode { VOL_AUTO, VOL_HONOR, VOL_IGNORE };
+  static VolumeMode volumeMode;
   bool active() const { return running; }
   const char* codecName() const { return codec == CODEC_ALAC ? "ALAC" : codec == CODEC_PCM ? "PCM" : ""; }
   // Packets received in the last ~3 s? (drives the playing/paused state)

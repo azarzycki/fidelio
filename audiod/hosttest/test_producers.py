@@ -13,6 +13,9 @@
    raop runs with --latency-ms 500 here: with the default 1200 ms cushion the re-prime after a
    FLUSH is longer than audiod's RELEASE_MS (1000), so audiod releases the source and takes it
    over again 400 ms into the new audio (see STATUS.md: a tuning choice for the device).
+1b. A second RAOP session whose sender volume is -144 dB (the AirPlay mute sentinel that senders
+   without remote volume, e.g. CenturyPlay, send permanently) must play at UNITY through audiod
+   (B1.4 C): its packets appear unscaled, byte-exact, in audiod's output.
 2. (optional) cspot-ios3 --sink-test 2: two seconds of a 440 Hz tone through its audiod sink;
    audiod's output must grow by ~2 s of tone (frame count and zero crossings), and the event log
    must show spotify taking over and being released by STOP.
@@ -90,6 +93,29 @@ ev = events()
 tk = [e for e in ev if e[1] == "takeover" and e[3] == "airplay"]
 rl = [e for e in ev if e[1] == "release" and e[2] == "airplay"]
 check(len(tk) == 1, f"audiod: one takeover by airplay ({tk})")
+
+# 1b. the -144 dB sentinel plays at unity
+raop = subprocess.Popen([RAOP, "--audiod-sock", SOCK, "--port", "5101", "--no-status", "--name", "hosttest2", "--latency-ms", "500"],
+                        stdout=open(f"{TMP}/raop2.log", "w"), stderr=subprocess.STDOUT)
+time.sleep(0.5)
+snd = subprocess.run([sys.executable, SENDER, "--port", "5101", "--codec", "pcm", "--packets", "150", "--volume", "-144",
+                      "--expect-pcm", f"{TMP}/expect2.pcm"], capture_output=True, text=True)
+open(f"{TMP}/sender2.log", "w").write(snd.stdout + snd.stderr)
+time.sleep(2.0)
+raop.terminate(); raop.wait()
+time.sleep(0.3)
+out2 = open(OUT, "rb").read()[raop_frames * 4:]
+exp2 = open(f"{TMP}/expect2.pcm", "rb").read()
+st2 = exp2.find(out2[:PK]) if len(out2) >= PK else -1
+k2 = 0
+if st2 >= 0:
+    while k2 < len(out2) and st2 + k2 < len(exp2) and out2[k2] == exp2[st2 + k2]: k2 += 1
+check(snd.returncode == 0 and st2 >= 0 and k2 >= 60 * PK and max(abs(v) for v in struct.unpack("<%dh" % (min(len(out2), 4 * PK) // 2), out2[:4 * PK])) > 10000,
+      f"sender volume -144 dB plays at unity through audiod: {k2 / PK:.0f} packets byte-exact UNscaled from packet {st2 / PK:.2f} (exit {snd.returncode})")
+raop_frames = len(out2) // 4 + raop_frames
+ev = events()
+tk2 = [e for e in ev if e[1] == "takeover" and e[3] == "airplay"]
+check(len(tk2) == 2, f"audiod: the -144 dB source arbitrated normally (took over) ({tk2[-1:]})")
 # the sender pauses 2.5 s before TEARDOWN, so the quiet release (RELEASE_MS) comes first and the
 # TEARDOWN's STOP finds nothing active; either way exactly one release and nothing after it
 check(len(rl) == 1 and (rl[0][4] == "stop" or rl[0][4].startswith("quiet")) and tk[0][0] < rl[0][0],

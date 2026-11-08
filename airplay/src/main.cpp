@@ -35,6 +35,7 @@ struct Options {
   bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
   int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
+  RaopSession::VolumeMode volumeMode = RaopSession::VOL_AUTO;  // --airplay-volume
 };
 
 static Options parse(int argc, char** argv) {
@@ -52,6 +53,13 @@ static Options parse(int argc, char** argv) {
     else if (a == "--direct-audio") o.directAudio = true;
     else if (a == "--audiod-sock") o.audiodSock = next("--audiod-sock");
     else if (a == "--audiod-lead-ms") o.audiodLeadMs = atoi(next("--audiod-lead-ms").c_str());
+    else if (a == "--airplay-volume") {
+      std::string v = next("--airplay-volume");
+      if (v == "auto") o.volumeMode = RaopSession::VOL_AUTO;
+      else if (v == "honor") o.volumeMode = RaopSession::VOL_HONOR;
+      else if (v == "ignore") o.volumeMode = RaopSession::VOL_IGNORE;
+      else { fprintf(stderr, "--airplay-volume must be auto|honor|ignore\n"); exit(1); }
+    }
     else if (a == "--latency-ms") o.latencyMs = atoi(next("--latency-ms").c_str());
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); exit(1); }
   }
@@ -72,6 +80,7 @@ int main(int argc, char** argv) {
   setvbuf(stderr, NULL, _IONBF, 0);
   signal(SIGPIPE, SIG_IGN);
   Options o = parse(argc, argv);
+  RaopSession::volumeMode = o.volumeMode;
   if (o.help) {
     printf("Usage: fidelio-raop [OPTION]...\n"
            "AirPlay v1 / RAOP audio receiver for iPhone OS 3 (ARMv6); plays through fidelio-audiod.\n"
@@ -81,6 +90,10 @@ int main(int argc, char** argv) {
            "  --status-dir DIR      status.json/status.plist/cover.jpg (default /var/mobile/fidelio); --no-status disables\n"
            "  --audiod-sock PATH    fidelio-audiod socket (default %s; env AUDIOD_SOCK)\n"
            "  --audiod-lead-ms MS   how far ahead of real time to stream to audiod (default 750; env AUDIOD_LEAD_MS)\n"
+           "  --airplay-volume auto|honor|ignore\n"
+           "                        auto (default): honor the sender's -30..0 dB, play -144 dB (the mute sentinel that\n"
+           "                        senders without remote volume, e.g. CenturyPlay, send permanently) at unity;\n"
+           "                        honor: -144 dB mutes; ignore: always unity, the sender controls loudness\n"
            "  --direct-audio        play through a local AudioQueue instead of fidelio-audiod (standalone debugging)\n"
            "  --no-audio            decode and discard, for isolation tests\n"
            "  --pcm-out FILE        write the decoded 44.1 kHz/16/stereo PCM to FILE instead of playing\n", AUDIOD_DEFAULT_SOCK);

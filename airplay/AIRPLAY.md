@@ -73,3 +73,9 @@ local AudioQueue for standalone debugging; `--pcm-out` / `--no-audio` are unchan
 volume from SET_PARAMETER is sent to audiod as a VOLUME message (audiod applies it at the output);
 TEARDOWN sends STOP so audiod releases the output immediately. Since B1.1 the status files are
 `status-airplay.json` / `status-airplay.plist` / `cover-airplay.jpg`. See `audiod/README.md`.
+
+### Sender volume (B1.4)
+`--airplay-volume auto|honor|ignore` (default auto): -30..0 dB from the sender is applied as gain
+by audiod; the -144 dB mute sentinel, which Android senders without remote volume (CenturyPlay)
+send permanently, is played at unity so they are audible; `honor` treats it as mute, `ignore`
+plays everything at unity.

@@ -169,10 +169,16 @@ void RaopSession::closeSockets() {
   if (timingSock >= 0) { shutdown(timingSock, SHUT_RDWR); close(timingSock); timingSock = -1; }
 }
 
+RaopSession::VolumeMode RaopSession::volumeMode = RaopSession::VOL_AUTO;
+
 void RaopSession::setVolumeDb(float db) {
   volDb = db;
-  float lin = db <= -144.0f ? 0.0f : powf(10.0f, db / 20.0f);  // true dB attenuation, -30 dB = 0.032
+  float lin;
+  if (volumeMode == VOL_IGNORE) lin = 1.0f;
+  else if (db <= -144.0f) lin = volumeMode == VOL_HONOR ? 0.0f : 1.0f;  // AUTO: the sentinel means "sender controls loudness", not mute
+  else lin = powf(10.0f, db / 20.0f);  // true dB attenuation, -30 dB = 0.032
   if (lin > 1.0f) lin = 1.0f;
+  IOS3_TRACE("volume %.2f dB -> gain %.4f (%s)", db, lin, volumeMode == VOL_IGNORE ? "ignored" : db <= -144.0f ? (volumeMode == VOL_HONOR ? "mute honored" : "sentinel: unity") : "honored");
   out->setVolume(lin);
 }
 
