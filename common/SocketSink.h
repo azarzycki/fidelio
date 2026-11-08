@@ -10,8 +10,14 @@
 // flush or a gap. bufferedSeconds() reports that lead, which keeps cspot's end-of-track detection
 // working. Volume travels as a VOLUME message (audiod applies it at the output), so audiod's
 // silence detection sees the producer's full-scale samples whatever the listening volume.
+//
+// Thread-safe (B1.2): the producers call write() from their player thread and flush() /
+// setVolume() / idle() from the RTSP or Spirc thread; one mutex serializes every method. Sends
+// carry a kSendTimeoutMs timeout (and a kSendBufBytes buffer) so a producer never hangs when
+// audiod's loop is stuck in a slow CoreAudio call: the write fails, the sink reconnects.
 #include <stdint.h>
 
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -32,18 +38,21 @@ class SocketSink : public AudioOutput {
 
   static const unsigned kDefaultLeadMs = 750;  // how far a producer may run ahead of real time (env AUDIOD_LEAD_MS)
   static const unsigned kGapResetMs = 500;     // a pause longer than this starts a new timeline
-  void setLeadMs(unsigned ms) { leadMsCap = ms; }
-  unsigned leadMsCap_() const { return leadMsCap; }
+  void setLeadMs(unsigned ms) { std::lock_guard<std::mutex> l(m); leadMsCap = ms; }
 
-  bool connected() const { return fd >= 0; }
-  unsigned long reconnects() const { return reconnectCount; }
-  unsigned long dropped() const { return droppedFrames; }
+  bool connected() const { std::lock_guard<std::mutex> l(m); return fd >= 0; }
+  unsigned long reconnects() const { std::lock_guard<std::mutex> l(m); return reconnectCount; }
+  unsigned long dropped() const { std::lock_guard<std::mutex> l(m); return droppedFrames; }
+  static const int kSendTimeoutMs = 500;        // a send blocked this long = audiod stuck: drop and reconnect
+  static const int kSendBufBytes = 256 * 1024;  // ~1.5 s of PCM the kernel can hold while audiod is busy
 
  private:
+  // the following assume `m` is held
   bool ensureConnected();  // rate-limited connect attempt + HELLO
   void disconnect(const char* why);
   static uint64_t nowMs();
 
+  mutable std::mutex m;
   std::string name, sockPath;
   uint8_t priority;
   int fd = -1;

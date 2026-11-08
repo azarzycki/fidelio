@@ -59,6 +59,10 @@ bool SocketSink::ensureConnected() {
   int on = 1;
   setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
 #endif
+  struct timeval to = { kSendTimeoutMs / 1000, (kSendTimeoutMs % 1000) * 1000 };
+  setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &to, sizeof to);
+  int sndbuf = kSendBufBytes;
+  setsockopt(s, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof sndbuf);
   sockaddr_un a;
   memset(&a, 0, sizeof a);
   a.sun_family = AF_UNIX;
@@ -112,6 +116,7 @@ double SocketSink::bufferedSeconds() {
 }
 
 void SocketSink::write(const int16_t* frames, size_t numFrames) {
+  std::lock_guard<std::mutex> l(m);
   pace(numFrames);
   lastWriteMs = nowMs();
   timelineFrames += numFrames;
@@ -119,7 +124,7 @@ void SocketSink::write(const int16_t* frames, size_t numFrames) {
   while (numFrames > 0) {
     size_t n = numFrames < kMaxFramesPerMsg ? numFrames : kMaxFramesPerMsg;
     if (!audiod::writeFrame(fd, AUDIOD_MSG_AUDIO, frames, n * 4)) {
-      disconnect("write");
+      disconnect(errno == EAGAIN || errno == EWOULDBLOCK ? "send timeout, audiod not reading" : "write");
       droppedFrames += numFrames;
       return;
     }
@@ -129,12 +134,14 @@ void SocketSink::write(const int16_t* frames, size_t numFrames) {
 }
 
 void SocketSink::flush() {
+  std::lock_guard<std::mutex> l(m);
   timelineStartMs = 0;  // the next write starts a fresh lead
   if (fd < 0) return;
   if (!audiod::writeFrame(fd, AUDIOD_MSG_FLUSH, nullptr, 0)) disconnect("flush");
 }
 
 void SocketSink::idle() {
+  std::lock_guard<std::mutex> lk(m);
   // Let the lead play out first, so audiod's immediate release on STOP cuts nothing.
   long l = leadMs(nowMs());
   if (l > 0) usleep((useconds_t)(l * 1000));
@@ -144,7 +151,8 @@ void SocketSink::idle() {
 }
 
 void SocketSink::setVolume(float linear) {
-  if (linear < 0) linear = 0;
+  std::lock_guard<std::mutex> l(m);
+  if (!(linear >= 0.0f)) linear = 0;  // also catches NaN
   if (linear > 1) linear = 1;
   volume = linear;
   sendVolume();
