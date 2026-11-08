@@ -61,9 +61,12 @@ static NSDate* Mtime(NSString* path) {
 }
 
 - (void)refresh {
-  NSString* act = [NSString stringWithContentsOfFile:[FIDELIO_DIR stringByAppendingPathComponent:@"active-source"]
-                                            encoding:NSUTF8StringEncoding error:NULL];
+  NSString* actPath = [FIDELIO_DIR stringByAppendingPathComponent:@"active-source"];
+  NSString* act = [NSString stringWithContentsOfFile:actPath encoding:NSUTF8StringEncoding error:NULL];
   act = act ? [act stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+  // audiod rewrites the file every 10 s; one much older than that is a leftover of a dead audiod.
+  NSDate* actMtime = Mtime(actPath);
+  if (!actMtime || [[NSDate date] timeIntervalSinceDate:actMtime] > FIDELIO_ACTIVE_SOURCE_STALE_S) act = @"";
   [activeSource release];
   activeSource = [act copy];
   NSString* src = [self pickSource];
