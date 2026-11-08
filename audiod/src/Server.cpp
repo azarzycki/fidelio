@@ -36,10 +36,10 @@ uint64_t Server::nowMs() {
 #endif
 }
 
-static int16_t peakOf(const int16_t* s, size_t n) {
-  int peak = 0;
-  for (size_t i = 0; i < n; i++) { int v = s[i] < 0 ? -s[i] : s[i]; if (v > peak) peak = v; }
-  return (int16_t)(peak > 32767 ? 32767 : peak);
+// true as soon as one |sample| exceeds thr (early exit: music returns within a few samples)
+static bool peakExceeds(const int16_t* s, size_t n, int thr) {
+  for (size_t i = 0; i < n; i++) { int v = s[i] < 0 ? -s[i] : s[i]; if (v > thr) return true; }
+  return false;
 }
 
 Server::Server(const ServerOptions& o, const Tunables& t, AudioOutput* output) : opts(o), arbiter(t), out(output) {
@@ -66,10 +66,11 @@ bool Server::listen() {
   if (bind(listenFd, (sockaddr*)&a, sizeof a) != 0) { IOS3_TRACE("bind %s: %s", opts.sockPath.c_str(), strerror(errno)); return false; }
   chmod(opts.sockPath.c_str(), 0660);
   if (::listen(listenFd, 8) != 0) return false;
-  IOS3_TRACE("listening on %s (gap %llu, takeover %llu, hold %llu, release %llu, idle-stop %llu ms; silence threshold %d; lead %u ms)",
+  IOS3_TRACE("listening on %s (gap %llu, takeover %llu, hold %llu, release %llu, quiet-release %llu, idle-stop %llu ms; silence threshold %d; lead %u ms)",
              opts.sockPath.c_str(), (unsigned long long)arbiter.tunables().producingGapMs, (unsigned long long)arbiter.tunables().takeoverMs,
              (unsigned long long)arbiter.tunables().holdMs, (unsigned long long)arbiter.tunables().releaseMs,
-             (unsigned long long)arbiter.tunables().idleStopMs, arbiter.tunables().silenceThreshold, opts.leadMs);
+             (unsigned long long)arbiter.tunables().quietReleaseMs, (unsigned long long)arbiter.tunables().idleStopMs,
+             arbiter.tunables().silenceThreshold, opts.leadMs);
   writeActiveSourceFile("none");
   return true;
 }
@@ -77,6 +78,8 @@ bool Server::listen() {
 void Server::acceptClient() {
   int fd = accept(listenFd, nullptr, nullptr);
   if (fd < 0) return;
+  int rcvbuf = 256 * 1024;  // ~1.5 s of PCM: a producer keeps sending while this loop is in a slow CoreAudio call
+  setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);
   Client c;
   c.fd = fd;
   c.id = nextId++;
@@ -124,7 +127,7 @@ void Server::handle(Client& c, const Message& m) {
       if (m.payload.size() % 4 != 0) { dropClient(c.fd, "AUDIO length not a multiple of a frame"); return; }
       const int16_t* pcm = reinterpret_cast<const int16_t*>(m.payload.data());
       int thr = arbiter.tunables().silenceThreshold;
-      bool loud = thr <= 0 || peakOf(pcm, m.payload.size() / 2) > thr;
+      bool loud = thr <= 0 || peakExceeds(pcm, m.payload.size() / 2, thr);
       ringAppend(c, pcm, m.payload.size() / 4);
       arbiter.onAudio(c.id, m.payload.size(), now, loud);
       afterTick();
@@ -134,13 +137,14 @@ void Server::handle(Client& c, const Message& m) {
       if (m.payload.size() != sizeof(AudiodVolume)) { dropClient(c.fd, "bad VOLUME length"); return; }
       AudiodVolume v;
       memcpy(&v, m.payload.data(), sizeof v);
-      c.volume = v.linear < 0 ? 0.f : v.linear > 1 ? 1.f : v.linear;
+      c.volume = !(v.linear >= 0.f) ? 0.f : v.linear > 1.f ? 1.f : v.linear;  // !(>=0) also rejects NaN
       if (arbiter.activeId() == c.id) out->setVolume(c.volume);
       break;
     }
     case AUDIOD_MSG_FLUSH:
       if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: FLUSH from #%d (had %zu frames, head %zu)", c.id, c.ringFrames, c.ringHead);
       c.ringHead = 0; c.ringFrames = 0;
+      arbiter.onFlush(c.id);
       if (arbiter.activeId() == c.id) out->flush();
       break;
     case AUDIOD_MSG_STOP:
@@ -174,7 +178,10 @@ void Server::logEvent(const Event& e) {
 }
 
 void Server::writeActiveSourceFile(const std::string& name) {
-  if (opts.statusDir.empty() || name == lastActiveWritten) return;
+  if (opts.statusDir.empty()) return;
+  uint64_t now = nowMs();
+  if (name == lastActiveWritten && now - lastActiveWriteMs < 10000) return;  // rewritten every 10 s so a reader can tell a dead audiod by the mtime
+  lastActiveWriteMs = now;
   std::string path = opts.statusDir + "/active-source", tmp = path + ".tmp";
   FILE* f = fopen(tmp.c_str(), "w");
   if (!f) return;
@@ -197,7 +204,12 @@ void Server::afterTick() {
         out->setVolume(c->volume);
       }
     }
-    if (e.kind == Event::RELEASE) { out->flush(); lastSilenceMs = e.atMs; }
+    if (e.kind == Event::RELEASE) {
+      // "quiet" (bytes stopped) / stop / disconnect: drop what is left. "silent" (digital silence
+      // still arriving): let the buffered tail play out; a fade or a pause between tracks is not a cut.
+      if (e.reason.compare(0, 6, "silent") != 0) out->flush();
+      lastSilenceMs = e.atMs;
+    }
     if (e.kind == Event::IDLE_STOP) { out->flush(); out->idle(); }
   }
   std::string a = arbiter.activeName();

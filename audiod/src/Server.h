@@ -70,6 +70,7 @@ class Server {
   int nextId = 1;
   std::map<int, Client> clients;  // by fd
   std::string lastActiveWritten = "?";
+  uint64_t lastActiveWriteMs = 0;
   uint64_t lastSilenceMs = 0;
   uint64_t startMs = 0;
   FILE* eventFile = nullptr;

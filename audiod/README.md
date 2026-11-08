@@ -90,3 +90,40 @@ All timers are flags (`--takeover-ms` …) or env (`AUDIOD_TAKEOVER_MS` …); se
 - **Status ownership**: producers write `status-spotify.*` / `status-airplay.*` and
   `cover-spotify.jpg` / `cover-airplay.jpg`; the now-playing app (1.2) reads `active-source` and
   shows only that source (see `nowplaying/APP.md`).
+
+## B1.2 (review fix round)
+
+Findings of the adversarial review of B1.1, all verified against the code before fixing:
+
+- **#1 lifecycle race / UAF** — the AudioQueue lifecycle now runs on the owner thread only:
+  the AudioSession callbacks set flags (`interrupted`, `interruptionEndPending`,
+  `routeChangePending`); `tick()` / `feedPCMFrames()` / `flush()` / `stop()` / `setParams()`
+  do every create/destroy/start/stop/reset under `lifecycleMutex`, which the AudioQueue
+  callback never takes. `destroyQueue()` nulls `queue` and forgets `buffers[]` in one critical
+  section, then waits for in-flight callbacks (`callbacksInFlight`) before `AudioQueueDispose`.
+- **#2 running-but-dead queue** — `outputCallback` records `lastCompletionMs`; `ensurePlaying()`
+  re-acquires a queue that owns buffers but completed none for `kNoCompletionMs` (1 s). This is
+  the check that enforces the invariant in audiod (the old ring-full stall detector cannot fire
+  under the 0.5 s pump cap and is now direct-mode only).
+- **#3 quiet music read as a pause** — `--silence-threshold` default 24 (dither floor; a paused
+  AirPlay sender streams exact zeros); "quiet" (no bytes for `releaseMs`, 1.5 s) is separated
+  from "silent" (bytes arriving but nothing above the threshold for `--quiet-release-ms`, 8 s);
+  a silent release does **not** flush, so a fade or an inter-track gap plays out.
+- **#4 / #5 SocketSink** — one mutex around every method (producers call it from two threads);
+  `SO_SNDTIMEO` 500 ms + `SO_SNDBUF` 256 KB on the producer, `SO_RCVBUF` 256 KB in audiod: a
+  producer never hangs on a stuck audiod, it disconnects ("send timeout") and reconnects.
+- **#6 hiccup steals** — recency (`streamSinceMs`) changes only on connect, the first audio after
+  STOP or FLUSH, or a gap in bytes >= `releaseMs`; the takeover debounce uses the separate
+  `loudRunSinceMs`. A background source's 1 s network stall no longer makes it "newest".
+- **#7 / #8 / #9** — in-flight callback drain before Dispose; a late interruption END while
+  playing only re-activates the session; `mach_absolute_time` for the sink's timers; NaN volume
+  rejected; `peakExceeds` early exit; `active-source` rewritten every 10 s so the app can tell a
+  dead audiod by its mtime (NowPlaying 1.2.1 treats one older than 30 s as absent).
+
+Host tests added: `aqsink_test` races route changes/interruptions from a second thread against
+the owner thread with slow mock Stop/Dispose and asserts the queue ends running *and* completing;
+a "running but no completions" case; a late-END-while-playing case. `hosttest/test_silence.py`
+streams a quiet-music envelope (fade to -40 dBFS, pianissimo at peak 60, a 2 s exact-zero gap)
+and asserts one takeover, one *silent* release 8 s (3 s in the test) after the last loud frame,
+and a contiguous byte-exact output (nothing flushed), plus a 1.2 s background hiccup that must not
+steal and a 2 s gap that may.
