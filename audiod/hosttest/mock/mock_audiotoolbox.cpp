@@ -58,6 +58,7 @@ struct OpaqueAudioQueue {
   std::deque<AudioQueueBufferRef> queued;
   std::vector<AudioQueueBufferRef> buffers;
   bool running = false, resetting = false, disposed = false;
+  std::deque<AudioQueueBufferRef> toReturn;  // async reset delivery: handed back by the worker
   std::thread worker;
 };
 
@@ -67,7 +68,8 @@ static std::atomic<int> gStartCalls{0}, gStartFailures{0}, gQueues{0};
 static std::atomic<bool> gStartFails{false};
 static std::atomic<unsigned long> gCompleted{0};
 static std::atomic<int> gStopDelayMs{0}, gLive{0};
-static std::atomic<bool> gCompleting{true};
+static std::atomic<bool> gCompleting{true}, gAsyncReset{false};
+static std::atomic<int> gRefuse{0};
 static std::string gRoute = "USB";
 static AudioSessionInterruptionListener gIntListener = nullptr;
 static void* gIntUd = nullptr;
@@ -78,11 +80,14 @@ static void workerLoop(OpaqueAudioQueue* q) {
   for (;;) {
     usleep(10000);  // "plays" one buffer per 10 ms: faster than real time, enough to keep the sink's ring moving
     AudioQueueBufferRef b = nullptr;
+    std::deque<AudioQueueBufferRef> ret;
     {
       std::lock_guard<std::mutex> l(q->m);
       if (q->disposed) return;
+      ret.swap(q->toReturn);
       if (q->running && gCompleting && !q->queued.empty()) { b = q->queued.front(); q->queued.pop_front(); }
     }
+    for (AudioQueueBufferRef r : ret) q->cb(q->ud, q, r);  // dropped buffers, delivered late and concurrently with the owner
     if (b) { gCompleted++; q->cb(q->ud, q, b); }
   }
 }
@@ -111,6 +116,7 @@ OSStatus AudioQueueAllocateBuffer(AudioQueueRef q, UInt32 bytes, AudioQueueBuffe
 }
 OSStatus AudioQueueEnqueueBuffer(AudioQueueRef q, AudioQueueBufferRef b, UInt32, const void*) {
   std::lock_guard<std::mutex> l(q->m);
+  if (gRefuse > 0) { gRefuse--; return kAudioQueueErr_EnqueueDuringReset; }
   if (q->resetting) return kAudioQueueErr_EnqueueDuringReset;
   q->queued.push_back(b);
   return 0;
@@ -130,6 +136,12 @@ static void drain(OpaqueAudioQueue* q) {
     std::lock_guard<std::mutex> l(q->m);
     q->resetting = true;
     pending.swap(q->queued);
+    if (gAsyncReset && !q->disposed) {
+      // like the device: the dropped buffers come back on the queue's own thread shortly after
+      for (AudioQueueBufferRef b : pending) q->toReturn.push_back(b);
+      q->resetting = false;
+      return;
+    }
   }
   for (AudioQueueBufferRef b : pending) q->cb(q->ud, q, b);
   std::lock_guard<std::mutex> l(q->m);
@@ -195,6 +207,9 @@ void fireRouteChange() {
 }
 unsigned long completedBuffers() { return gCompleted; }
 void setStopDelayMs(int ms) { gStopDelayMs = ms; }
+void setAsyncResetDelivery(bool on) { gAsyncReset = on; }
+void refuseNextEnqueues(int n) { gRefuse = n; }
+int queuedBuffers() { std::lock_guard<std::mutex> g(gMock); if (!gLiveQueue) return 0; std::lock_guard<std::mutex> l(gLiveQueue->m); return (int)gLiveQueue->queued.size(); }
 void setCompleting(bool on) { gCompleting = on; }
 int liveQueues() { return gLive; }
 }  // namespace mock

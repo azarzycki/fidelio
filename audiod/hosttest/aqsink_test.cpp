@@ -164,6 +164,62 @@ int main() {
   snprintf(m, sizeof m, "late interruption end while playing: generation %lu -> %lu (no recreate), running=%d", gen, sink.queueGeneration(), (int)mock::queueRunning());
   CHECK(sink.queueGeneration() == gen && mock::queueRunning(), m);
 
+  // 11. (B1.3 #1a) FLUSH storm with the dropped buffers delivered asynchronously on the queue thread
+  //     (device behaviour): the owner's re-prime and the late callbacks race for the same buffers.
+  //     No buffer may end up stranded; the queue must keep completing.
+  mock::setAsyncResetDelivery(true);
+  for (int i = 0; i < 40; i++) { sink.flush(); driveMs(sink, 30); }
+  driveMs(sink, 300);
+  c0 = mock::completedBuffers();
+  driveMs(sink, 400);
+  c1 = mock::completedBuffers();
+  snprintf(m, sizeof m, "40 flushes with async dropped-buffer delivery: running=%d, queue owns %d buffers, %lu completions in 400 ms",
+           (int)mock::queueRunning(), mock::queuedBuffers(), c1 - c0);
+  CHECK(mock::queueRunning() && mock::queuedBuffers() >= 1 && c1 - c0 >= 10, m);
+  mock::setAsyncResetDelivery(false);
+
+  // 12. (B1.3 #1b) every buffer stranded: the queue refuses the next enqueues, hands everything back,
+  //     then owns nothing while "running". The per-tick re-prime must put them back within a tick or two.
+  mock::refuseNextEnqueues(6);
+  sink.flush();  // Reset -> 3 callbacks re-enqueue (refused) -> prime (refused): 3 stranded buffers
+  driveMs(sink, 20, false);
+  int owned = mock::queuedBuffers();
+  driveMs(sink, 100);
+  c0 = mock::completedBuffers();
+  driveMs(sink, 400);
+  c1 = mock::completedBuffers();
+  snprintf(m, sizeof m, "all buffers stranded by refused enqueues (%d owned right after): re-primed by tick, running=%d, %lu completions in 400 ms",
+           owned, (int)mock::queueRunning(), c1 - c0);
+  CHECK(mock::queueRunning() && c1 - c0 >= 10, m);
+
+  // 13. (B1.3 #4) AudioQueueStart returns 0 but the queue never renders (a long call, a wedged
+  //     mediaserverd right after a restart): the watchdog must recover, with the 3 s first-completion
+  //     window and backing off (no tight recreate loop).
+  gen = sink.queueGeneration();
+  mock::setCompleting(false);
+  sink.flush();  // reset: completions stop, the queue stays "running"
+  t0 = nowMs();
+  recovered = -1;
+  while (nowMs() - t0 < 4000) {
+    driveMs(sink, 20);
+    if (sink.queueGeneration() > gen) { recovered = (long)(nowMs() - t0); break; }
+  }
+  snprintf(m, sizeof m, "running but never completing: first re-acquire after %ld ms (expect ~1000..1700: the previous start had completed)", recovered);
+  CHECK(recovered >= 900 && recovered <= 1800, m);
+  unsigned long g1 = sink.queueGeneration();
+  driveMs(sink, 9000);  // still not completing: each new queue starts OK but never renders
+  unsigned long g2 = sink.queueGeneration();
+  snprintf(m, sizeof m, "start OK but no render for 9 more s: %lu further re-acquires (3 s first window + 1,2,4 s backoff: expect 2..3, not a tight loop)", g2 - g1);
+  CHECK(g2 - g1 >= 1 && g2 - g1 <= 3, m);
+  mock::setCompleting(true);
+  t = untilRunning(sink, 500);
+  driveMs(sink, 300);
+  c0 = mock::completedBuffers();
+  driveMs(sink, 400);
+  c1 = mock::completedBuffers();
+  snprintf(m, sizeof m, "rendering resumes: running=%d, %lu completions in 400 ms", (int)mock::queueRunning(), c1 - c0);
+  CHECK(mock::queueRunning() && c1 - c0 >= 10, m);
+
   printf(fails ? "\n%d FAILURES\n" : "\nall AudioQueueSink recovery checks passed\n", fails);
   return fails ? 1 : 0;
 }

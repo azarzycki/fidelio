@@ -311,7 +311,7 @@ void AudioQueueSink::start() {
   pthread_mutex_lock(&queueMutex);
   if (queue == q) {
     if (st != 0) running = false;
-    else lastCompletionMs = nowMs();  // the completion watchdog counts from here
+    else { startedAtMs = nowMs(); lastCompletionMs = startedAtMs; completedSinceStart = false; }  // the completion watchdog counts from here
   }
   pthread_mutex_unlock(&queueMutex);
 }
@@ -348,8 +348,7 @@ void AudioQueueSink::ensurePlaying(const char* from) {
   routeChangePending = false;
   interruptionEndPending = false;
   uint64_t since = interruptedSinceMs, lastDone = lastCompletionMs;
-  bool anyEnqueued = false;
-  for (int i = 0; i < kNumBuffers; i++) anyEnqueued = anyEnqueued || enqueued[i];
+  bool firstPending = !completedSinceStart;
   AudioQueueRef q = queue;
   pthread_mutex_unlock(&queueMutex);
 
@@ -391,12 +390,25 @@ void AudioQueueSink::ensurePlaying(const char* from) {
     reacquireRoute("no queue");
     return;
   }
-  // 5. running: the real watchdog. A queue that owns buffers but has completed none for
-  //    kNoCompletionMs is dead (mediaserverd restart / silent wedge): re-acquire it.
+  // 5. running: the real watchdog. A running queue that has completed no buffer for a while is
+  //    dead, whether it owns buffers or not (a buffer stranded by a refused enqueue counts as
+  //    dead too): re-acquire it. The first completion after AudioQueueStart gets a longer window
+  //    (dock line-out / a fresh mediaserverd can be slow), and consecutive recoveries back off so a
+  //    queue that starts fine but never renders (a long call with no END callback) does not keep
+  //    audiod in a tight recreate loop. Also re-prime: a no-op for buffers the queue owns, it
+  //    re-enqueues within one tick any buffer the queue handed back that nobody re-enqueued.
   if (isRunning) {
-    if (anyEnqueued && lastDone && now - lastDone > (uint64_t)kNoCompletionMs && now - lastRecoverMs >= (uint64_t)kRecoverRetryMs) {
+    if (q) primeBuffers(q);
+    if (lastDone > lastRecoverMs && noCompletionRecoveries) noCompletionRecoveries = 0;  // it rendered after the last recovery: healthy again
+    uint64_t window = firstPending ? (uint64_t)kFirstCompletionMs : (uint64_t)kNoCompletionMs;
+    uint64_t backoff = (uint64_t)kRecoverRetryMs << (noCompletionRecoveries > 4 ? 4 : noCompletionRecoveries);
+    if (backoff > (uint64_t)kMaxRecoverBackoffMs) backoff = kMaxRecoverBackoffMs;
+    if (lastDone && now - lastDone > window && now - lastRecoverMs >= backoff) {
       lastRecoverMs = now;
-      IOS3_TRACE("%s: queue is running but has completed no buffer for %llu ms: re-acquiring", from, (unsigned long long)(now - lastDone));
+      noCompletionRecoveries++;
+      IOS3_TRACE("%s: queue is running but has completed no buffer for %llu ms%s: re-acquiring (recovery #%d, next after %llu ms)", from,
+                 (unsigned long long)(now - lastDone), firstPending ? " since AudioQueueStart" : "", noCompletionRecoveries,
+                 (unsigned long long)(backoff * 2 > (uint64_t)kMaxRecoverBackoffMs ? (uint64_t)kMaxRecoverBackoffMs : backoff * 2));
       reacquireRoute("no completions");
     }
     return;
@@ -528,14 +540,23 @@ void AudioQueueSink::feedPCMFrames(const uint8_t* data, size_t bytes) {
 void AudioQueueSink::outputCallback(void* userData, AudioQueueRef q, AudioQueueBufferRef buffer) {
   AudioQueueSink* self = static_cast<AudioQueueSink*>(userData);
   int index = -1;
+  long firstAfterMs = -1;
   pthread_mutex_lock(&self->queueMutex);
   if (self->queue == q) {
     for (int i = 0; i < kNumBuffers; i++) {
       if (self->buffers[i] == buffer) { self->enqueued[i] = false; self->queuedBytes[i] = 0; index = i; break; }
     }
-    if (index >= 0) { self->lastCompletionMs = nowMs(); self->callbacksInFlight++; }
+    if (index >= 0) {
+      self->lastCompletionMs = nowMs();
+      self->callbacksInFlight++;
+      if (!self->completedSinceStart) {
+        self->completedSinceStart = true;
+        firstAfterMs = (long)(self->lastCompletionMs - self->startedAtMs);
+      }
+    }
   }
   pthread_mutex_unlock(&self->queueMutex);
+  if (firstAfterMs >= 0) IOS3_TRACE("first buffer completion %ld ms after AudioQueueStart", firstAfterMs);
   pthread_mutex_lock(&self->mutex);
   self->stalled = false;
   pthread_mutex_unlock(&self->mutex);
@@ -552,8 +573,12 @@ void AudioQueueSink::primeBuffers(AudioQueueRef q) {
 
 void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
   pthread_mutex_lock(&queueMutex);
+  // Claim the buffer here, under the lock (enqueued = "not ours to fill"): the owner's
+  // primeBuffers() and a late callback for the same buffer can otherwise both pass the check
+  // and write the same mAudioData (B1.3 #1). Reverted below if the enqueue is refused.
   bool owned = queue == q && buffers[index] && !enqueued[index];
   AudioQueueBufferRef buffer = owned ? buffers[index] : nullptr;
+  if (buffer) enqueued[index] = true;
   pthread_mutex_unlock(&queueMutex);
   if (!buffer) return;
   uint8_t* out = static_cast<uint8_t*>(buffer->mAudioData);
@@ -582,10 +607,14 @@ void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
   pthread_mutex_lock(&queueMutex);
   if (queue == q) {
     OSStatus st = AudioQueueEnqueueBuffer(q, buffer, 0, nullptr);
-    if (st == 0) { enqueued[index] = true; queuedBytes[index] = take; }
-    // kAudioQueueErr_EnqueueDuringReset (-66632) is expected inside AudioQueueReset/Stop: the
-    // buffer is ours again and the next primeBuffers() enqueues it. Its data is lost either way.
-    else if (st != kAudioQueueErr_EnqueueDuringReset) IOS3_TRACE("AudioQueueEnqueueBuffer -> %ld", (long)st);
+    if (st == 0) queuedBytes[index] = take;
+    else {
+      enqueued[index] = false;  // ours again; the next primeBuffers() (every tick while running) enqueues it
+      // kAudioQueueErr_EnqueueDuringReset (-66632) is expected inside AudioQueueReset/Stop. Its data is lost either way.
+      if (st != kAudioQueueErr_EnqueueDuringReset) IOS3_TRACE("AudioQueueEnqueueBuffer -> %ld", (long)st);
+    }
+  } else if (buffers[index] == buffer) {
+    enqueued[index] = false;
   }
   pthread_mutex_unlock(&queueMutex);
 }

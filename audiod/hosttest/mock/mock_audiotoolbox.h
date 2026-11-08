@@ -121,4 +121,7 @@ unsigned long completedBuffers();     // buffers the fake queue has played back
 void setStopDelayMs(int ms);          // make AudioQueueStop / AudioQueueDispose take this long (slow hardware)
 void setCompleting(bool on);          // false: the fake queue keeps running but never completes a buffer (mediaserverd wedge)
 int liveQueues();                     // queues created and not yet disposed
+void setAsyncResetDelivery(bool on);  // Reset/Stop hand the dropped buffers back from the queue thread a few ms later (device behaviour)
+void refuseNextEnqueues(int n);       // the next n AudioQueueEnqueueBuffer calls fail with kAudioQueueErr_EnqueueDuringReset (strands buffers)
+int queuedBuffers();                  // buffers the live queue currently owns
 }  // namespace mock

@@ -72,6 +72,8 @@ class AudioQueueSink : public AudioSink {
   static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails
   static const long kRecoverRetryMs = 1000;      // retry re-acquiring a missing/dead queue this often
   static const long kNoCompletionMs = 1000;      // "running" but no buffer completed for this long = dead queue
+  static const long kFirstCompletionMs = 3000;   // ... except right after AudioQueueStart: the first completion may take longer
+  static const long kMaxRecoverBackoffMs = 16000;  // consecutive no-completion recoveries back off 1, 2, 4 ... s up to this
 
  private:
   static const int kNumBuffers = 3;
@@ -124,7 +126,9 @@ class AudioQueueSink : public AudioSink {
   bool interruptionEndPending = false;  // set by the callback, consumed by ensurePlaying()
   bool routeChangePending = false;      // set by the callback, consumed by ensurePlaying()
   bool wantPlaying = false;             // audio has been fed since the last stop()
-  uint64_t lastCompletionMs = 0;        // last buffer the queue handed back (0 = none since start)
+  uint64_t lastCompletionMs = 0;        // last buffer the queue handed back
+  uint64_t startedAtMs = 0;             // AudioQueueStart success; 0 = not running
+  bool completedSinceStart = false;     // a buffer has come back since the last start
   int callbacksInFlight = 0;            // callbacks between "found the buffer" and "enqueued/dropped"
   float lastVolume = 1.0f;
   unsigned long generation = 0;         // createQueue() count
@@ -133,6 +137,7 @@ class AudioQueueSink : public AudioSink {
   bool startFailed = false;    // AudioQueueStart failed last time (log only changes)
   uint64_t lastStartAttemptMs = 0;
   uint64_t lastRecoverMs = 0;
+  int noCompletionRecoveries = 0;  // consecutive "no completions" re-acquires (reset by a completion)
 
   // --- ring, under `mutex`
   std::vector<uint8_t> ring;
