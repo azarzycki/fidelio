@@ -62,10 +62,12 @@ struct OpaqueAudioQueue {
 };
 
 static std::mutex gMock;
-static OpaqueAudioQueue* gLive = nullptr;
+static OpaqueAudioQueue* gLiveQueue = nullptr;
 static std::atomic<int> gStartCalls{0}, gStartFailures{0}, gQueues{0};
 static std::atomic<bool> gStartFails{false};
 static std::atomic<unsigned long> gCompleted{0};
+static std::atomic<int> gStopDelayMs{0}, gLive{0};
+static std::atomic<bool> gCompleting{true};
 static std::string gRoute = "USB";
 static AudioSessionInterruptionListener gIntListener = nullptr;
 static void* gIntUd = nullptr;
@@ -79,7 +81,7 @@ static void workerLoop(OpaqueAudioQueue* q) {
     {
       std::lock_guard<std::mutex> l(q->m);
       if (q->disposed) return;
-      if (q->running && !q->queued.empty()) { b = q->queued.front(); q->queued.pop_front(); }
+      if (q->running && gCompleting && !q->queued.empty()) { b = q->queued.front(); q->queued.pop_front(); }
     }
     if (b) { gCompleted++; q->cb(q->ud, q, b); }
   }
@@ -91,8 +93,9 @@ OSStatus AudioQueueNewOutput(const AudioStreamBasicDescription*, AudioQueueOutpu
   q->cb = cb;
   q->ud = ud;
   q->worker = std::thread(workerLoop, q);
-  { std::lock_guard<std::mutex> l(gMock); gLive = q; }
+  { std::lock_guard<std::mutex> l(gMock); gLiveQueue = q; }
   gQueues++;
+  gLive++;
   *out = q;
   return 0;
 }
@@ -134,15 +137,18 @@ static void drain(OpaqueAudioQueue* q) {
 }
 OSStatus AudioQueueStop(AudioQueueRef q, Boolean) {
   { std::lock_guard<std::mutex> l(q->m); q->running = false; }
+  if (gStopDelayMs > 0) usleep(gStopDelayMs * 1000);  // the real one takes tens to hundreds of ms on the device
   drain(q);
   return 0;
 }
 OSStatus AudioQueueReset(AudioQueueRef q) { drain(q); return 0; }
 OSStatus AudioQueueDispose(AudioQueueRef q, Boolean) {
+  if (gStopDelayMs > 0) usleep(gStopDelayMs * 1000);
   { std::lock_guard<std::mutex> l(q->m); q->running = false; q->disposed = true; }
   q->worker.join();
+  gLive--;
   for (AudioQueueBufferRef b : q->buffers) { free(b->mAudioData); delete b; }
-  { std::lock_guard<std::mutex> l(gMock); if (gLive == q) gLive = nullptr; }
+  { std::lock_guard<std::mutex> l(gMock); if (gLiveQueue == q) gLiveQueue = nullptr; }
   delete q;
   return 0;
 }
@@ -171,7 +177,7 @@ OSStatus AudioSessionAddPropertyListener(AudioSessionPropertyID id, AudioSession
 OSStatus AudioSessionSetActive(Boolean) { return 0; }
 
 namespace mock {
-bool queueRunning() { std::lock_guard<std::mutex> g(gMock); if (!gLive) return false; std::lock_guard<std::mutex> l(gLive->m); return gLive->running; }
+bool queueRunning() { std::lock_guard<std::mutex> g(gMock); if (!gLiveQueue) return false; std::lock_guard<std::mutex> l(gLiveQueue->m); return gLiveQueue->running; }
 int startCalls() { return gStartCalls; }
 int startFailures() { return gStartFailures; }
 int queuesCreated() { return gQueues; }
@@ -188,4 +194,7 @@ void fireRouteChange() {
   if (l) l(ud, kAudioSessionProperty_AudioRouteChange, 0, nullptr);
 }
 unsigned long completedBuffers() { return gCompleted; }
+void setStopDelayMs(int ms) { gStopDelayMs = ms; }
+void setCompleting(bool on) { gCompleting = on; }
+int liveQueues() { return gLive; }
 }  // namespace mock

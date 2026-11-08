@@ -118,4 +118,7 @@ void setRoute(const char*);   // what kAudioSessionProperty_AudioRoute reports
 void fireInterruption(UInt32 state);  // invoke the registered interruption listener
 void fireRouteChange();               // invoke the registered route-change listener (data = nullptr)
 unsigned long completedBuffers();     // buffers the fake queue has played back
+void setStopDelayMs(int ms);          // make AudioQueueStop / AudioQueueDispose take this long (slow hardware)
+void setCompleting(bool on);          // false: the fake queue keeps running but never completes a buffer (mediaserverd wedge)
+int liveQueues();                     // queues created and not yet disposed
 }  // namespace mock

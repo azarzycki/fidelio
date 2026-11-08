@@ -11,15 +11,21 @@
 // continues with ~0.8 s of audio in hand); "restart" only stops/starts the queue; "none" is the
 // old behaviour, kept for A/B testing on the device.
 //
-// Invariant (B1.1): while someone wants playback (audio has been fed and stop() not called), the
-// queue is (re)started within ~1 s whatever sequence of interruption-begin / route-change /
-// possibly MISSING interruption-end events arrives. `wantPlaying` is that intent, separate from
-// the transient running/interrupted flags; a route change while "interrupted" ends the
-// interruption (the end callback never came on the device); tick() (audiod's 20 ms loop) and
-// feedPCMFrames() run a watchdog that clears an interruption older than kInterruptGraceMs and
-// retries AudioQueueStart every kStartRetryMs while it fails (a genuine call keeps failing until
-// it ends; the next success resumes). Seen on hardware: begin-interruption, two route changes,
-// no end -> recreated-but-never-started queue, "shows playing, no sound".
+// Threading (B1.2): the AudioSession callbacks only SET FLAGS (interrupted, interruption ended,
+// route changed). All AudioQueue lifecycle work (create/destroy/start/stop/reset) happens on the
+// owner thread, i.e. inside feedPCMFrames() / tick() / flush() / stop() / setParams(), serialized
+// by lifecycleMutex, which the AudioQueue callback never takes. queueMutex guards the shared
+// queue/buffer state for the callback; destroyQueue() nulls `queue` and clears buffers[] in the
+// same critical section, then waits for in-flight callbacks before AudioQueueDispose.
+//
+// Invariant (B1.1/B1.2): while someone wants playback (audio has been fed and stop() not called),
+// the queue is running AND completing buffers within ~1 s whatever sequence of interruption-begin
+// / route-change / possibly MISSING interruption-end events arrives, and whatever mediaserverd
+// does: `wantPlaying` is that intent; a route change while "interrupted" ends the interruption;
+// the watchdog in ensurePlaying() (every tick()/feed) clears an interruption older than
+// kInterruptGraceMs, retries AudioQueueStart every kStartRetryMs while it fails, re-acquires a
+// missing queue, and re-acquires a queue that is "running" but has completed no buffer for
+// kNoCompletionMs (mediaserverd restart, silent wedge).
 #include <AudioToolbox/AudioQueue.h>
 #include <AudioToolbox/AudioServices.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -44,10 +50,10 @@ class AudioQueueSink : public AudioSink {
   explicit AudioQueueSink(const Options& options);
   ~AudioQueueSink() override;
 
+  // Owner-thread entry points (any thread may call them; they serialize on lifecycleMutex).
   void feedPCMFrames(const uint8_t* buffer, size_t bytes) override;
   void volumeChanged(uint16_t volume) override;  // 0..65535
   bool setParams(uint32_t sampleRate, uint8_t channelCount, uint8_t bitDepth) override;
-
   // Drop everything that is still queued (used on seek/flush).
   void flush();
   // Stop the queue (releases the hardware path until the next feedPCMFrames() restarts it) and
@@ -59,29 +65,39 @@ class AudioQueueSink : public AudioSink {
   double bufferedSeconds();
   // Current system audio route name ("Speaker", "LineOut", "Headphone", ...), "" if unknown.
   std::string currentRoute();
+  // Lifecycle changes so far (queue creations), for diagnostics and tests.
+  unsigned long queueGeneration();
+
+  static const long kInterruptGraceMs = 1000;    // an interruption with no end callback is forgotten after this
+  static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails
+  static const long kRecoverRetryMs = 1000;      // retry re-acquiring a missing/dead queue this often
+  static const long kNoCompletionMs = 1000;      // "running" but no buffer completed for this long = dead queue
 
  private:
   static const int kNumBuffers = 3;
   static const size_t kBufferBytes = 8 * 1024;   // ~46 ms at 44.1 kHz stereo 16-bit
   static const size_t kRingBytes = 128 * 1024;   // ~0.74 s
   static const size_t kPrimeBytes = 35280;       // 200 ms: after an underrun, pad silence until this much is back
-  static const long kInterruptGraceMs = 1000;    // an interruption with no end callback is forgotten after this
-  static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails
-  static const long kRecoverRetryMs = 1000;      // retry re-acquiring a missing queue this often
-  static const long kStallMs = 2000;             // no buffer completion for this long: the queue is stuck
+  static const long kStallMs = 2000;             // direct mode: ring full and nothing completes for this long
 
   void init();
+  static uint64_t nowMs();  // monotonic (mach_absolute_time on the device)
+
+  // --- owner thread, lifecycleMutex held
+  void ensurePlaying(const char* from);  // the watchdog and flag processor
+  void reacquireRoute(const char* why);  // destroy/create (or stop) + start if wanted
+  bool createQueue();
+  void destroyQueue();
+  void start();
+  void stopQueue();
+  void resetAndPrime();
+
+  // --- AudioQueue thread
   static void outputCallback(void* userData, AudioQueueRef queue, AudioQueueBufferRef buffer);
   void fillBuffer(AudioQueueRef q, int index);  // enqueues buffers[index] unless the queue still owns it
   void primeBuffers(AudioQueueRef q);           // enqueue every buffer the queue does not own
-  void start();
-  void ensurePlaying(const char* from);  // the watchdog: wantPlaying && !running -> clear stale interruption, start
-  static uint64_t nowMs();
-  bool createQueue();   // AudioQueueNewOutput + buffers for `format`; queueMutex must NOT be held
-  void destroyQueue();  // stop + dispose; queueMutex must NOT be held
-  void reacquireRoute(const char* why);
 
-  // AudioSession (own run-loop thread)
+  // --- AudioSession thread (own run loop): flags only
   static void* sessionThreadEntry(void* self);
   void sessionThreadLoop();
   static void interruptionCallback(void* userData, UInt32 state);
@@ -91,31 +107,43 @@ class AudioQueueSink : public AudioSink {
   void applyRouteOverride();
 
   Options opts;
+  pthread_mutex_t lifecycleMutex;  // serializes every lifecycle operation; never taken by the AudioQueue callback
+
+  // --- under queueMutex
+  pthread_mutex_t queueMutex;
   AudioQueueRef queue = nullptr;
   AudioQueueBufferRef buffers[kNumBuffers];
-  bool enqueued[kNumBuffers];    // under queueMutex: the queue owns the buffer
-  size_t queuedBytes[kNumBuffers];  // under queueMutex: real PCM (not silence padding) in that buffer
+  bool enqueued[kNumBuffers];       // the queue owns the buffer
+  size_t queuedBytes[kNumBuffers];  // real PCM (not silence padding) in that buffer
   AudioStreamBasicDescription format;
-  bool running = false;       // AudioQueueStart has been called on `queue`
-  bool open = false;          // `queue` exists with buffers
-  bool interrupted = false;
-  bool wasRunningBeforeInterruption = false;
-  bool wantPlaying = false;          // under queueMutex: audio has been fed since the last stop()
-  uint64_t interruptedSinceMs = 0;   // under queueMutex
-  uint64_t lastStartAttemptMs = 0;   // watchdog bookkeeping (feed/tick callers only)
-  uint64_t lastRecoverMs = 0;
+  bool open = false;                // `queue` exists with buffers
+  bool running = false;             // AudioQueueStart succeeded and no Stop/Pause since
+  bool interrupted = false;         // begin-interruption seen, no end yet
+  bool pausedForInterruption = false;
+  uint64_t interruptedSinceMs = 0;
+  bool interruptionEndPending = false;  // set by the callback, consumed by ensurePlaying()
+  bool routeChangePending = false;      // set by the callback, consumed by ensurePlaying()
+  bool wantPlaying = false;             // audio has been fed since the last stop()
+  uint64_t lastCompletionMs = 0;        // last buffer the queue handed back (0 = none since start)
+  int callbacksInFlight = 0;            // callbacks between "found the buffer" and "enqueued/dropped"
   float lastVolume = 1.0f;
-  bool stalled = false;        // under mutex: a feed timed out; cleared by the next completion
-  bool startFailed = false;    // AudioQueueStart failed last time (log only changes)
-  pthread_mutex_t queueMutex;  // guards queue/open/running/interrupted
+  unsigned long generation = 0;         // createQueue() count
 
+  // --- owner thread only (lifecycleMutex)
+  bool startFailed = false;    // AudioQueueStart failed last time (log only changes)
+  uint64_t lastStartAttemptMs = 0;
+  uint64_t lastRecoverMs = 0;
+
+  // --- ring, under `mutex`
   std::vector<uint8_t> ring;
   size_t ringHead = 0;  // read position
   size_t ringFill = 0;  // bytes available
-  bool priming = true;  // under mutex: play silence until the ring holds kPrimeBytes (start, flush, underrun)
+  bool priming = true;  // play silence until the ring holds kPrimeBytes (start, flush, underrun)
+  bool stalled = false; // a feed timed out; cleared by the next completion
   pthread_mutex_t mutex;
   pthread_cond_t spaceAvailable;
 
+  // --- session thread
   pthread_t sessionThread;
   bool sessionThreadStarted = false;
   CFRunLoopRef sessionRunLoop = nullptr;

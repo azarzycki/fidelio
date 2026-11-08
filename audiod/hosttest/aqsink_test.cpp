@@ -7,6 +7,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <thread>
 #include <vector>
 
 #include "AudioQueueSink.h"
@@ -26,6 +28,8 @@ static void driveMs(AudioQueueSink& s, long ms, bool feed = true) {
     usleep(20000);
   }
 }
+// The callbacks only set flags (B1.2); the owner thread acts on them on its next tick (<= 20 ms).
+static void settle(AudioQueueSink& s) { driveMs(s, 50, false); }
 // Drive until the queue runs or the deadline passes; returns the time it took (-1 = never).
 static long untilRunning(AudioQueueSink& s, long maxMs, bool feed = true) {
   uint64_t t0 = nowMs();
@@ -49,7 +53,8 @@ int main() {
 
   // 2. THE hardware sequence: interruption begins, no end ever comes, a route change arrives
   mock::fireInterruption(kAudioSessionBeginInterruption);
-  CHECK(!mock::queueRunning(), "interruption begin pauses the queue");
+  settle(sink);
+  CHECK(!mock::queueRunning(), "interruption begin pauses the queue (on the owner thread's next tick)");
   mock::setRoute("MicrophoneBuiltIn");
   mock::fireRouteChange();
   mock::setRoute("USB");
@@ -60,15 +65,17 @@ int main() {
 
   // 3. interruption begins and NOTHING else happens: the watchdog must restart within ~1 s
   mock::fireInterruption(kAudioSessionBeginInterruption);
+  settle(sink);
   CHECK(!mock::queueRunning(), "second interruption pauses the queue");
   t = untilRunning(sink, 2500);
-  snprintf(m, sizeof m, "begin with no end and no route change: playing again after %ld ms (grace 1000)", t);
-  CHECK(t >= 900 && t <= 1500, m);
+  snprintf(m, sizeof m, "begin with no end and no route change: playing again after %ld ms (grace 1000, minus the 50 ms settle)", t);
+  CHECK(t >= 850 && t <= 1500, m);
 
   // 4. a genuine interruption: AudioQueueStart keeps failing; the sink keeps retrying, then succeeds
   int before = mock::startCalls();
   mock::setStartFails(true);
   mock::fireInterruption(kAudioSessionBeginInterruption);
+  settle(sink);
   driveMs(sink, 2200);
   int attempts = mock::startCalls() - before;
   snprintf(m, sizeof m, "while AudioQueueStart fails: not running, %d retries in 2.2 s (expect 2..5)", attempts);
@@ -80,6 +87,8 @@ int main() {
 
   // 5. the normal path still works: begin then end resumes immediately
   mock::fireInterruption(kAudioSessionBeginInterruption);
+  settle(sink);
+  CHECK(!mock::queueRunning(), "third interruption pauses the queue");
   mock::fireInterruption(kAudioSessionEndInterruption);
   t = untilRunning(sink, 500);
   snprintf(m, sizeof m, "begin + end: resumed after %ld ms", t);
@@ -99,6 +108,61 @@ int main() {
   t = untilRunning(sink, 500);
   snprintf(m, sizeof m, "next feed restarts the queue (%ld ms)", t);
   CHECK(t >= 0, m);
+
+  // 8. (B1.2 #1) RACE: route changes and interruptions fired from another thread (the AudioSession
+  //    thread on the device) while the owner thread feeds/ticks, with Stop/Dispose made SLOW (60 ms
+  //    > one 20 ms tick). The B1.1 code interleaved destroy/create across the two threads and left a
+  //    running queue with no buffers; the sink must end up running AND completing buffers.
+  mock::setStopDelayMs(60);
+  {
+    std::atomic<bool> go{true};
+    std::thread session([&] {
+      for (int i = 0; i < 14 && go; i++) {
+        usleep(150000);
+        if (i % 4 == 1) mock::fireInterruption(kAudioSessionBeginInterruption);
+        mock::fireRouteChange();
+        if (i % 4 == 3) mock::fireInterruption(kAudioSessionEndInterruption);
+      }
+    });
+    driveMs(sink, 2300);
+    go = false;
+    session.join();
+  }
+  driveMs(sink, 300);  // let the dust settle
+  unsigned long c0 = mock::completedBuffers();
+  driveMs(sink, 400);
+  unsigned long c1 = mock::completedBuffers();
+  snprintf(m, sizeof m, "after 2.3 s of racing route changes/interruptions with slow Stop/Dispose: running=%d, live queues=%d, completions in 400 ms=%lu",
+           (int)mock::queueRunning(), mock::liveQueues(), c1 - c0);
+  CHECK(mock::queueRunning() && mock::liveQueues() == 1 && c1 - c0 >= 10, m);
+  mock::setStopDelayMs(0);
+
+  // 9. (B1.2 #2) running but DEAD: the queue stops completing buffers (mediaserverd wedge) while the
+  //    flag still says running. The completion watchdog must re-acquire within ~1 s + retry gate.
+  unsigned long gen = sink.queueGeneration();
+  mock::setCompleting(false);
+  uint64_t t0 = nowMs();
+  long recovered = -1;
+  while (nowMs() - t0 < 3000) {
+    driveMs(sink, 20);
+    if (sink.queueGeneration() > gen) { recovered = (long)(nowMs() - t0); break; }
+  }
+  snprintf(m, sizeof m, "running but no completions: re-acquired after %ld ms (expect ~1000..1600)", recovered);
+  CHECK(recovered >= 900 && recovered <= 1700, m);
+  mock::setCompleting(true);
+  driveMs(sink, 300);
+  c0 = mock::completedBuffers();
+  driveMs(sink, 400);
+  c1 = mock::completedBuffers();
+  snprintf(m, sizeof m, "completions resumed after the re-acquire: running=%d, %lu in 400 ms", (int)mock::queueRunning(), c1 - c0);
+  CHECK(mock::queueRunning() && c1 - c0 >= 10, m);
+
+  // 10. (B1.2 #8) a late interruption END while already playing must not recreate the queue
+  gen = sink.queueGeneration();
+  mock::fireInterruption(kAudioSessionEndInterruption);
+  driveMs(sink, 200);
+  snprintf(m, sizeof m, "late interruption end while playing: generation %lu -> %lu (no recreate), running=%d", gen, sink.queueGeneration(), (int)mock::queueRunning());
+  CHECK(sink.queueGeneration() == gen && mock::queueRunning(), m);
 
   printf(fails ? "\n%d FAILURES\n" : "\nall AudioQueueSink recovery checks passed\n", fails);
   return fails ? 1 : 0;
