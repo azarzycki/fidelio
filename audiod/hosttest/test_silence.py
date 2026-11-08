@@ -12,6 +12,15 @@ played PCM must be one contiguous, byte-exact slice of what was sent (no flush a
 Scenario 2 (a background hiccup is not a user action): X and Y stream loud, Y older. Y stalls for
 1.2 s (< RELEASE, a wifi hiccup) and later for 2 s (>= RELEASE). The first stall must not let Y steal
 the speaker from X; the second makes Y a new stream, which may.
+
+Scenario 3 (B1.3 #2, reconnect is the same stream): X older, Y newer and active. Y's connection
+drops and a new connection with the same name comes back 0.5 s later and keeps streaming: audiod
+must keep Y active (a "reconnect" takeover, no release, X never active), i.e. the reconnect
+inherited Y's recency and its active slot.
+
+Scenario 4 (B1.3 #3, resume after zeros): X older loud; Y newer loud, then exact zeros for
+QUIET_RELEASE (released "silent", X takes over), then loud again: the user pressed play, so Y must
+take the speaker back once X's hold expires.
 """
 import os, socket, struct, subprocess, sys, threading, time
 
@@ -145,5 +154,58 @@ ev_at(2, "takeover", "airplay", "spotify", GAP_END + TAKEOVER)    # after a >= R
 ev_at(3, "release", "spotify", "none", END - LEAD + RELEASE)              # the last bytes went out LEAD early
 ev_at(4, "idle-stop", "none", "none", END - LEAD + RELEASE + IDLE_STOP)
 check(len(ev) == 5, f"exactly 5 transitions ({len(ev)})")
+
+# ------------------------------------------------------------------ scenario 3
+print("== scenario 3: a same-name reconnect within 10 s is the same stream")
+p, sock, out, evt = start_audiod("reconnect")
+X = Client(sock, "spotify", loud(3))   # older
+Y = Client(sock, "airplay", loud(4))   # newer, active from 1900
+t0 = time.monotonic()
+X.stream(t0, [(0, 9000)])
+Y.stream(t0, [(1000, 5000)])
+Y.join()
+Y.close()                               # Y's connection drops at ~4250 wall (its lead was sent ahead)
+time.sleep(0.5)
+Y2 = Client(sock, "airplay", loud(4))   # same name, new connection, continues the stream
+Y2.stream(t0, [(5000, 9000)])
+X.join(); Y2.join()
+time.sleep((RELEASE + IDLE_STOP + 800) / 1000)
+X.close(); Y2.close(); time.sleep(0.3); p.terminate(); p.wait()
+ev = events(evt)
+for e in ev: print(f"   {e[0]:6d} {e[1]:9s} {e[2]:>8s} -> {e[3]:<8s} {e[4]}")
+ev_at(0, "takeover", "none", "spotify", TAKEOVER)
+ev_at(1, "takeover", "spotify", "airplay", TAKEOVER + HOLD)
+rc = [e for e in ev if e[1] == "takeover" and e[2] == "airplay" and e[3] == "airplay" and e[4] == "reconnect"]
+check(len(rc) == 1, f"the reconnect re-attached to the active airplay stream ({rc})")
+bad = [e for e in ev if (e[1] == "release" and e[0] < 9000 - LEAD) or (e[1] == "takeover" and e[3] == "spotify" and e[0] > TAKEOVER + TOL)]
+check(not bad, f"no release and no spotify takeover during Y's 0.5 s reconnect ({bad})")
+ev_at(len(ev) - 2, "release", "airplay", "none", 9000 - LEAD + RELEASE)
+check(len(ev) == 5, f"exactly 5 transitions ({len(ev)})")
+
+# ------------------------------------------------------------------ scenario 4
+print("== scenario 4: play after a long silence takes the speaker back")
+p, sock, out, evt = start_audiod("resume")
+X = Client(sock, "spotify", loud(5))                                   # older, loud throughout
+def y_chunk(i):
+    t = i * 20
+    if 3000 <= t < 3000 + QUIET_RELEASE + 1000: return b"\0" * (882 * 4)  # paused: exact zeros, bytes keep flowing
+    return loud(6)(i)
+Y = Client(sock, "airplay", y_chunk)                                   # newer
+t0 = time.monotonic()
+X.stream(t0, [(0, 12000)])
+Y.stream(t0, [(1000, 12000)])
+X.join(); Y.join()
+time.sleep((RELEASE + IDLE_STOP + 800) / 1000)
+X.close(); Y.close(); time.sleep(0.3); p.terminate(); p.wait()
+ev = events(evt)
+for e in ev: print(f"   {e[0]:6d} {e[1]:9s} {e[2]:>8s} -> {e[3]:<8s} {e[4]}")
+ev_at(0, "takeover", "none", "spotify", TAKEOVER)
+ev_at(1, "takeover", "spotify", "airplay", TAKEOVER + HOLD)
+Y_SIL = 3000 - LEAD + QUIET_RELEASE                 # Y's zeros start arriving LEAD early; silent release QUIET_RELEASE after its last loud frame
+ev_at(2, "release", "airplay", "none", Y_SIL)
+ev_at(3, "takeover", "none", "spotify", Y_SIL)
+Y_LOUD = 3000 + QUIET_RELEASE + 1000 - LEAD         # Y's sound resumes (arrives LEAD early)
+ev_at(4, "takeover", "spotify", "airplay", max(Y_LOUD + TAKEOVER, Y_SIL + HOLD))
+check(len(ev) >= 5 and ev[2][4].startswith("silent"), f"Y's release was a silent release ({ev[2][4] if len(ev) > 2 else 'n/a'})")
 print("\n" + (f"{len(fails)} FAILURES" if fails else "all silence/recency checks passed"))
 sys.exit(1 if fails else 0)

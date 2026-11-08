@@ -12,16 +12,37 @@ const Source* Arbiter::source(int id) const {
   return it == sources.end() ? nullptr : &it->second;
 }
 
-void Arbiter::addSource(int id, const std::string& name, uint8_t priority, uint64_t now) {
+bool Arbiter::addSource(int id, const std::string& name, uint8_t priority, uint64_t now) {
+  // A same-name ghost (disconnected within ghostMs) is the same stream coming back: inherit it.
+  for (auto it = sources.begin(); it != sources.end(); ++it) {
+    Source& g = it->second;
+    if (g.connected || g.name != name || now - g.droppedAtMs > tun.ghostMs) continue;
+    Source s = g;
+    s.id = id; s.priority = priority; s.connected = true; s.droppedAtMs = 0;
+    s.newStream = false;  // keep streamSinceMs: not a newer stream
+    bool wasActive = active == it->first;
+    sources.erase(it);
+    sources[id] = s;
+    if (wasActive) {
+      active = id;
+      events.push_back(Event{Event::TAKEOVER, now, name, name, "reconnect"});
+    }
+    return true;
+  }
   Source s;
   s.id = id; s.name = name; s.priority = priority;
   sources[id] = s;
   (void)now;
+  return false;
 }
 
 void Arbiter::removeSource(int id, uint64_t now) {
-  if (id == active) release(now, "disconnect");
-  sources.erase(id);
+  auto it = sources.find(id);
+  if (it == sources.end()) return;
+  // Keep it as a ghost: a reconnect within ghostMs is the same stream. If it was active, the quiet
+  // rule releases it after releaseMs unless it comes back first.
+  it->second.connected = false;
+  it->second.droppedAtMs = now;
   tick(now);
 }
 
@@ -34,6 +55,9 @@ void Arbiter::onAudio(int id, size_t bytes, uint64_t now, bool loud) {
   if (s.newStream || !s.haveAudio || now - s.lastAudioMs >= tun.releaseMs) { s.streamSinceMs = now; s.newStream = false; }
   if (loud) {
     if (!producing(s, now)) s.loudRunSinceMs = now;  // a new loud run after a gap (or the first)
+    // Sound after >= quietReleaseMs of silence (or the first sound ever) is a resume: a new stream
+    // for recency, symmetric with the silent release. A shorter quiet passage is not.
+    if (!s.haveLoud || now - s.lastLoudMs >= tun.quietReleaseMs) s.streamSinceMs = now;
     s.haveLoud = true;
     s.lastLoudMs = now;
   }
@@ -82,13 +106,18 @@ void Arbiter::tick(uint64_t now) {
     if (!a.haveAudio || now - a.lastAudioMs >= tun.releaseMs) release(now, "quiet " + std::to_string(now - a.lastAudioMs) + " ms");
     else if (!a.haveLoud || now - a.lastLoudMs >= tun.quietReleaseMs) release(now, "silent " + std::to_string(now - a.lastLoudMs) + " ms");
   }
+  // 1b. forget ghosts nobody reconnected to
+  for (auto it = sources.begin(); it != sources.end();) {
+    if (!it->second.connected && it->first != active && now - it->second.droppedAtMs > tun.ghostMs) it = sources.erase(it);
+    else ++it;
+  }
   // 2. takeover by the most recent qualified challenger
   bool allowed = active < 0 || now - activeSinceMs >= tun.holdMs;
   if (allowed) {
     const Source* best = nullptr;
     for (auto& kv : sources) {
       const Source& s = kv.second;
-      if (s.id == active || !producing(s, now)) continue;
+      if (s.id == active || !s.connected || !producing(s, now)) continue;
       if (now - s.loudRunSinceMs < tun.takeoverMs) continue;
       if (active >= 0 && s.streamSinceMs <= activeStreamSinceMs) continue;  // older stream: not "more recent"
       if (!best || s.streamSinceMs > best->streamSinceMs ||

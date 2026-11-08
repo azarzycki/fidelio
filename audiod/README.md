@@ -127,3 +127,27 @@ streams a quiet-music envelope (fade to -40 dBFS, pianissimo at peak 60, a 2 s e
 and asserts one takeover, one *silent* release 8 s (3 s in the test) after the last loud frame,
 and a contiguous byte-exact output (nothing flushed), plus a 1.2 s background hiccup that must not
 steal and a 2 s gap that may.
+
+## B1.3 (second re-review)
+
+- **Stranded buffers / watchdog blind spot** — `fillBuffer` now claims a buffer under `queueMutex`
+  (the claim is reverted if the enqueue is refused), so the owner's re-prime and a late callback can
+  never fill the same buffer; the completion watchdog no longer requires an owned buffer and
+  re-primes every tick, so a buffer the queue handed back that nobody re-enqueued is back within
+  20 ms. The watchdog gives the first completion after `AudioQueueStart` 3 s (`kFirstCompletionMs`),
+  then 1 s, and consecutive no-completion recoveries back off 1, 2, 4 ... 16 s; the trace prints
+  "first buffer completion N ms after AudioQueueStart" so the device timing can be checked.
+- **Reconnect is the same stream** — a disconnected source stays as a ghost for `ghostMs` (10 s);
+  a same-name HELLO inherits its stream recency and, if it was still active, the active slot
+  (event "reconnect", no release, no takeover window). Both producers reconnecting after a send
+  timeout therefore keep their order. `SO_RCVBUF` is set on the listening socket (accepted sockets
+  inherit it) and the effective `SO_RCVBUF` / `SO_SNDBUF` are logged on connect.
+- **Resume after zeros** — a loud frame after >= `quietReleaseMs` of silence (or the first ever) is
+  a new stream for recency: pressing play on a paused sender that kept streaming zeros takes the
+  speaker back; a shorter quiet passage does not.
+- `producingGapMs` is clamped to `releaseMs` (a quiet-released source that still counted as
+  producing would re-take the output in the same tick); `SocketSink::bufferedSeconds()` locks;
+  `disconnect()` captures errno before closing.
+- Tests: `aqsink_test` adds a 40-flush storm with the dropped buffers delivered asynchronously,
+  stranded buffers via refused enqueues, and start-OK-but-never-renders (recovery with backoff,
+  no tight loop); `test_silence.py` adds the same-name reconnect and the resume-after-zeros case.

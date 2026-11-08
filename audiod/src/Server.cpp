@@ -58,6 +58,11 @@ Server::~Server() {
 bool Server::listen() {
   listenFd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (listenFd < 0) return false;
+  // Accepted sockets inherit this; set on the listener so a reconnecting producer never starts on
+  // the default (small) buffer. ~1.5 s of PCM the kernel can hold while this loop is in a slow
+  // CoreAudio call. The kernel may clamp it (kern.ipc.maxsockbuf): the effective size is logged.
+  int rcvbuf = 256 * 1024;
+  setsockopt(listenFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);
   sockaddr_un a;
   memset(&a, 0, sizeof a);
   a.sun_family = AF_UNIX;
@@ -78,14 +83,17 @@ bool Server::listen() {
 void Server::acceptClient() {
   int fd = accept(listenFd, nullptr, nullptr);
   if (fd < 0) return;
-  int rcvbuf = 256 * 1024;  // ~1.5 s of PCM: a producer keeps sending while this loop is in a slow CoreAudio call
-  setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);
+  int rcvbuf = 256 * 1024;
+  setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);  // in case the listener's did not carry over
+  int eff = 0; socklen_t el = sizeof eff;
+  getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &eff, &el);
   Client c;
   c.fd = fd;
   c.id = nextId++;
   c.ring.resize(kRingFrames * 2);
+  int id = c.id;
   clients[fd] = std::move(c);
-  IOS3_TRACE("client #%d connected (fd %d)", c.id, fd);
+  IOS3_TRACE("client #%d connected (fd %d, SO_RCVBUF %d)", id, fd, eff);
 }
 
 void Server::dropClient(int fd, const char* why) {
@@ -118,8 +126,9 @@ void Server::handle(Client& c, const Message& m) {
     if (!parseHello(m, h, why)) { dropClient(c.fd, ("bad HELLO: " + why).c_str()); return; }
     c.hello = true;
     c.name = helloName(h);
-    arbiter.addSource(c.id, c.name, h.priority, now);
-    IOS3_TRACE("client #%d is source '%s' (priority %u)", c.id, c.name.c_str(), h.priority);
+    bool back = arbiter.addSource(c.id, c.name, h.priority, now);
+    IOS3_TRACE("client #%d is source '%s' (priority %u)%s", c.id, c.name.c_str(), h.priority, back ? ", reconnected: same stream" : "");
+    afterTick();  // a reconnecting active source is active again right away
     return;
   }
   switch (m.type) {

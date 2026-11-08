@@ -82,15 +82,19 @@ bool SocketSink::ensureConnected() {
   fd = s;
   backoffMs = 200;
   reconnectCount++;
-  fprintf(stdout, "SocketSink[%s]: connected to %s (connection #%lu, lead %u ms)\n", name.c_str(), sockPath.c_str(), reconnectCount, leadMsCap);
+  int eff = 0; socklen_t el = sizeof eff;
+  getsockopt(s, SOL_SOCKET, SO_SNDBUF, &eff, &el);
+  fprintf(stdout, "SocketSink[%s]: connected to %s (connection #%lu, lead %u ms, SO_SNDBUF %d)\n", name.c_str(), sockPath.c_str(), reconnectCount,
+          leadMsCap, eff);
   fflush(stdout);
   if (volume < 0.999f && !sendVolume()) return false;  // audiod starts every source at 1.0
   return true;
 }
 
 void SocketSink::disconnect(const char* why) {
+  int err = errno;  // before close()/printf can change it
   if (fd >= 0) {
-    fprintf(stdout, "SocketSink[%s]: disconnected (%s: %s), will reconnect\n", name.c_str(), why, strerror(errno));
+    fprintf(stdout, "SocketSink[%s]: disconnected (%s: %s), will reconnect\n", name.c_str(), why, strerror(err));
     fflush(stdout);
     close(fd);
     fd = -1;
@@ -111,6 +115,7 @@ void SocketSink::pace(size_t framesAboutToSend) {
 }
 
 double SocketSink::bufferedSeconds() {
+  std::lock_guard<std::mutex> lk(m);
   long l = leadMs(nowMs());
   return l > 0 ? l / 1000.0 : 0.0;
 }

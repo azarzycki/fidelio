@@ -13,9 +13,16 @@
 //                  on the first audio after STOP or FLUSH, and after a gap in bytes >= releaseMs; a
 //                  quiet passage or a short network hiccup does not make a background source "newer",
 //                  so it cannot steal the speaker without a user action.
-//   release        "quiet": no bytes at all for releaseMs (or STOP / disconnect) -> released, output
-//                  flushed. "silent": bytes still arriving but nothing loud for quietReleaseMs ->
-//                  released WITHOUT a flush (the buffered audio plays out; a fade is not a pause).
+//   release        "quiet": no bytes at all for releaseMs (or STOP) -> released, output flushed.
+//                  "silent": bytes still arriving but nothing loud for quietReleaseMs -> released
+//                  WITHOUT a flush (the buffered audio plays out; a fade is not a pause).
+//   resume         a loud frame after >= quietReleaseMs of silence is a new stream (the user pressed
+//                  play on a sender that kept streaming zeros): it may take the speaker back.
+//   reconnect      a disconnected source is kept as a ghost for ghostMs: a new connection with the
+//                  same name inherits its stream recency and, if it was still active, the active
+//                  slot (no release, no takeover window): a producer that reconnects after a
+//                  send timeout is the same stream, not a newer one. A ghost that never comes back
+//                  is released by the quiet rule and forgotten.
 //   idle stop      no active source for >= idleStopMs -> the output is stopped (route released).
 #include <stdint.h>
 
@@ -32,6 +39,7 @@ struct Tunables {
   uint64_t releaseMs = 1500;       // no bytes at all for this long: the source is gone (covers raop's post-FLUSH re-prime)
   uint64_t quietReleaseMs = 8000;  // bytes arriving but nothing loud for this long: a paused sender streaming silence
   uint64_t idleStopMs = 5000;
+  uint64_t ghostMs = 10000;        // a disconnected source's identity survives this long for a same-name reconnect
   int silenceThreshold = 24;       // peak |sample| a frame must exceed to count as sound (0 = any frame); dither floor
 };
 
@@ -42,6 +50,8 @@ struct Source {
   bool haveLoud = false;           // a loud frame has been seen since the last STOP
   bool haveAudio = false;          // any AUDIO since connect / STOP
   bool newStream = true;           // the next AUDIO starts a new stream (connect, STOP, FLUSH)
+  bool connected = true;           // false: a ghost (disconnected, kept for a same-name reconnect)
+  uint64_t droppedAtMs = 0;
   uint64_t lastAudioMs = 0;        // last AUDIO received (any content)
   uint64_t lastLoudMs = 0;         // last AUDIO whose peak exceeded silenceThreshold
   uint64_t loudRunSinceMs = 0;     // start of the current loud run (reset after > producingGapMs without sound): takeover debounce
@@ -58,10 +68,14 @@ struct Event {
 
 class Arbiter {
  public:
-  explicit Arbiter(const Tunables& t) : tun(t) {}
+  explicit Arbiter(const Tunables& t) : tun(t) {
+    // A quiet-released source that still counts as producing would re-take the output in the same tick.
+    if (tun.producingGapMs > tun.releaseMs) tun.producingGapMs = tun.releaseMs;
+  }
 
-  void addSource(int id, const std::string& name, uint8_t priority, uint64_t now);
-  void removeSource(int id, uint64_t now);        // disconnect: releases it if active
+  // Returns true if the source reconnected (inherited a ghost's recency; if the ghost was active, it is active again).
+  bool addSource(int id, const std::string& name, uint8_t priority, uint64_t now);
+  void removeSource(int id, uint64_t now);        // disconnect: the source becomes a ghost (released by the quiet rule if active)
   void onAudio(int id, size_t bytes, uint64_t now, bool loud);  // AUDIO frame received; loud = peak > threshold
   void onFlush(int id);                            // FLUSH message: the next audio is a new stream (seek / track change)
   void onStop(int id, uint64_t now);               // STOP message
@@ -81,7 +95,7 @@ class Arbiter {
   void setActive(int id, uint64_t now, const std::string& reason);
   void release(uint64_t now, const std::string& reason);
 
-  Tunables tun;
+  Tunables tun;  // validated in the constructor: producingGapMs <= releaseMs
   std::map<int, Source> sources;
   int active = -1;
   uint64_t activeSinceMs = 0;
