@@ -31,6 +31,7 @@ struct ServerOptions {
   double sinkTargetSec = 0.45;  // pump the active source into the output while it holds less than this (< SocketSink lead - staging - kernel buffers)
   unsigned leadMs = 750;       // the producers' SocketSink lead: what a takeover starts with (ring trim)
   bool backpressure = true;    // read the active source only as fast as the output consumes (B1.5)
+  unsigned crossfadeMs = 30;   // source switch / release: ramp the tail about to play and the new source's start (0 = hard flush)
 };
 
 class Server {
@@ -66,6 +67,7 @@ class Server {
   void pump();  // active source's ring -> output, while the output has room
   void ringAppend(Client& c, const int16_t* frames, size_t n);
   Client* clientById(int id);
+  size_t fadeFrames() const;
   void writeActiveSourceFile(const std::string& name);
   void logEvent(const Event& e);
 

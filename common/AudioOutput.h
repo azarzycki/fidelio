@@ -28,6 +28,10 @@ class AudioOutput {
   // The output is actually consuming audio right now (not paused by an interruption / yield). audiod
   // applies backpressure to the active producer only while this is true.
   virtual bool consuming() { return true; }
+  // Source switch (B1.6): ramp the audio about to play to zero over fadeFrames, drop the rest, and
+  // ramp the next fadeFrames written from zero, mixed over that tail. Outputs without a ring
+  // (FileOutput) just flush. 0 = flush.
+  virtual void crossfade(size_t fadeFrames) { (void)fadeFrames; flush(); }
 };
 
 #include <stdio.h>

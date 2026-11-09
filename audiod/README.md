@@ -198,3 +198,18 @@ steal and a 2 s gap that may.
   amplifier confirmed in code (timeline resets after a gap, FLUSH or reconnect burst a full lead).
   Steady-state wall-vs-hardware drift is parts per million and was not reproduced as a cause; the
   device residual has to be measured with `--no-backpressure` vs default.
+
+## B1.6 (click-free source switch)
+
+- The sink's ring is now `common/PcmRing.h`, shared by the AudioQueue sink and the host paced
+  model. `crossfade(frames)` ramps the next `frames` about to play to zero in place, drops the rest
+  of the old source's lead, and ramps the next `frames` fed from zero, mixing them over that tail
+  (frames the playhead already passed are dropped). audiod calls it instead of the hard flush on a
+  TAKEOVER and on a quiet/stop/disconnect RELEASE (`--crossfade-ms`, default 30; 0 = the old hard
+  flush). The buffers the queue already owns (<= 138 ms) play out unchanged first, so there is no
+  `AudioQueueReset` step either. After an interruption resume / restart the ring is still dropped,
+  but the first 20 ms fed are ramped in.
+- `hosttest/test_crossfade.py`: A (220 Hz) is taken over by B (330 Hz), later released; with the
+  crossfade the largest sample-to-sample step anywhere in the played output is the sines' own slope
+  (470), with the hard flush it is a click (2538 in the run recorded); B plays cleanly after the
+  window and the release fades to silence.

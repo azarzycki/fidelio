@@ -33,7 +33,6 @@ AudioQueueSink::AudioQueueSink() : opts() { init(); }
 AudioQueueSink::AudioQueueSink(const Options& options) : opts(options) { init(); }
 
 void AudioQueueSink::init() {
-  ring.resize(kRingBytes);
   pthread_mutex_init(&lifecycleMutex, nullptr);
   pthread_mutex_init(&mutex, nullptr);
   pthread_cond_init(&spaceAvailable, nullptr);
@@ -471,8 +470,7 @@ void AudioQueueSink::stop() {
 void AudioQueueSink::flush() {
   pthread_mutex_lock(&lifecycleMutex);
   pthread_mutex_lock(&mutex);
-  ringHead = 0;
-  ringFill = 0;
+  ring.clear();
   priming = true;
   pthread_cond_broadcast(&spaceAvailable);
   pthread_mutex_unlock(&mutex);
@@ -480,9 +478,17 @@ void AudioQueueSink::flush() {
   pthread_mutex_unlock(&lifecycleMutex);
 }
 
+void AudioQueueSink::crossfade(size_t fadeFrames) {
+  if (fadeFrames == 0) { flush(); return; }
+  pthread_mutex_lock(&mutex);
+  ring.crossfade(fadeFrames);  // the tail plays out faded; no AudioQueueReset, so no step
+  pthread_cond_broadcast(&spaceAvailable);
+  pthread_mutex_unlock(&mutex);
+}
+
 double AudioQueueSink::bufferedSeconds() {
   pthread_mutex_lock(&mutex);
-  size_t fill = ringFill;
+  size_t fill = ring.fill();
   pthread_mutex_unlock(&mutex);
   size_t bytes = fill;
   pthread_mutex_lock(&queueMutex);
@@ -516,8 +522,8 @@ bool AudioQueueSink::otherAudioIsPlaying() {
 // it so playback resumes with current audio instead of a stale half second.
 void AudioQueueSink::resumeFromInterruption(const char* why) {
   pthread_mutex_lock(&mutex);
-  ringHead = 0;
-  ringFill = 0;
+  ring.clear();
+  ring.fadeInNext(kResumeFadeFrames);  // the re-prime after a restart must not click either
   priming = true;
   pthread_cond_broadcast(&spaceAvailable);
   pthread_mutex_unlock(&mutex);
@@ -555,13 +561,13 @@ void AudioQueueSink::feedPCMFrames(const uint8_t* data, size_t bytes) {
 
   pthread_mutex_lock(&mutex);
   while (bytes > 0) {
-    while (ringFill == kRingBytes) {
+    while (ring.space() == 0) {
       struct timeval tv;
       gettimeofday(&tv, nullptr);
       struct timespec ts = { tv.tv_sec + kStallMs / 1000, tv.tv_usec * 1000 + (kStallMs % 1000) * 1000000L };
       if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
       int rc = pthread_cond_timedwait(&spaceAvailable, &mutex, &ts);
-      if (rc == ETIMEDOUT && ringFill == kRingBytes) {
+      if (rc == ETIMEDOUT && ring.space() == 0) {
         // Direct mode only (audiod never fills the ring: its pump stops at 0.5 s and tick() runs
         // the completion watchdog). The queue stopped completing buffers: never block the player
         // thread forever; drop this chunk and re-acquire the output once per stall.
@@ -577,14 +583,8 @@ void AudioQueueSink::feedPCMFrames(const uint8_t* data, size_t bytes) {
         return;
       }
     }
-    size_t space = kRingBytes - ringFill;
-    size_t n = bytes < space ? bytes : space;
-    size_t tail = (ringHead + ringFill) % kRingBytes;
-    size_t first = kRingBytes - tail;
-    if (first > n) first = n;
-    memcpy(&ring[tail], data, first);
-    if (n > first) memcpy(&ring[0], data + first, n - first);
-    ringFill += n;
+    size_t n = ring.feed(data, bytes);  // applies a pending fade-in / crossfade mix
+    if (n == 0) { bytes -= bytes % 4; if (bytes == 0) break; continue; }
     data += n;
     bytes -= n;
   }
@@ -642,15 +642,8 @@ void AudioQueueSink::fillBuffer(AudioQueueRef q, int index) {
   size_t want = buffer->mAudioDataBytesCapacity;
 
   pthread_mutex_lock(&mutex);
-  if (priming && ringFill >= kPrimeBytes) priming = false;
-  size_t take = priming ? 0 : (ringFill < want ? ringFill : want);
-  take -= take % format.mBytesPerFrame;  // keep whole frames
-  size_t first = kRingBytes - ringHead;
-  if (first > take) first = take;
-  memcpy(out, &ring[ringHead], first);
-  if (take > first) memcpy(out + first, &ring[0], take - first);
-  ringHead = (ringHead + take) % kRingBytes;
-  ringFill -= take;
+  if (priming && ring.fill() >= kPrimeBytes) priming = false;
+  size_t take = priming ? 0 : ring.take(out, want);
   // Underrun: pad with silence so the queue never starves and stops, then keep padding until the
   // ring holds kPrimeBytes again. A producer that only keeps up with real time (audiod fed over
   // the socket) would otherwise get a hole in every other 46 ms buffer instead of one short gap.

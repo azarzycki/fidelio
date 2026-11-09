@@ -79,7 +79,7 @@ bool Server::listen() {
              (unsigned long long)arbiter.tunables().holdMs, (unsigned long long)arbiter.tunables().releaseMs,
              (unsigned long long)arbiter.tunables().quietReleaseMs, (unsigned long long)arbiter.tunables().idleStopMs,
              arbiter.tunables().silenceThreshold, opts.leadMs);
-  IOS3_TRACE("backpressure on the active source: %s", opts.backpressure ? "on" : "off (b14 behaviour)");
+  IOS3_TRACE("backpressure on the active source: %s; crossfade %u ms", opts.backpressure ? "on" : "off (b14 behaviour)", opts.crossfadeMs);
   writeActiveSourceFile("none");
   return true;
 }
@@ -208,7 +208,7 @@ void Server::afterTick() {
   for (const Event& e : arbiter.drainEvents()) {
     logEvent(e);
     if (e.kind == Event::TAKEOVER) {
-      out->flush();
+      out->crossfade(fadeFrames());  // the old source's tail ramps out under the new one's ramp-in; its lead is dropped
       lastSilenceMs = 0;
       // Start with the new source's lead (the latest leadFrames it sent); anything older is stale.
       if (Client* c = clientById(arbiter.activeId())) {
@@ -220,7 +220,7 @@ void Server::afterTick() {
     if (e.kind == Event::RELEASE) {
       // "quiet" (bytes stopped) / stop / disconnect: drop what is left. "silent" (digital silence
       // still arriving): let the buffered tail play out; a fade or a pause between tracks is not a cut.
-      if (e.reason.compare(0, 6, "silent") != 0) out->flush();
+      if (e.reason.compare(0, 6, "silent") != 0) out->crossfade(fadeFrames());  // a fade-out, not a cut
       lastSilenceMs = e.atMs;
     }
     if (e.kind == Event::IDLE_STOP) { out->flush(); out->idle(); }
@@ -229,6 +229,8 @@ void Server::afterTick() {
   writeActiveSourceFile(a.empty() ? "none" : a);
   pump();
 }
+
+size_t Server::fadeFrames() const { return (size_t)opts.crossfadeMs * 44100 / 1000; }
 
 Server::Client* Server::clientById(int id) {
   for (auto& kv : clients) if (kv.second.id == id) return &kv.second;

@@ -1,54 +1,54 @@
 #pragma once
-// Host-test model of the AudioQueue: a FileOutput that "consumes" what it was given at
-// 44100 * (1 + skew) frames per wall second, in 46 ms bursts like the queue's buffers, and reports
-// the unconsumed remainder in bufferedSeconds(). Lets the arbiter's pump and backpressure be driven
-// on the host exactly as the hardware would drive them, with a chosen clock drift.
+// Host-test model of the AudioQueue: holds the audio it is given in a PcmRing (0.74 s, like the
+// sink's), "consumes" it at 44100 * (1 + skew) frames per wall second in 46 ms bursts like the
+// queue's buffers, writing what it consumed to the file (silence when starved, like the queue's
+// padding), and reports the unconsumed remainder in bufferedSeconds(). crossfade() is the same
+// PcmRing operation the real sink performs, so a host test sees the real transition.
 #include <stdint.h>
 #include <time.h>
 
+#include <vector>
+
 #include "AudioOutput.h"
+#include "PcmRing.h"
 #include "ios3_trace.h"
 
 class PacedFileOutput : public FileOutput {
  public:
   PacedFileOutput(const char* path, double skewPpm) : FileOutput(path), rate(44100.0 * (1.0 + skewPpm / 1e6)) {}
-  ~PacedFileOutput() override { IOS3_TRACE("paced output: %lu starved bursts (46 ms each) of %lu consumed", starved, bursts); }
+  ~PacedFileOutput() override { advance(); IOS3_TRACE("paced output: %lu starved bursts (46 ms each) of %lu consumed", starved, bursts); }
   void write(const int16_t* frames, size_t n) override {
     advance();
-    FileOutput::write(frames, n);
-    written += (double)n;
+    ring.feed(reinterpret_cast<const uint8_t*>(frames), n * 4);  // the pump never exceeds the cap; anything beyond is dropped
     lastWrite = last;
   }
-  void flush() override { FileOutput::flush(); advance(); consumed = written; lastWrite = 0; }  // the stream ended / was cut: what follows is not starvation
-  double bufferedSeconds() override {
-    advance();
-    double pending = written - consumedQuantized();
-    return pending > 0 ? pending / 44100.0 : 0.0;
-  }
-  double skewRate() const { return rate; }
+  void flush() override { advance(); ring.clear(); lastWrite = 0; }
+  void crossfade(size_t fadeFrames) override { advance(); ring.crossfade(fadeFrames); }
+  double bufferedSeconds() override { advance(); return ring.fill() / 4 / 44100.0; }
 
  private:
   static double nowS() { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
+  // Consume whole 46 ms bursts that are due since the last call; write them to the file.
   void advance() {
     double now = nowS();
     if (last == 0) { last = now; return; }
-    consumed += (now - last) * rate;
+    due += (now - last) * rate;
     last = now;
-    if (consumed > written) {
-      // The real queue would pad silence here. Count it only while the stream is alive (a write in
-      // the last second): the tail after a source stops is not starvation.
-      if (now - lastWrite < 1.0) deficit += consumed - written;
-      consumed = written;
+    const size_t burst = 2029;
+    std::vector<uint8_t> buf(burst * 4);
+    while (due >= burst) {
+      due -= burst;
+      size_t got = ring.take(buf.data(), burst * 4);
+      if (got < burst * 4) {
+        memset(buf.data() + got, 0, burst * 4 - got);  // the queue pads silence
+        if (now - lastWrite < 1.0 && lastWrite != 0) starved++;
+      }
+      FileOutput::write(reinterpret_cast<const int16_t*>(buf.data()), burst);
+      bursts++;
     }
-    bursts = (unsigned long)(consumed / 2029.0);
-    starved = (unsigned long)(deficit / 2029.0);
-  }
-  double consumedQuantized() const {  // the queue hands back whole 46 ms buffers
-    const double q = 2029.0;
-    double full = (double)(long long)(consumed / q) * q;
-    return full > written ? written : full;
   }
   double rate;
-  double written = 0, consumed = 0, last = 0, lastWrite = 0, deficit = 0;
+  double due = 0, last = 0, lastWrite = 0;
+  PcmRing ring{128 * 1024};
   unsigned long starved = 0, bursts = 0;
 };

@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "AudioSink.h"
+#include "PcmRing.h"
 
 class AudioQueueSink : public AudioSink {
  public:
@@ -77,6 +78,10 @@ class AudioQueueSink : public AudioSink {
   bool takeResumed();
   // The queue is running and not interrupted: audio fed now will be heard.
   bool isConsuming();
+  // Source switch without a click (B1.6): ramp the next fadeFrames about to play to zero, drop the
+  // rest of what is queued in the ring, and ramp the next fadeFrames fed from zero, mixed over that
+  // tail. 0 = hard flush. The buffers the queue already owns (<= 138 ms) play out unchanged first.
+  void crossfade(size_t fadeFrames);
 
   static const long kInterruptGraceMs = 1000;    // an interruption with no end callback is forgotten after this
   static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails
@@ -91,6 +96,7 @@ class AudioQueueSink : public AudioSink {
   static const size_t kRingBytes = 128 * 1024;   // ~0.74 s
   static const size_t kPrimeBytes = 35280;       // 200 ms: after an underrun, pad silence until this much is back
   static const long kStallMs = 2000;             // direct mode: ring full and nothing completes for this long
+  static const size_t kResumeFadeFrames = 882;   // 20 ms fade-in after a resume / restart
 
   void init();
   static uint64_t nowMs();  // monotonic (mach_absolute_time on the device)
@@ -154,9 +160,7 @@ class AudioQueueSink : public AudioSink {
   bool yieldLogged = false;        // "yielding" traced once per yield
 
   // --- ring, under `mutex`
-  std::vector<uint8_t> ring;
-  size_t ringHead = 0;  // read position
-  size_t ringFill = 0;  // bytes available
+  PcmRing ring{kRingBytes};
   bool priming = true;  // play silence until the ring holds kPrimeBytes (start, flush, underrun)
   bool stalled = false; // a feed timed out; cleared by the next completion
   pthread_mutex_t mutex;

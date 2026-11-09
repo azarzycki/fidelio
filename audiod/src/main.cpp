@@ -59,6 +59,8 @@ int main(int argc, char** argv) {
              "  --pcm-out-paced PPM      with --pcm-out: consume at 44100*(1+PPM/1e6) frames/s in 46 ms bursts like the\n"
              "                           AudioQueue, so the pump and the backpressure run as on the device (host test)\n"
              "  --no-backpressure        read the active source as fast as it sends (the b14 behaviour; comparison)\n"
+             "  --crossfade-ms MS        (default 30) at a source switch / release, ramp the tail about to play to zero\n"
+             "                           and the new source's start from zero instead of a hard cut (0 = hard flush)\n"
              "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
              "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
              "  --status-dir DIR         write DIR/active-source (default /var/mobile/fidelio); --no-status disables\n"
@@ -83,6 +85,7 @@ int main(int argc, char** argv) {
     else if (a == "--no-audio") noAudio = true;
     else if (a == "--pcm-out-paced") { paced = true; pacedPpm = atof(next(a.c_str())); }
     else if (a == "--no-backpressure") so.backpressure = false;
+    else if (a == "--crossfade-ms") so.crossfadeMs = (unsigned)atoi(next(a.c_str()));
     else if (a == "--status-dir") so.statusDir = next("--status-dir");
     else if (a == "--no-status") so.statusDir.clear();
     else if (a == "--event-log") so.eventLog = next("--event-log");

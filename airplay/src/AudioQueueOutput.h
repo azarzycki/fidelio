@@ -24,6 +24,7 @@ class AudioQueueOutput : public AudioOutput {
   void tick() override { sink->tick(); }  // recovery watchdog (interruption with no end, missing queue)
   bool resumed() override { return sink->takeResumed(); }
   bool consuming() override { return sink->isConsuming(); }
+  void crossfade(size_t fadeFrames) override { sink->crossfade(fadeFrames); }
   AudioQueueSink* queueSink() { return sink.get(); }
 
  private:
