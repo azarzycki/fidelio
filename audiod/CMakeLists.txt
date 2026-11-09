@@ -12,14 +12,16 @@ add_library(audiod_common STATIC ${REPO}/common/AudiodFraming.cpp ${REPO}/common
 target_include_directories(audiod_common PUBLIC ${INC})
 target_compile_options(audiod_common PRIVATE -O2 -Wall)
 
-add_executable(fidelio-audiod src/main.cpp src/Server.cpp src/Arbiter.cpp)
+add_executable(fidelio-audiod src/main.cpp src/Server.cpp src/Arbiter.cpp src/HardwareVolume.cpp)
 target_include_directories(fidelio-audiod PRIVATE ${INC})
 target_compile_options(fidelio-audiod PRIVATE -O2 -Wall)
 target_link_libraries(fidelio-audiod PRIVATE audiod_common)
 if(APPLE)
   # The hardware output: the route-following AudioQueue sink shared with the producers' --direct-audio.
-  target_sources(fidelio-audiod PRIVATE ${REPO}/airplay/src/AudioQueueSink.cpp)
-  target_link_libraries(fidelio-audiod PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")
+  target_sources(fidelio-audiod PRIVATE ${REPO}/airplay/src/AudioQueueSink.cpp src/HardwareVolumeApple.cpp src/DisplayWakeApple.cpp)
+  # B1.9: the private Celestial / SpringBoardServices / GraphicsServices frameworks are dlopen'ed at
+  # runtime (never linked); only the public ObjC runtime is linked for objc_msgSend.
+  target_link_libraries(fidelio-audiod PRIVATE "-framework AudioToolbox" "-framework CoreFoundation" objc)
 else()
   target_link_libraries(fidelio-audiod PRIVATE pthread)
 endif()

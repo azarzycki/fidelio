@@ -19,6 +19,8 @@
 #include "Arbiter.h"
 #include "AudioOutput.h"
 #include "AudiodFraming.h"
+#include "DisplayWake.h"
+#include "HardwareVolume.h"
 
 namespace audiod {
 
@@ -32,11 +34,19 @@ struct ServerOptions {
   unsigned leadMs = 750;       // the producers' SocketSink lead: what a takeover starts with (ring trim)
   bool backpressure = true;    // read the active source only as fast as the output consumes (B1.5)
   unsigned crossfadeMs = 30;   // source switch / release: ramp the tail about to play and the new source's start (0 = hard flush)
+  // B1.9 A: a slider-driven source (Spotify) sets the device's real output volume instead of a software gain
+  bool absoluteVolume = true;  // --spotify-volume absolute|software (falls back to software when the hardware API is unavailable)
+  int maxVolumePct = 100;      // --max-volume: ceiling for what absolute mode will ever set the hardware to
+  int hwCurve = 0;             // --hw-volume-curve: 0 linear (default: the hardware has its own taper), 1 log (60 dB), 2 cubic
+  // B1.9 B: wake the display and foreground the NowPlaying app when playback starts from nothing
+  bool wakeOnPlay = true;      // --wake-on-play on|off
+  std::string wakeBundle = "com.fidelio.nowplaying";
+  unsigned wakeMinIntervalMs = 5000;  // debounce: at most one wake per this interval
 };
 
 class Server {
  public:
-  Server(const ServerOptions& o, const Tunables& t, AudioOutput* out);
+  Server(const ServerOptions& o, const Tunables& t, AudioOutput* out, HardwareVolume* hw = nullptr, DisplayWaker* waker = nullptr);
   ~Server();
   bool listen();
   void run();  // until requestStop()
@@ -54,6 +64,10 @@ class Server {
     size_t ringHead = 0, ringFrames = 0;
     unsigned long overflowFrames = 0;
     float volume = 1.0f;        // from VOLUME; applied to the output while this source is active
+    uint8_t version = 1;        // HELLO protocol version (2 = reads WELCOME / HWVOLUME)
+    bool sliderDriven = false;  // sent a VOLUME with AUDIOD_VOL_SLIDER: in absolute mode its gain is unity and the slider drives the hardware
+    uint16_t slider = 0;
+    bool sendFailedLogged = false;
   };
   static const size_t kRingFrames = 88200;  // 2 s: an inactive source's lead (up to SocketSink's cap) plus slack
   static const size_t kStagingFrames = 1764;  // 40 ms: with backpressure the active source's ring is only a staging area
@@ -70,10 +84,27 @@ class Server {
   size_t fadeFrames() const;
   void writeActiveSourceFile(const std::string& name);
   void logEvent(const Event& e);
+  // B1.9 A
+  bool absoluteActive() const { return opts.absoluteVolume && hw && hwAvailable; }
+  float sliderToLevel(uint16_t slider) const;   // raw slider -> hardware level through opts.hwCurve
+  uint16_t levelToSlider(float level) const;    // inverse, for reporting
+  void applySlider(Client& c, uint16_t slider); // a user slider move: clamp, set the hardware, log, report a clamp
+  void pollHardwareVolume(uint64_t now);        // buttons / other changes -> HWVOLUME to v2 clients
+  void sendToClient(Client& c, uint32_t type, const void* payload, size_t len);  // non-blocking; a full buffer drops the message
+  void sendWelcome(Client& c);
+  void broadcastHwVolume();
+  // B1.9 B
+  void maybeWake(const Event& e);
 
   ServerOptions opts;
   Arbiter arbiter;
   AudioOutput* out;
+  HardwareVolume* hw;
+  DisplayWaker* waker;
+  bool hwAvailable = false;
+  float hwLevel = -1;            // last level we know (-1 = unknown)
+  uint64_t lastHwPollMs = 0;
+  uint64_t lastWakeMs = 0;
   int listenFd = -1;
   int nextId = 1;
   std::map<int, Client> clients;  // by fd

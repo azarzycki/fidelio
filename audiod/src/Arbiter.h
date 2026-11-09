@@ -60,7 +60,7 @@ struct Source {
 };
 
 struct Event {
-  enum Kind { TAKEOVER, RELEASE, IDLE_STOP, OUTPUT_START } kind;
+  enum Kind { TAKEOVER, RELEASE, IDLE_STOP, OUTPUT_START, WAKE, HWVOLUME } kind;  // WAKE / HWVOLUME are logged by the Server (B1.9)
   uint64_t atMs;
   std::string from, to;   // source names ("" = none)
   std::string reason;

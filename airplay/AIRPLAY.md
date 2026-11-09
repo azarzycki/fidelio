@@ -78,6 +78,9 @@ AudioSession path, retried forever if AudioSessionInitialize fails (at cold boot
 before the audio session server: `'ini?'`) with a bare AudioQueue playing meanwhile and an in-place
 upgrade on success; `on` waits for the session; `off` is a bare queue with zero AudioSession calls
 (diagnosis only).
+B1.9: raop still speaks protocol v1 and its volume path is unchanged (dB -> software gain, -144 dB ->
+unity); with audiod's absolute Spotify volume, AirPlay plays at unity under whatever hardware level the
+Spotify slider or the phone buttons left.
 
 ### Sender volume (B1.4)
 `--airplay-volume auto|honor|ignore` (default auto): -30..0 dB from the sender is applied as gain

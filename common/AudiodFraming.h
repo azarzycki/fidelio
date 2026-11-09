@@ -38,8 +38,11 @@ class FrameParser {
 bool writeFrame(int fd, uint32_t type, const void* payload, size_t len);
 
 // HELLO helpers.
-AudiodHello makeHello(const std::string& name, uint8_t priority = 0);
-bool parseHello(const Message& m, AudiodHello& out, std::string& why);  // validates size/version/format
+AudiodHello makeHello(const std::string& name, uint8_t priority = 0, uint8_t version = AUDIOD_PROTO_VERSION);
+bool parseHello(const Message& m, AudiodHello& out, std::string& why);  // validates size/version (1 or 2)/format
+// VOLUME in either form: 4 bytes (gain only) or 8 bytes (gain + raw slider + flags). Clamps the gain
+// to 0..1 (NaN -> 0); slider/flags are 0 for the 4-byte form. False on a bad size.
+bool parseVolume(const Message& m, float& linear, uint16_t& slider, uint16_t& flags);
 std::string helloName(const AudiodHello& h);                            // nul-terminated copy of name[]
 
 }  // namespace audiod

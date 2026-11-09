@@ -20,7 +20,7 @@
    audiod's output must grow by ~2 s of tone (frame count and zero crossings), and the event log
    must show spotify taking over and being released by STOP.
 """
-import os, struct, subprocess, sys, time
+import os, struct, subprocess, sys, threading, time
 
 AUDIOD, RAOP = sys.argv[1], sys.argv[2]
 CSPOT = sys.argv[3] if len(sys.argv) > 3 else None
@@ -157,6 +157,52 @@ else:
     print("skip cspot-ios3 (no host binary given)")
 
 audiod.terminate(); audiod.wait()
+# ---------------------------------------------------------------- 3. B1.9: absolute Spotify volume
+# The first audiod ran with the default --spotify-volume absolute but no hardware backend on the host
+# (AUDIOD_MOCK_HW_VOLUME unset): it must have fallen back to the software gain, which is what the
+# B1.7 peak checks above exercised.
+alog = open(f"{TMP}/audiod.log").read()
+check("falling back to software gain" in alog, "audiod: absolute requested, hardware unavailable -> logged fallback to software gain (B1.7 peaks above prove it)")
+if CSPOT:
+    SOCK2, OUT2, EVT2, CHG = f"{TMP}/audiod2.sock", f"{TMP}/out2.pcm", f"{TMP}/events2.log", f"{TMP}/hwchange.txt"
+    for f in (SOCK2, OUT2, EVT2, CHG):
+        if os.path.exists(f): os.unlink(f)
+    env = dict(os.environ, AUDIOD_MOCK_HW_VOLUME="0.30", AUDIOD_MOCK_HW_CHANGE_FILE=CHG)
+    audiod2 = subprocess.Popen([AUDIOD, "--sock", SOCK2, "--pcm-out", OUT2, "--event-log", EVT2, "--no-status", "--no-silence",
+                                "--spotify-volume", "absolute", "--max-volume", "40", "--wake-on-play", "on"],
+                               stdout=open(f"{TMP}/audiod2.log", "w"), stderr=subprocess.STDOUT, env=env)
+    for _ in range(50):
+        if os.path.exists(SOCK2): break
+        time.sleep(0.05)
+    # cspot: 2 s tone, the "user" moves the Connect slider to 80 % at 0.8 s (clamped to the 40 % ceiling);
+    # meanwhile the "phone buttons" set the hardware to 0.60 at ~0.4 s (the change file)
+    def buttons():
+        time.sleep(0.4); open(CHG, "w").write("0.60\n")
+    threading.Thread(target=buttons, daemon=True).start()
+    cs = subprocess.run([CSPOT, "--sink-test", "2", "--sink-test-volume", "80", "--audiod-sock", SOCK2, "--no-status", "--initial-volume", "50"],
+                        capture_output=True, text=True, env=env)
+    clog = cs.stdout + cs.stderr
+    open(f"{TMP}/cspot-abs.log", "w").write(clog)
+    time.sleep(1.5)
+    audiod2.terminate(); audiod2.wait()
+    out2 = open(OUT2, "rb").read()
+    left2 = struct.unpack("<%dh" % (len(out2) // 2), out2)[0::2] if out2 else [0]
+    check(cs.returncode == 0 and "audiod drives the HARDWARE volume (absolute): level 30 %" in clog,
+          "cspot learned from WELCOME that the slider drives the hardware, level 30 % (--initial-volume 50 ignored, nothing set at startup)")
+    check(max(left2) > 7900, f"absolute mode: Spotify plays at UNITY gain under the hardware level: tone peak {max(left2)} (software mode gave 252)")
+    ev2 = [l.split() for l in open(EVT2)]
+    hw = [e for e in ev2 if e[1] == "hwvolume"]
+    sets = [e for e in hw if e[2] == "spotify"]
+    ext = [e for e in hw if e[2] == "external"]
+    check(len(sets) == 1 and sets[0][3] == "0.400" and "slider 52428" in " ".join(sets[0]) and "clamped" in " ".join(sets[0]),
+          f"slider 80 % -> hardware set to the --max-volume 40 ceiling, logged as clamped ({[' '.join(e) for e in sets]})")
+    check(len(ext) == 1 and ext[0][3] == "0.600", f"the 'phone buttons' change (0.30 -> 0.60) was picked up and reported ({[' '.join(e) for e in ext]})")
+    check("audiod reports hardware volume absolute: 60 %" in clog and "audiod reports hardware volume absolute: 40 %" in clog,
+          "cspot received both HWVOLUME reports (buttons -> 60 %, clamp -> 40 %) to forward to the controller")
+    wk = [e for e in ev2 if e[1] == "wake"]
+    check(len(wk) == 1 and wk[0][3] == "spotify" and wk[0][4] == "wake+launch", f"wake-on-play fired once for the none -> spotify start ({[' '.join(e) for e in wk]})")
+    check("set 0.300" not in " ".join(" ".join(e) for e in hw) and "set 0.500" not in " ".join(" ".join(e) for e in hw),
+          "nothing was set at startup (no set to the initial 30 % or to --initial-volume 50 %)")
 print("\nevents:")
 for e in events(): print(f"  {e[0]:6d} {e[1]:12s} {e[2]:>8s} -> {e[3]:<8s} {e[4]}")
 print("\n" + (f"{len(fails)} FAILURES" if fails else "all producer checks passed"))

@@ -60,6 +60,15 @@ int main(int argc, char** argv) {
              "                           AudioQueue, so the pump and the backpressure run as on the device (host test)\n"
              "  --no-backpressure        read the active source as fast as it sends (the b14 behaviour; comparison)\n"
              "  --crossfade-ms MS        (default 30) at a source switch / release, ramp the tail about to play to zero\n"
+             "  --spotify-volume absolute|software  (default absolute) absolute: the Spotify Connect slider sets the DEVICE\n"
+             "                           output volume (the dock level) and Spotify plays at unity gain; the true level is\n"
+             "                           reported back to the controller (startup, phone buttons). software: the B1.7 gain\n"
+             "                           under the hardware level. Falls back to software if the private API is unavailable\n"
+             "  --max-volume PCT         (default 100) ceiling for what absolute mode will ever set the hardware to\n"
+             "  --hw-volume-curve linear|log|cubic  (default linear) slider -> hardware level map in absolute mode\n"
+             "  --wake-on-play on|off    (default on) when playback starts from nothing, wake the screen and bring the\n"
+             "                           NowPlaying app to the front (SpringBoardServices, dlopen'ed; no-op if unavailable)\n"
+             "  --wake-bundle ID         (default com.fidelio.nowplaying)\n"
              "                           and the new source's start from zero instead of a hard cut (0 = hard flush)\n"
              "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
              "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
@@ -91,6 +100,26 @@ int main(int argc, char** argv) {
     else if (a == "--no-audio") noAudio = true;
     else if (a == "--pcm-out-paced") { paced = true; pacedPpm = atof(next(a.c_str())); }
     else if (a == "--no-backpressure") so.backpressure = false;
+    else if (a == "--spotify-volume") {
+      std::string v = next("--spotify-volume");
+      if (v == "absolute") so.absoluteVolume = true;
+      else if (v == "software") so.absoluteVolume = false;
+      else { fprintf(stderr, "--spotify-volume must be absolute|software\n"); return 1; }
+    } else if (a == "--max-volume") {
+      so.maxVolumePct = atoi(next("--max-volume"));
+      if (so.maxVolumePct < 0 || so.maxVolumePct > 100) { fprintf(stderr, "--max-volume must be 0..100\n"); return 1; }
+    } else if (a == "--hw-volume-curve") {
+      std::string v = next("--hw-volume-curve");
+      if (v == "linear") so.hwCurve = 0;
+      else if (v == "log") so.hwCurve = 1;
+      else if (v == "cubic") so.hwCurve = 2;
+      else { fprintf(stderr, "--hw-volume-curve must be linear|log|cubic\n"); return 1; }
+    } else if (a == "--wake-on-play") {
+      std::string v = next("--wake-on-play");
+      if (v == "on") so.wakeOnPlay = true;
+      else if (v == "off") so.wakeOnPlay = false;
+      else { fprintf(stderr, "--wake-on-play must be on|off\n"); return 1; }
+    } else if (a == "--wake-bundle") so.wakeBundle = next("--wake-bundle");
     else if (a == "--crossfade-ms") so.crossfadeMs = (unsigned)atoi(next(a.c_str()));
     else if (a == "--status-dir") so.statusDir = next("--status-dir");
     else if (a == "--no-status") so.statusDir.clear();
@@ -150,7 +179,17 @@ int main(int argc, char** argv) {
   }
   IOS3_TRACE("fidelio-audiod start (output: %s)", noAudio ? "discard" : !pcmOut.empty() ? pcmOut.c_str() : "AudioQueue");
 
-  audiod::Server server(so, t, out.get());
+  // B1.9: hardware volume + display wake backends (host: mocks; device: dlopen'ed private frameworks)
+  std::unique_ptr<HardwareVolume> hw;
+  std::unique_ptr<DisplayWaker> waker;
+#ifdef __APPLE__
+  if (getenv("AUDIOD_MOCK_HW_VOLUME")) hw.reset(new MockHardwareVolume()); else hw.reset(createAVSystemControllerVolume());
+  waker.reset(createSpringBoardWaker());
+#else
+  hw.reset(new MockHardwareVolume());
+  waker.reset(new MockDisplayWaker());
+#endif
+  audiod::Server server(so, t, out.get(), hw.get(), waker.get());
   if (!server.listen()) return 2;
   signal(SIGTERM, audiod::Server::requestStop);
   signal(SIGINT, audiod::Server::requestStop);

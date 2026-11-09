@@ -1,5 +1,7 @@
 #include "Server.h"
 
+#include <math.h>
+
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
@@ -42,11 +44,133 @@ static bool peakExceeds(const int16_t* s, size_t n, int thr) {
   return false;
 }
 
-Server::Server(const ServerOptions& o, const Tunables& t, AudioOutput* output) : opts(o), arbiter(t), out(output) {
+Server::Server(const ServerOptions& o, const Tunables& t, AudioOutput* output, HardwareVolume* hwv, DisplayWaker* w)
+    : opts(o), arbiter(t), out(output), hw(hwv), waker(w) {
   startMs = nowMs();
   leadFrames = (size_t)opts.leadMs * 44100 / 1000;
   if (leadFrames > kRingFrames) leadFrames = kRingFrames;
   if (!opts.eventLog.empty()) eventFile = fopen(opts.eventLog.c_str(), "w");
+  // B1.9 A: absolute Spotify volume needs the hardware API; read the level once (never set at startup)
+  if (hw) {
+    hwAvailable = hw->available() && hw->get(hwLevel);
+    if (!hwAvailable) hwLevel = -1;
+  }
+  if (opts.absoluteVolume) {
+    if (absoluteActive())
+      IOS3_TRACE("spotify volume: absolute (the slider drives the hardware; max %d %%, curve %s): %s, level now %.3f (slider %u)", opts.maxVolumePct,
+                 opts.hwCurve == 1 ? "log" : opts.hwCurve == 2 ? "cubic" : "linear", hw->describe().c_str(), hwLevel, levelToSlider(hwLevel));
+    else
+      IOS3_TRACE("spotify volume: absolute requested but the hardware volume is unavailable (%s): falling back to software gain",
+                 hw ? hw->describe().c_str() : "no backend");
+  } else {
+    IOS3_TRACE("spotify volume: software gain (B1.7 curve applied by the producer)");
+  }
+  IOS3_TRACE("wake-on-play: %s%s%s", opts.wakeOnPlay && waker ? "on (" : "off", opts.wakeOnPlay && waker ? waker->describe().c_str() : "",
+             opts.wakeOnPlay && waker ? (", app " + opts.wakeBundle + ")").c_str() : "");
+}
+
+// ---------------------------------------------------------------- B1.9 A: absolute volume
+
+float Server::sliderToLevel(uint16_t slider) const {
+  if (slider == 0) return 0.f;
+  float x = slider / 65535.f;
+  if (opts.hwCurve == 1) return powf(10.f, (x - 1.f) * 60.f / 20.f);
+  if (opts.hwCurve == 2) return x * x * x;
+  return x;
+}
+
+uint16_t Server::levelToSlider(float level) const {
+  if (!(level > 0.f)) return 0;
+  if (level > 1.f) level = 1.f;
+  float x;
+  if (opts.hwCurve == 1) x = 1.f + 20.f * log10f(level) / 60.f;
+  else if (opts.hwCurve == 2) x = cbrtf(level);
+  else x = level;
+  if (x < 0.f) x = 0.f;
+  if (x > 1.f) x = 1.f;
+  return (uint16_t)(x * 65535.f + 0.5f);
+}
+
+void Server::sendToClient(Client& c, uint32_t type, const void* payload, size_t len) {
+  if (c.version < AUDIOD_PROTO_VERSION_2) return;  // a v1 producer never reads: nothing may pile up in its buffer
+  uint8_t buf[64];
+  AudiodMsgHeader h = { type, (uint32_t)len };
+  memcpy(buf, &h, sizeof h);
+  memcpy(buf + sizeof h, payload, len);
+  int flags = MSG_DONTWAIT;
+#ifdef MSG_NOSIGNAL
+  flags |= MSG_NOSIGNAL;
+#endif
+  ssize_t n = send(c.fd, buf, sizeof h + len, flags);
+  if (n != (ssize_t)(sizeof h + len) && !c.sendFailedLogged) {
+    IOS3_TRACE("client #%d '%s': could not send message %u (%s); dropped", c.id, c.name.c_str(), type, n < 0 ? strerror(errno) : "short");
+    c.sendFailedLogged = true;
+  }
+}
+
+void Server::sendWelcome(Client& c) {
+  AudiodWelcome w;
+  memset(&w, 0, sizeof w);
+  w.version = AUDIOD_PROTO_VERSION_2;
+  bool abs = absoluteActive();
+  w.flags = abs ? AUDIOD_VOL_ABSOLUTE : 0;
+  w.slider = abs ? levelToSlider(hwLevel) : 0;
+  sendToClient(c, AUDIOD_MSG_WELCOME, &w, sizeof w);
+}
+
+void Server::broadcastHwVolume() {
+  AudiodHwVolume v = { levelToSlider(hwLevel), (uint16_t)(absoluteActive() ? AUDIOD_VOL_ABSOLUTE : 0) };
+  for (auto& kv : clients) if (kv.second.hello) sendToClient(kv.second, AUDIOD_MSG_HWVOLUME, &v, sizeof v);
+}
+
+// A user moved the slider of a slider-driven source: set the hardware (clamped), log it, and if the
+// clamp bit, tell every v2 client the level it actually got so the controller's slider snaps there.
+void Server::applySlider(Client& c, uint16_t slider) {
+  float want = sliderToLevel(slider);
+  float ceiling = opts.maxVolumePct / 100.f;
+  float level = want > ceiling ? ceiling : want;
+  bool clamped = want > ceiling + 0.0005f;
+  if (hwLevel >= 0 && fabsf(level - hwLevel) < 0.002f && !clamped) return;  // already there (the controller echoing our report)
+  bool ok = hw->set(level);
+  if (ok) hwLevel = level;
+  char reason[160];
+  snprintf(reason, sizeof reason, "set %.3f by '%s' slider %u%s%s", level, c.name.c_str(), slider, clamped ? " clamped from " : "", clamped ? std::to_string(want).substr(0, 5).c_str() : "");
+  if (!ok) snprintf(reason, sizeof reason, "set FAILED (%.3f) by '%s' slider %u", level, c.name.c_str(), slider);
+  logEvent(Event{Event::HWVOLUME, nowMs(), c.name, ok ? std::to_string(level).substr(0, 5) : "?", reason});
+  if (ok && clamped) broadcastHwVolume();
+}
+
+// Every pollIntervalMs: pick up a change made elsewhere (the phone's buttons, another client) and
+// report it to the v2 producers so their controllers show the true level.
+void Server::pollHardwareVolume(uint64_t now) {
+  if (!absoluteActive()) return;
+  if (now - lastHwPollMs < hw->pollIntervalMs()) return;
+  lastHwPollMs = now;
+  float l = -1;
+  bool changed = hw->takeChange(l);
+  if (!changed) {
+    float cur = -1;
+    if (hw->get(cur) && cur >= 0 && (hwLevel < 0 || fabsf(cur - hwLevel) >= 0.002f)) { l = cur; changed = true; }
+  }
+  if (!changed || !(l >= 0)) return;
+  if (hwLevel >= 0 && fabsf(l - hwLevel) < 0.002f) return;
+  hwLevel = l;
+  logEvent(Event{Event::HWVOLUME, now, "external", std::to_string(l).substr(0, 5), "hardware level changed (buttons / another app): reporting slider " + std::to_string(levelToSlider(l))});
+  broadcastHwVolume();
+}
+
+// ---------------------------------------------------------------- B1.9 B: wake on play
+
+void Server::maybeWake(const Event& e) {
+  if (!opts.wakeOnPlay || !waker) return;
+  if (e.kind != Event::TAKEOVER || !e.from.empty() || e.reason == "reconnect") return;  // only none -> source, not a switch or a reconnect
+  if (lastWakeMs && e.atMs - lastWakeMs < opts.wakeMinIntervalMs) {
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "debounced (" + std::to_string(e.atMs - lastWakeMs) + " ms since the last wake)"});
+    return;
+  }
+  lastWakeMs = e.atMs;
+  bool ok = waker->wake(opts.wakeBundle);
+  logEvent(Event{Event::WAKE, e.atMs, "none", e.to, (ok ? "wake+launch " : "wake FAILED ") + opts.wakeBundle});
 }
 
 Server::~Server() {
@@ -130,8 +254,10 @@ void Server::handle(Client& c, const Message& m) {
     if (!parseHello(m, h, why)) { dropClient(c.fd, ("bad HELLO: " + why).c_str()); return; }
     c.hello = true;
     c.name = helloName(h);
+    c.version = h.version;
     bool back = arbiter.addSource(c.id, c.name, h.priority, now);
-    IOS3_TRACE("client #%d is source '%s' (priority %u)%s", c.id, c.name.c_str(), h.priority, back ? ", reconnected: same stream" : "");
+    IOS3_TRACE("client #%d is source '%s' (priority %u, protocol v%u)%s", c.id, c.name.c_str(), h.priority, h.version, back ? ", reconnected: same stream" : "");
+    sendWelcome(c);  // v2 producers learn whether the slider drives the hardware, and the current level
     afterTick();  // a reconnecting active source is active again right away
     return;
   }
@@ -147,10 +273,25 @@ void Server::handle(Client& c, const Message& m) {
       break;
     }
     case AUDIOD_MSG_VOLUME: {
-      if (m.payload.size() != sizeof(AudiodVolume)) { dropClient(c.fd, "bad VOLUME length"); return; }
-      AudiodVolume v;
-      memcpy(&v, m.payload.data(), sizeof v);
-      c.volume = !(v.linear >= 0.f) ? 0.f : v.linear > 1.f ? 1.f : v.linear;  // !(>=0) also rejects NaN
+      float linear;
+      uint16_t slider, flags;
+      if (!parseVolume(m, linear, slider, flags)) { dropClient(c.fd, "bad VOLUME length"); return; }
+      if (flags & AUDIOD_VOL_SLIDER) {
+        // B1.9 A: a slider-driven source. Absolute mode: unity gain at the output, the slider sets the
+        // hardware (only on an APPLY = a user move; the startup echo is report-only). Software mode
+        // (or no hardware API): the producer's curved gain, exactly B1.7.
+        c.sliderDriven = true;
+        c.slider = slider;
+        if (absoluteActive()) {
+          c.volume = 1.0f;
+          if (flags & AUDIOD_VOL_APPLY) applySlider(c, slider);
+        } else {
+          c.volume = linear;
+        }
+      } else {
+        c.sliderDriven = false;
+        c.volume = linear;
+      }
       if (arbiter.activeId() == c.id) out->setVolume(c.volume);
       break;
     }
@@ -174,7 +315,7 @@ void Server::handle(Client& c, const Message& m) {
 }
 
 void Server::logEvent(const Event& e) {
-  static const char* names[] = { "takeover", "release", "idle-stop", "output-start" };
+  static const char* names[] = { "takeover", "release", "idle-stop", "output-start", "wake", "hwvolume" };
   const char* k = names[e.kind];
   time_t t = time(nullptr);
   struct tm tmv;
@@ -207,6 +348,7 @@ void Server::writeActiveSourceFile(const std::string& name) {
 void Server::afterTick() {
   for (const Event& e : arbiter.drainEvents()) {
     logEvent(e);
+    maybeWake(e);  // B1.9 B: none -> source
     if (e.kind == Event::TAKEOVER) {
       out->crossfade(fadeFrames());  // the old source's tail ramps out under the new one's ramp-in; its lead is dropped
       lastSilenceMs = 0;
@@ -299,6 +441,7 @@ void Server::run() {
     arbiter.tick(now);
     afterTick();
     out->tick();
+    pollHardwareVolume(now);  // B1.9 A: buttons / external changes -> the producers
     if (out->resumed()) {
       // The output was paused (interruption / yielding to another app) and just resumed: the active
       // source's ring holds audio from before the pause. Drop it; the producer keeps sending current audio.

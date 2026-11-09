@@ -148,6 +148,15 @@ arbitrates between Spotify and AirPlay. `--direct-audio` restores the local Audi
 retries a failed AudioSessionInitialize forever and plays bare meanwhile, `on` waits for the session,
 `off` is a bare queue with no AudioSession calls, for A/B only);
 `--no-audio` is unchanged.
+
+**B1.9 (absolute volume).** The audiod sink speaks protocol v2: it connects at startup, reads audiod's
+WELCOME (does the slider drive the hardware? current level) and HWVOLUME (the level changed: phone
+buttons), and sends every Connect volume as gain + raw slider. With audiod in `--spotify-volume
+absolute` (the default) the slider sets the device output volume, Spotify plays at unity, the
+reported `device_state.volume` is the true hardware level (`--initial-volume` ignored) and button
+presses are pushed to the controller with `SpircHandler::setRemoteVolume`. Against an old audiod or
+`--spotify-volume software` everything is B1.7. `--sink-test-volume PCT` moves the slider mid-tone for
+the host test.
 `--sink-test N` plays N seconds of a 440 Hz tone through the selected sink and exits (no
 Spotify login needed): run it on the device to prove the audiod path. The CLI now also builds
 on a Linux host (`-DCSPOT_DIR=<cspot tree>`, no AudioQueue) for the audiod host tests.

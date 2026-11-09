@@ -63,6 +63,40 @@ int main() {
   AudiodHello hbad = makeHello("x"); hbad.sampleRate = 48000;
   Message mb; mb.type = AUDIOD_MSG_HELLO; mb.payload.assign((uint8_t*)&hbad, (uint8_t*)&hbad + sizeof hbad);
   CHECK(!parseHello(mb, h2, why) && why.find("unsupported format") == 0, "HELLO with 48 kHz rejected");
+  // B1.9: protocol v2 (reads server messages) is accepted, v3 is not; the volume comes in two sizes
+  CHECK(sizeof(AudiodVolume) == 4 && sizeof(AudiodVolume2) == 8 && sizeof(AudiodWelcome) == 8 && sizeof(AudiodHwVolume) == 4, "B1.9 struct sizes 4/8/8/4");
+  AudiodHello hv2 = makeHello("spotify", 0, AUDIOD_PROTO_VERSION_2);
+  Message m2; m2.type = AUDIOD_MSG_HELLO; m2.payload.assign((uint8_t*)&hv2, (uint8_t*)&hv2 + sizeof hv2);
+  CHECK(parseHello(m2, h2, why) && h2.version == 2, "HELLO v2 accepted");
+  hv2.version = 3; m2.payload.assign((uint8_t*)&hv2, (uint8_t*)&hv2 + sizeof hv2);
+  CHECK(!parseHello(m2, h2, why) && why.find("protocol version 3") == 0, "HELLO v3 rejected");
+  float lin; uint16_t sl, fl;
+  AudiodVolume v4 = { 0.25f };
+  Message mv; mv.type = AUDIOD_MSG_VOLUME; mv.payload.assign((uint8_t*)&v4, (uint8_t*)&v4 + sizeof v4);
+  CHECK(parseVolume(mv, lin, sl, fl) && lin == 0.25f && sl == 0 && fl == 0, "VOLUME 4-byte form: gain only, no slider");
+  AudiodVolume2 v8 = { 1.0f, 52428, AUDIOD_VOL_SLIDER | AUDIOD_VOL_APPLY };
+  mv.payload.assign((uint8_t*)&v8, (uint8_t*)&v8 + sizeof v8);
+  CHECK(parseVolume(mv, lin, sl, fl) && lin == 1.0f && sl == 52428 && fl == (AUDIOD_VOL_SLIDER | AUDIOD_VOL_APPLY), "VOLUME 8-byte form: gain + raw slider + flags");
+  v8.linear = 7.0f / 0.0f; mv.payload.assign((uint8_t*)&v8, (uint8_t*)&v8 + sizeof v8);
+  CHECK(parseVolume(mv, lin, sl, fl) && lin == 1.0f, "VOLUME gain clamped to 1");
+  v8.linear = 0.0f / 0.0f; mv.payload.assign((uint8_t*)&v8, (uint8_t*)&v8 + sizeof v8);
+  CHECK(parseVolume(mv, lin, sl, fl) && lin == 0.0f, "VOLUME NaN gain -> 0");
+  mv.payload.resize(6);
+  CHECK(!parseVolume(mv, lin, sl, fl), "VOLUME of 6 bytes rejected");
+  // server -> client messages round-trip through the same framing
+  int sp2[2];
+  CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, sp2) == 0, "socketpair for server messages");
+  AudiodWelcome w = { AUDIOD_PROTO_VERSION_2, 0, AUDIOD_VOL_ABSOLUTE, 19660, 0 };
+  AudiodHwVolume hw = { 26214, AUDIOD_VOL_ABSOLUTE };
+  CHECK(writeFrame(sp2[0], AUDIOD_MSG_WELCOME, &w, sizeof w) && writeFrame(sp2[0], AUDIOD_MSG_HWVOLUME, &hw, sizeof hw), "write WELCOME + HWVOLUME");
+  shutdown(sp2[0], SHUT_WR);
+  FrameParser ps;
+  for (;;) { ssize_t n = read(sp2[1], buf, sizeof buf); if (n <= 0) break; ps.feed(buf, (size_t)n); }
+  Message w1, w2;
+  bool okw = ps.next(w1) && ps.next(w2) && w1.type == AUDIOD_MSG_WELCOME && w1.payload.size() == sizeof w && w2.type == AUDIOD_MSG_HWVOLUME && w2.payload.size() == sizeof hw;
+  AudiodWelcome wp; AudiodHwVolume hwp;
+  if (okw) { memcpy(&wp, w1.payload.data(), sizeof wp); memcpy(&hwp, w2.payload.data(), sizeof hwp); }
+  CHECK(okw && ps.error().empty() && wp.flags == AUDIOD_VOL_ABSOLUTE && wp.slider == 19660 && hwp.slider == 26214, "WELCOME (absolute, slider 19660) and HWVOLUME (26214) parsed back");
   printf(fails ? "\n%d FAILURES\n" : "\nall framing checks passed\n", fails);
   return fails ? 1 : 0;
 }

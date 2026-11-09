@@ -38,6 +38,14 @@ CliPlayer::CliPlayer(std::unique_ptr<PlayerSink> sink, std::shared_ptr<cspot::Sp
 
   this->isPaused = false;
 
+  // B1.9: audiod drives the hardware volume -> what the Connect controller shows must follow it
+  this->audioSink->onHardwareVolumeUser = this;
+  this->audioSink->onHardwareVolume = [](void* user, bool absolute, uint16_t slider) {
+    CliPlayer* self = static_cast<CliPlayer*>(user);
+    if (!absolute) return;
+    CSPOT_LOG(info, "audiod: hardware volume now %u %% (slider %u): reporting it to the controller", slider * 100 / 65535, slider);
+    self->handler->setRemoteVolume(slider);
+  };
   this->handler->setEventHandler([this](std::unique_ptr<cspot::SpircHandler::Event> event) {
     if (this->status) this->status->onEvent(*event);
     switch (event->eventType) {
@@ -87,6 +95,7 @@ void CliPlayer::runTask() {
   size_t lastHash = 0;
 
   while (isRunning) {
+    this->audioSink->poll();  // B1.9: WELCOME / HWVOLUME from audiod (non-blocking), also while paused
     if (this->isPaused) {
       BELL_SLEEP_MS(10);
       continue;

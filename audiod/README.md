@@ -264,3 +264,64 @@ steal and a 2 s gap that may.
   failing twice issues no AudioQueueStart until the session is up, then plays; `on`/`auto` with the
   session available at once = the b17 path. `aqsink_test` (26: route following, interruptions,
   yield, watchdog) is the regression guard and is unchanged.
+
+## B1.9 (phase 2: absolute Spotify volume, wake the display on play)
+
+### A. Absolute Spotify volume (`--spotify-volume absolute|software`, default absolute)
+- Before: the Connect slider was a software gain (B1.7 curve -> `kAudioQueueParam_Volume`) under the
+  dock's hardware level. Now the slider IS the device output volume: the raw slider position travels
+  to audiod, which sets the system volume and plays Spotify at unity gain. `software` = exactly B1.7.
+- Wire (`audiod/proto.h`, compatible both ways): a producer that reads server messages sends HELLO
+  **version 2**; audiod answers **WELCOME** (`AudiodWelcome`: absolute? + the hardware level as a
+  slider value) and later **HWVOLUME** on every hardware change. VOLUME comes in the old 4-byte form
+  (gain) or the 8-byte `AudiodVolume2` (gain + raw slider + flags `SLIDER` / `APPLY`); a producer
+  sends the 8-byte form only after WELCOME proved a v2 server, so a new cspot against an old audiod
+  still works, and audiod never writes to a v1 client (raop stays v1 and never reads). Server ->
+  client sends are non-blocking (a full buffer drops the message, logged once).
+- audiod: a VOLUME with `SLIDER` marks the source slider-driven. In absolute mode its output gain is
+  1.0 and an `APPLY` (a user move) sets the hardware to `curve(slider)` clamped by **`--max-volume
+  PCT`** (default 100; the ceiling only applies to the SET path; a clamped request is reported back so
+  the controller's slider snaps to the ceiling). `--hw-volume-curve linear|log|cubic` (default
+  linear: the hardware has its own taper). The startup echo (`SLIDER` without `APPLY`) and the
+  initial level never SET anything. Every set / external change is an event-log line
+  (`hwvolume spotify 0.400 set 0.400 by 'spotify' slider 52428 clamped from 0.800`,
+  `hwvolume external 0.600 hardware level changed ...`). Every `pollIntervalMs` (1 s) audiod picks up
+  an external change (phone buttons, another app) by notification or by re-reading the level, and
+  broadcasts HWVOLUME; cspot forwards it with `SpircHandler::setRemoteVolume` so the Spotify slider
+  tracks the buttons. At startup cspot waits up to 0.5 s for WELCOME; in absolute mode
+  `device_state.volume` is the hardware level and `--initial-volume` is ignored (it still applies in
+  software mode / with an old audiod).
+- Device backend (`audiod/src/HardwareVolumeApple.cpp`): the private **AVSystemController**
+  (Celestial.framework) through `dlopen` + the ObjC runtime, never linked. Verified in the 3.1.2 SDK
+  binaries: `+sharedAVSystemController`, `-setVolumeTo:forCategory:` (MediaPlayer calls it with
+  `"Audio/Video"`), `-getVolume:forCategory:`, `AVSystemController_SystemVolumeDidChangeNotification`
+  with `AVSystemController_AudioVolumeNotificationParameter` /
+  `AVSystemController_AudioCategoryNotificationParameter` (observed on CF's local notification
+  center; a 1 s `getVolume:` poll is the fallback because delivery to a daemon without a main run
+  loop cannot be verified off-device). If the framework, class, selectors or the first `getVolume:`
+  fail, the backend is unavailable and audiod logs `absolute requested but the hardware volume is
+  unavailable (...): falling back to software gain` (B1.7 behaviour). Alternative noted, not used:
+  SpringBoard's `SBSetMediaVolume(port, float)` / `SBGetMediaVolume` MIG stubs (what the HUD uses).
+- AirPlay is untouched: raop keeps its software gain with the B1.4 -144 dB -> unity sentinel, so
+  AirPlay plays at unity under whatever hardware level the Spotify slider or the phone buttons left.
+  A consistent alternative (proposed in STATUS, not done): map RAOP's dB volume to the hardware too.
+
+### B. Wake the display when playback starts (`--wake-on-play on|off`, default on)
+- Trigger: the arbiter's TAKEOVER from **none** (not a source -> source switch, not the `reconnect`
+  takeover), debounced to one wake per 5 s; every decision is an event-log line (`wake none spotify
+  wake+launch com.fidelio.nowplaying` / `debounced (3500 ms since the last wake)`).
+- Action (`audiod/src/DisplayWakeApple.cpp`, SpringBoardServices + GraphicsServices via `dlopen`):
+  `SBDimScreen(SBSSpringBoardServerPort(), false)` (undim), `GSEventResetIdleTimer()`, then
+  `SBSLaunchApplicationWithIdentifier(CFSTR("com.fidelio.nowplaying"), false)` (`--wake-bundle`).
+  Symbols confirmed exported by the SDK binaries; there is no `SBSUndimScreen` in 3.1, so the undim
+  semantics of `SBDimScreen(false)` are assumed (the symbol takes one byte argument). Locked device:
+  expected = the screen wakes, the launch is refused or lands behind the lock (the return code is
+  logged); unlock is not attempted. Unavailable framework/symbol = logged once, no-op.
+- Tests: `hosttest/test_wake.py` (8 checks: one wake per none -> source, none on a switch, debounced
+  inside 5 s, wakes again after, none on a reconnect) with the host's mock waker;
+  `test_producers.py` section 3 (8 checks, mock hardware via `AUDIOD_MOCK_HW_VOLUME` /
+  `AUDIOD_MOCK_HW_CHANGE_FILE`): WELCOME adopted (level 30 %, nothing set at startup), unity gain
+  (peak 7999 vs 252), slider 80 % clamped to `--max-volume 40` and reported back, a "button" change to
+  60 % picked up and reported, one wake; plus the fallback (first audiod without a backend logs it,
+  the B1.7 peaks prove software mode). `framing_test` +11 (v2 HELLO, both VOLUME forms, WELCOME /
+  HWVOLUME round-trip).

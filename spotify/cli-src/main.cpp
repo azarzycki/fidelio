@@ -97,6 +97,7 @@ struct Options {
   bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
   int sinkTestSec = 0;       // --sink-test N: play N s of a 440 Hz tone through the sink and exit
+  int sinkTestVolumePct = -1;  // --sink-test-volume PCT: 40 % into the tone, move the Connect slider there (host test of B1.9)
   int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
   int initialVolumePct = 50; // --initial-volume: what Connect sees and what we play at before the first slider move
   VolumeCurve volumeCurve = VOLUME_LOG;  // --volume-curve
@@ -128,6 +129,7 @@ static Options parseArgs(int argc, char** argv) {
     else if (a == "--audiod-sock") o.audiodSock = next("--audiod-sock");
     else if (a == "--audiod-lead-ms") o.audiodLeadMs = atoi(next("--audiod-lead-ms").c_str());
     else if (a == "--sink-test") o.sinkTestSec = atoi(next("--sink-test").c_str());
+    else if (a == "--sink-test-volume") o.sinkTestVolumePct = atoi(next("--sink-test-volume").c_str());
     else if (a == "--initial-volume") {
       o.initialVolumePct = atoi(next("--initial-volume").c_str());
       if (o.initialVolumePct < 0 || o.initialVolumePct > 100) throw std::invalid_argument("--initial-volume must be 0..100");
@@ -303,6 +305,7 @@ int main(int argc, char** argv) {
                  "  --direct-audio           play through a local AudioQueue instead of fidelio-audiod\n"
                  "                           (standalone debugging; the two options below apply to it)\n"
                  "  --sink-test SECONDS      play a 440 Hz tone through the sink for that long and exit\n"
+                 "  --sink-test-volume PCT   with --sink-test: move the Connect slider to PCT 40 %% into the tone (B1.9 host test)\n"
                  "  --initial-volume PCT     Connect volume reported and applied at startup (default 50; the\n"
                  "                           library's 0 made the slider sit at zero and jump on first touch)\n"
                  "  --volume-curve log|cubic|linear\n"
@@ -346,17 +349,37 @@ int main(int argc, char** argv) {
     }
     PlayerSink::curve = args.volumeCurve;
     uint16_t v0 = (uint16_t)(args.initialVolumePct * 65535 / 100);
-    audioSink->volumeChanged(v0);  // play at what Connect will show
-    IOS3_TRACE("audio sink: %s; volume curve %s, initial %d%% -> gain %.4f", audioSink->describe().c_str(), volumeCurveName(args.volumeCurve),
-               args.initialVolumePct, connectVolumeToGain(v0, args.volumeCurve));
+    // B1.9: give audiod's WELCOME a moment (it says whether the slider drives the hardware and the
+    // current level). In absolute mode nothing is SET at startup: the hardware level is what the
+    // controller will show. Otherwise (software mode, old audiod, audiod not up yet) B1.7 applies.
+    for (int i = 0; i < 25 && !audioSink->hardwareVolumeAbsolute(); i++) { audioSink->poll(); usleep(20000); }
+    if (audioSink->hardwareVolumeAbsolute()) {
+      IOS3_TRACE("audio sink: %s; audiod drives the HARDWARE volume (absolute): level %u %% (slider %u) is what Connect will show; "
+                 "--initial-volume %d ignored, curve %s applies to nothing here",
+                 audioSink->describe().c_str(), audioSink->hardwareSlider() * 100 / 65535, audioSink->hardwareSlider(), args.initialVolumePct,
+                 volumeCurveName(args.volumeCurve));
+    } else {
+      audioSink->volumeChanged(v0);  // play at what Connect will show
+      IOS3_TRACE("audio sink: %s; volume curve %s, initial %d%% -> gain %.4f", audioSink->describe().c_str(), volumeCurveName(args.volumeCurve),
+                 args.initialVolumePct, connectVolumeToGain(v0, args.volumeCurve));
+    }
   }
   if (args.sinkTestSec > 0) {
     // No Spotify at all: just prove the audio path (host: into audiod; device: dock/speaker).
     if (!audioSink) { fprintf(stderr, "--sink-test needs a sink (drop --no-audio)\n"); return 2; }
     IOS3_TRACE("sink test: %d s of a 440 Hz tone", args.sinkTestSec);
+    audioSink->onHardwareVolume = [](void*, bool absolute, uint16_t slider) {
+      IOS3_TRACE("sink test: audiod reports hardware volume %s: %u %% (slider %u)", absolute ? "absolute" : "software", slider * 100 / 65535, slider);
+    };
     std::vector<int16_t> tone(882 * 2);
     double phase = 0;
     for (int c = 0; c < args.sinkTestSec * 50; c++) {
+      audioSink->poll();
+      if (args.sinkTestVolumePct >= 0 && c == args.sinkTestSec * 20) {  // 40 % in: a user slider move
+        uint16_t v = (uint16_t)(args.sinkTestVolumePct * 65535 / 100);
+        IOS3_TRACE("sink test: Connect slider -> %d %% (slider %u)", args.sinkTestVolumePct, v);
+        audioSink->volumeChanged(v);
+      }
       for (int i = 0; i < 882; i++) {
         int16_t v = (int16_t)(8000 * sin(phase));
         tone[2 * i] = tone[2 * i + 1] = v;
@@ -364,7 +387,8 @@ int main(int argc, char** argv) {
       }
       audioSink->feedPCMFrames(reinterpret_cast<const uint8_t*>(tone.data()), tone.size() * 2);
     }
-    while (audioSink->bufferedSeconds() > 0.05) usleep(20000);
+    while (audioSink->bufferedSeconds() > 0.05) { audioSink->poll(); usleep(20000); }
+    for (int i = 0; i < 10; i++) { audioSink->poll(); usleep(20000); }  // pick up a late HWVOLUME report
     audioSink->audioEnded();
     IOS3_TRACE("sink test done");
     return 0;
@@ -427,6 +451,10 @@ int main(int argc, char** argv) {
   ctx->config.clientId = args.clientId;
   ctx->config.clientSecret = args.clientSecret;
   ctx->config.volume = args.initialVolumePct * 65535 / 100;  // reported in device_state until the first remote change
+  if (audioSink && audioSink->hardwareVolumeAbsolute()) {  // B1.9: the true hardware level instead (never set anything at startup)
+    ctx->config.volume = audioSink->hardwareSlider();
+    IOS3_TRACE("device_state volume = hardware level %u %% (absolute mode)", audioSink->hardwareSlider() * 100 / 65535);
+  }
 
   IOS3_TRACE("connectWithRandomAp begin");
   ctx->session->connectWithRandomAp();

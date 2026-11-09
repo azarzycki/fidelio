@@ -10,7 +10,7 @@ namespace audiod {
 
 static bool knownType(uint32_t t) {
   return t == AUDIOD_MSG_HELLO || t == AUDIOD_MSG_AUDIO || t == AUDIOD_MSG_FLUSH || t == AUDIOD_MSG_STOP || t == AUDIOD_MSG_META ||
-         t == AUDIOD_MSG_VOLUME;
+         t == AUDIOD_MSG_VOLUME || t == AUDIOD_MSG_WELCOME || t == AUDIOD_MSG_HWVOLUME;
 }
 
 void FrameParser::feed(const uint8_t* data, size_t len) {
@@ -65,10 +65,10 @@ bool writeFrame(int fd, uint32_t type, const void* payload, size_t len) {
   return true;
 }
 
-AudiodHello makeHello(const std::string& name, uint8_t priority) {
+AudiodHello makeHello(const std::string& name, uint8_t priority, uint8_t version) {
   AudiodHello h;
   memset(&h, 0, sizeof h);
-  h.version = AUDIOD_PROTO_VERSION;
+  h.version = version;
   h.priority = priority;
   h.channels = AUDIOD_CHANNELS;
   h.bits = AUDIOD_BITS;
@@ -81,12 +81,34 @@ bool parseHello(const Message& m, AudiodHello& out, std::string& why) {
   if (m.type != AUDIOD_MSG_HELLO) { why = "first message is not HELLO"; return false; }
   if (m.payload.size() != sizeof(AudiodHello)) { why = "HELLO size " + std::to_string(m.payload.size()); return false; }
   memcpy(&out, m.payload.data(), sizeof out);
-  if (out.version != AUDIOD_PROTO_VERSION) { why = "protocol version " + std::to_string(out.version); return false; }
+  if (out.version != AUDIOD_PROTO_VERSION && out.version != AUDIOD_PROTO_VERSION_2) { why = "protocol version " + std::to_string(out.version); return false; }
   if (out.channels != AUDIOD_CHANNELS || out.bits != AUDIOD_BITS || out.sampleRate != AUDIOD_SAMPLE_RATE) {
     why = "unsupported format " + std::to_string(out.sampleRate) + "/" + std::to_string(out.channels) + "/" + std::to_string(out.bits);
     return false;
   }
   if (helloName(out).empty()) { why = "empty source name"; return false; }
+  return true;
+}
+
+bool parseVolume(const Message& m, float& linear, uint16_t& slider, uint16_t& flags) {
+  if (m.type != AUDIOD_MSG_VOLUME) return false;
+  slider = 0;
+  flags = 0;
+  if (m.payload.size() == sizeof(AudiodVolume)) {
+    AudiodVolume v;
+    memcpy(&v, m.payload.data(), sizeof v);
+    linear = v.linear;
+  } else if (m.payload.size() == sizeof(AudiodVolume2)) {
+    AudiodVolume2 v;
+    memcpy(&v, m.payload.data(), sizeof v);
+    linear = v.linear;
+    slider = v.slider;
+    flags = v.flags;
+  } else {
+    return false;
+  }
+  if (!(linear >= 0.f)) linear = 0.f;  // also rejects NaN
+  if (linear > 1.f) linear = 1.f;
   return true;
 }
 

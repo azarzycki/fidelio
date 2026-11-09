@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <string>
 
 #include "AudiodFraming.h"
 
@@ -40,9 +41,107 @@ SocketSink::SocketSink(const std::string& n, const std::string& p, uint8_t prio)
 
 bool SocketSink::sendVolume() {
   if (fd < 0) return true;
-  AudiodVolume v = { volume };
-  if (!audiod::writeFrame(fd, AUDIOD_MSG_VOLUME, &v, sizeof v)) { disconnect("volume"); return false; }
+  bool ok;
+  if (welcomed && haveSlider) {
+    AudiodVolume2 v = { volume, slider, (uint16_t)(AUDIOD_VOL_SLIDER | (sliderApply ? AUDIOD_VOL_APPLY : 0)) };
+    ok = audiod::writeFrame(fd, AUDIOD_MSG_VOLUME, &v, sizeof v);
+  } else {
+    AudiodVolume v = { volume };  // a v1 server (or no WELCOME yet): the gain only
+    ok = audiod::writeFrame(fd, AUDIOD_MSG_VOLUME, &v, sizeof v);
+  }
+  if (!ok) { disconnect("volume"); return false; }
   return true;
+}
+
+void SocketSink::enableServerMessages() {
+  std::lock_guard<std::mutex> l(m);
+  v2 = true;
+}
+
+// m held. Reads everything the server sent (non-blocking) and parses WELCOME / HWVOLUME; the
+// callback is queued in pendingReport and fired by the caller once the mutex is released.
+void SocketSink::drainIncoming() {
+  if (fd < 0 || !v2) return;
+  uint8_t buf[256];
+  for (;;) {
+    ssize_t n = recv(fd, buf, sizeof buf, MSG_DONTWAIT);
+    if (n > 0) { inParser.feed(buf, (size_t)n); continue; }
+    if (n == 0) { disconnect("server closed"); return; }
+    if (errno == EINTR) continue;
+    break;  // EAGAIN: nothing more
+  }
+  if (!inParser.error().empty()) { disconnect("bad server message"); return; }
+  audiod::Message msg;
+  while (inParser.next(msg)) {
+    if (msg.type == AUDIOD_MSG_WELCOME && msg.payload.size() == sizeof(AudiodWelcome)) {
+      AudiodWelcome w;
+      memcpy(&w, msg.payload.data(), sizeof w);
+      welcomed = true;
+      absolute = (w.flags & AUDIOD_VOL_ABSOLUTE) != 0;
+      hwSlider = w.slider;
+      fprintf(stdout, "SocketSink[%s]: WELCOME v%u: hardware volume %s%s\n", name.c_str(), w.version, absolute ? "absolute, level " : "software",
+              absolute ? (std::to_string(hwSlider * 100 / 65535) + " % (slider " + std::to_string(hwSlider) + ")").c_str() : "");
+      fflush(stdout);
+      pendingReport = { true, absolute, hwSlider };
+      if (absolute) {
+        // The hardware level is the truth now: adopt it, and tell the server (report-only: no set)
+        // that this source is slider-driven, so it plays at unity gain under the hardware level.
+        slider = hwSlider;
+        haveSlider = true;
+        volume = 1.0f;
+        sliderApply = false;
+        sendVolume();
+      } else if (haveSlider) {
+        sendVolume();  // software mode on a v2 server: the 8-byte form (gain + slider), same effect as B1.7
+      }
+    } else if (msg.type == AUDIOD_MSG_HWVOLUME && msg.payload.size() == sizeof(AudiodHwVolume)) {
+      AudiodHwVolume h;
+      memcpy(&h, msg.payload.data(), sizeof h);
+      absolute = (h.flags & AUDIOD_VOL_ABSOLUTE) != 0;
+      hwSlider = h.slider;
+      if (haveSlider) slider = h.slider;  // what we would echo is now the true level
+      pendingReport = { true, absolute, hwSlider };
+    }
+    // anything else from the server is ignored
+  }
+}
+
+void SocketSink::fireReport() {
+  void (*cb)(void*, bool, uint16_t);
+  void* user;
+  HwReport r;
+  {
+    std::lock_guard<std::mutex> l(m);
+    r = pendingReport;
+    pendingReport.fire = false;
+    cb = hwCb;
+    user = hwUser;
+  }
+  if (r.fire && cb) cb(user, r.absolute, r.slider);
+}
+
+void SocketSink::poll() {
+  {
+    std::lock_guard<std::mutex> l(m);
+    if (fd < 0 && v2) ensureConnected();  // eager (rate-limited): WELCOME should arrive before any audio
+    drainIncoming();
+  }
+  fireReport();
+}
+
+void SocketSink::setVolumeSlider(float linear, uint16_t sl, bool apply) {
+  {
+    std::lock_guard<std::mutex> l(m);
+    if (!(linear >= 0.0f)) linear = 0;
+    if (linear > 1) linear = 1;
+    volume = linear;
+    slider = sl;
+    haveSlider = true;
+    sliderApply = apply;
+    if (fd < 0 && v2) ensureConnected();
+    sendVolume();
+  }
+  fireReport();
 }
 
 SocketSink::~SocketSink() {
@@ -73,7 +172,7 @@ bool SocketSink::ensureConnected() {
     backoffMs = backoffMs * 2 > kMaxBackoffMs ? kMaxBackoffMs : backoffMs * 2;
     return false;
   }
-  AudiodHello h = audiod::makeHello(name, priority);
+  AudiodHello h = audiod::makeHello(name, priority, v2 ? AUDIOD_PROTO_VERSION_2 : AUDIOD_PROTO_VERSION);
   if (!audiod::writeFrame(s, AUDIOD_MSG_HELLO, &h, sizeof h)) {
     close(s);
     nextAttemptMs = now + backoffMs;
@@ -82,12 +181,14 @@ bool SocketSink::ensureConnected() {
   fd = s;
   backoffMs = 200;
   reconnectCount++;
+  welcomed = false;  // a new connection (maybe a new audiod): the 8-byte VOLUME waits for its WELCOME
+  inParser = audiod::FrameParser();
   int eff = 0; socklen_t el = sizeof eff;
   getsockopt(s, SOL_SOCKET, SO_SNDBUF, &eff, &el);
   fprintf(stdout, "SocketSink[%s]: connected to %s (connection #%lu, lead %u ms, SO_SNDBUF %d)\n", name.c_str(), sockPath.c_str(), reconnectCount,
           leadMsCap, eff);
   fflush(stdout);
-  if (volume < 0.999f && !sendVolume()) return false;  // audiod starts every source at 1.0
+  if ((volume < 0.999f || haveSlider) && !sendVolume()) return false;  // audiod starts every source at 1.0
   return true;
 }
 
@@ -121,21 +222,26 @@ double SocketSink::bufferedSeconds() {
 }
 
 void SocketSink::write(const int16_t* frames, size_t numFrames) {
-  std::lock_guard<std::mutex> l(m);
-  pace(numFrames);
-  lastWriteMs = nowMs();
-  timelineFrames += numFrames;
-  if (!ensureConnected()) { droppedFrames += numFrames; return; }
-  while (numFrames > 0) {
-    size_t n = numFrames < kMaxFramesPerMsg ? numFrames : kMaxFramesPerMsg;
-    if (!audiod::writeFrame(fd, AUDIOD_MSG_AUDIO, frames, n * 4)) {
-      disconnect(errno == EAGAIN || errno == EWOULDBLOCK ? "send timeout, audiod not reading" : "write");
-      droppedFrames += numFrames;
-      return;
+  {
+    std::lock_guard<std::mutex> l(m);
+    pace(numFrames);
+    lastWriteMs = nowMs();
+    timelineFrames += numFrames;
+    if (!ensureConnected()) { droppedFrames += numFrames; return; }
+    drainIncoming();  // v2: WELCOME / HWVOLUME must never pile up unread
+    if (fd < 0) { droppedFrames += numFrames; return; }
+    while (numFrames > 0) {
+      size_t n = numFrames < kMaxFramesPerMsg ? numFrames : kMaxFramesPerMsg;
+      if (!audiod::writeFrame(fd, AUDIOD_MSG_AUDIO, frames, n * 4)) {
+        disconnect(errno == EAGAIN || errno == EWOULDBLOCK ? "send timeout, audiod not reading" : "write");
+        droppedFrames += numFrames;
+        break;
+      }
+      frames += n * 2;
+      numFrames -= n;
     }
-    frames += n * 2;
-    numFrames -= n;
   }
+  fireReport();
 }
 
 void SocketSink::flush() {
@@ -160,5 +266,6 @@ void SocketSink::setVolume(float linear) {
   if (!(linear >= 0.0f)) linear = 0;  // also catches NaN
   if (linear > 1) linear = 1;
   volume = linear;
+  haveSlider = false;  // a plain gain (raop): never slider-driven
   sendVolume();
 }
