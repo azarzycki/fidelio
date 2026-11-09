@@ -14,11 +14,7 @@ class AudioQueueOutput : public AudioOutput {
     sink->feedPCMFrames(reinterpret_cast<const uint8_t*>(frames), numFrames * 4);
   }
   void flush() override { sink->flush(); }
-  void setVolume(float linear) override {
-    if (linear < 0) linear = 0;
-    if (linear > 1) linear = 1;
-    sink->volumeChanged((uint16_t)(linear * 65535.0f));
-  }
+  void setVolume(float linear) override { sink->setGain(linear); }
   double bufferedSeconds() override { return sink->bufferedSeconds(); }
   void idle() override { sink->stop(); }  // releases the hardware path; the next write() restarts the queue
   void tick() override { sink->tick(); }  // recovery watchdog (interruption with no end, missing queue)

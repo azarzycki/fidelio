@@ -540,9 +540,13 @@ unsigned long AudioQueueSink::queueGeneration() {
   return g;
 }
 
-void AudioQueueSink::volumeChanged(uint16_t volume) {
+void AudioQueueSink::volumeChanged(uint16_t volume) { setGain(volume / 65535.0f); }
+
+void AudioQueueSink::setGain(float linear) {
+  if (!(linear >= 0.0f)) linear = 0.0f;
+  if (linear > 1.0f) linear = 1.0f;
   pthread_mutex_lock(&queueMutex);
-  lastVolume = volume / 65535.0f;
+  lastVolume = linear;
   if (queue) AudioQueueSetParameter(queue, kAudioQueueParam_Volume, lastVolume);  // `queue` is live while non-null under this lock
   pthread_mutex_unlock(&queueMutex);
 }

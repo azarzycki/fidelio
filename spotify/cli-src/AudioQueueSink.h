@@ -58,7 +58,8 @@ class AudioQueueSink : public AudioSink {
 
   // Owner-thread entry points (any thread may call them; they serialize on lifecycleMutex).
   void feedPCMFrames(const uint8_t* buffer, size_t bytes) override;
-  void volumeChanged(uint16_t volume) override;  // 0..65535
+  void volumeChanged(uint16_t volume) override;  // 0..65535, linear (cspot's AudioSink contract); prefer setGain()
+  void setGain(float linear);                    // 0..1 AudioQueue volume parameter (a linear amplitude gain)
   bool setParams(uint32_t sampleRate, uint8_t channelCount, uint8_t bitDepth) override;
   // Drop everything that is still queued (used on seek/flush).
   void flush();

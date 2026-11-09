@@ -150,3 +150,14 @@ Spotify login needed): run it on the device to prove the audiod path. The CLI no
 on a Linux host (`-DCSPOT_DIR=<cspot tree>`, no AudioQueue) for the audiod host tests.
 Since B1.1 the volume goes to audiod as a VOLUME message and the status files are
 `status-spotify.json` / `status-spotify.plist` / `cover-spotify.jpg`. See `audiod/README.md`.
+
+## Volume (B1.7, rev 8.7)
+
+- The Connect slider is the receiver's software volume (the protocol cannot drive the dock's
+  amplifier). cspot-ios3 now reports `--initial-volume PCT` (default 50) in its device state and
+  plays at that gain from the start, so the controller's slider no longer sits at 0 and jumps on
+  the first touch (the library's default was 0).
+- Slider -> gain uses a perceptual curve, `--volume-curve log|cubic|linear` (default log over
+  60 dB like librespot: 50 % = -30 dB), computed once in the CLI and applied as a linear gain to
+  both the local AudioQueue (`--direct-audio`) and the VOLUME message to audiod. RAOP's volume
+  path is unchanged (true dB, -144 = unity).

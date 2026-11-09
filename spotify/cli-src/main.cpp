@@ -28,6 +28,7 @@
 #include "CSpotContext.h"
 #include "CliPlayer.h"
 #include "PlayerSink.h"
+VolumeCurve PlayerSink::curve = VOLUME_LOG;
 #include "audiod/proto.h"
 #include "Logger.h"
 #include "LoginBlob.h"
@@ -97,6 +98,8 @@ struct Options {
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
   int sinkTestSec = 0;       // --sink-test N: play N s of a 440 Hz tone through the sink and exit
   int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
+  int initialVolumePct = 50; // --initial-volume: what Connect sees and what we play at before the first slider move
+  VolumeCurve volumeCurve = VOLUME_LOG;  // --volume-curve
 #ifdef __APPLE__
   AudioQueueSink::Options audio;  // --audio-route, --on-route-change (direct audio only)
 #endif
@@ -125,6 +128,16 @@ static Options parseArgs(int argc, char** argv) {
     else if (a == "--audiod-sock") o.audiodSock = next("--audiod-sock");
     else if (a == "--audiod-lead-ms") o.audiodLeadMs = atoi(next("--audiod-lead-ms").c_str());
     else if (a == "--sink-test") o.sinkTestSec = atoi(next("--sink-test").c_str());
+    else if (a == "--initial-volume") {
+      o.initialVolumePct = atoi(next("--initial-volume").c_str());
+      if (o.initialVolumePct < 0 || o.initialVolumePct > 100) throw std::invalid_argument("--initial-volume must be 0..100");
+    } else if (a == "--volume-curve") {
+      std::string v = next("--volume-curve");
+      if (v == "log") o.volumeCurve = VOLUME_LOG;
+      else if (v == "cubic") o.volumeCurve = VOLUME_CUBIC;
+      else if (v == "linear") o.volumeCurve = VOLUME_LINEAR;
+      else throw std::invalid_argument("--volume-curve must be log|cubic|linear");
+    }
     else if (a == "--status-dir") o.statusDir = next("--status-dir");
     else if (a == "--no-status") o.statusDir.clear();
     else if (a == "--audio-route") {
@@ -282,6 +295,10 @@ int main(int argc, char** argv) {
                  "  --direct-audio           play through a local AudioQueue instead of fidelio-audiod\n"
                  "                           (standalone debugging; the two options below apply to it)\n"
                  "  --sink-test SECONDS      play a 440 Hz tone through the sink for that long and exit\n"
+                 "  --initial-volume PCT     Connect volume reported and applied at startup (default 50; the\n"
+                 "                           library's 0 made the slider sit at zero and jump on first touch)\n"
+                 "  --volume-curve log|cubic|linear\n"
+                 "                           slider -> gain: log over 60 dB (default, like librespot), cubic, or linear\n"
                  "  --audio-route auto|speaker|lineout\n"
                  "                           auto/lineout: follow the system route (dock line-out when docked,\n"
                  "                           speaker otherwise); speaker: force the built-in speaker (iOS 3 can\n"
@@ -315,7 +332,11 @@ int main(int argc, char** argv) {
     } else {
       audioSink = std::make_unique<AudiodSink>(args.audiodSock, (unsigned)(args.audiodLeadMs > 0 ? args.audiodLeadMs : 0));
     }
-    IOS3_TRACE("audio sink: %s", audioSink->describe().c_str());
+    PlayerSink::curve = args.volumeCurve;
+    uint16_t v0 = (uint16_t)(args.initialVolumePct * 65535 / 100);
+    audioSink->volumeChanged(v0);  // play at what Connect will show
+    IOS3_TRACE("audio sink: %s; volume curve %s, initial %d%% -> gain %.4f", audioSink->describe().c_str(), volumeCurveName(args.volumeCurve),
+               args.initialVolumePct, connectVolumeToGain(v0, args.volumeCurve));
   }
   if (args.sinkTestSec > 0) {
     // No Spotify at all: just prove the audio path (host: into audiod; device: dock/speaker).
@@ -393,6 +414,7 @@ int main(int argc, char** argv) {
   else ctx->config.audioFormat = AudioFormat_OGG_VORBIS_96;
   ctx->config.clientId = args.clientId;
   ctx->config.clientSecret = args.clientSecret;
+  ctx->config.volume = args.initialVolumePct * 65535 / 100;  // reported in device_state until the first remote change
 
   IOS3_TRACE("connectWithRandomAp begin");
   ctx->session->connectWithRandomAp();

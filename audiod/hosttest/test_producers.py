@@ -123,13 +123,25 @@ check(len(rl) == 1 and (rl[0][4] == "stop" or rl[0][4].startswith("quiet")) and 
 
 # ---------------------------------------------------------------- 2. cspot-ios3 --sink-test -> audiod
 if CSPOT:
+    # B1.7: the default initial volume (50 %) goes through the log curve (-30 dB -> gain 0.0316) and is sent
+    # as VOLUME before the tone; audiod applies it: the tone's peak in the output must be 8000 * 0.0316.
+    before = os.path.getsize(OUT) // 4
+    cs = subprocess.run([CSPOT, "--sink-test", "1", "--audiod-sock", SOCK, "--no-status"], capture_output=True, text=True)
+    open(f"{TMP}/cspot-vol.log", "w").write(cs.stdout + cs.stderr)
+    time.sleep(1.5)
+    quiet_tone = open(OUT, "rb").read()[before * 4:]
+    ql = struct.unpack("<%dh" % (len(quiet_tone) // 2), quiet_tone)[0::2] if quiet_tone else [0]
+    exp_peak = 8000 * 10 ** (-1.5)
+    check(cs.returncode == 0 and abs(max(ql) - exp_peak) <= 0.15 * exp_peak,
+          f"cspot default initial volume 50 % through the log curve reaches audiod: tone peak {max(ql)} (expect ~{int(exp_peak)})")
+    time.sleep(2.5)  # let audiod release the source before the full-volume run
     t0 = time.time()
-    cs = subprocess.run([CSPOT, "--sink-test", "2", "--audiod-sock", SOCK, "--no-status"], capture_output=True, text=True)
+    cs = subprocess.run([CSPOT, "--sink-test", "2", "--audiod-sock", SOCK, "--no-status", "--initial-volume", "100"], capture_output=True, text=True)
     open(f"{TMP}/cspot.log", "w").write(cs.stdout + cs.stderr)
     took = time.time() - t0
     check(cs.returncode == 0 and 1.8 <= took <= 3.5, f"cspot-ios3 --sink-test 2 exits 0 and is paced by SocketSink ({took:.1f} s)")
     time.sleep(1.5)
-    tone = open(OUT, "rb").read()[raop_frames * 4:]
+    tone = open(OUT, "rb").read()[(before + len(quiet_tone) // 4) * 4:]
     tf = len(tone) // 4
     left = struct.unpack("<%dh" % (tf * 2), tone)[0::2]
     neg = sum(1 for a, b in zip(left, left[1:]) if a >= 0 and b < 0)  # positive -> negative crossings: 440 per second
@@ -140,7 +152,7 @@ if CSPOT:
     ev = events()
     tk = [e for e in ev if e[1] == "takeover" and e[3] == "spotify"]
     rl = [e for e in ev if e[1] == "release" and e[2] == "spotify"]
-    check(len(tk) == 1 and len(rl) == 1 and rl[0][4] == "stop", f"audiod: spotify took over once and was released by STOP ({tk + rl})")
+    check(len(tk) == 2 and len(rl) == 2 and all(r[4] == "stop" for r in rl), f"audiod: spotify took over twice (both tone runs) and was released by STOP each time ({tk + rl})")
 else:
     print("skip cspot-ios3 (no host binary given)")
 

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "SocketSink.h"
+#include "VolumeCurve.h"
 #ifdef __APPLE__
 #include "AudioQueueSink.h"
 #endif
@@ -15,7 +16,10 @@ class PlayerSink {
  public:
   virtual ~PlayerSink() {}
   virtual void feedPCMFrames(const uint8_t* data, size_t bytes) = 0;  // 44.1 kHz / 16-bit / stereo
-  virtual void volumeChanged(uint16_t volume) = 0;                     // 0..65535
+  // Connect volume 0..65535 -> the sink's linear gain through the perceptual curve (same for both sinks)
+  void volumeChanged(uint16_t volume) { setGain(connectVolumeToGain(volume, curve)); }
+  virtual void setGain(float linear) = 0;
+  static VolumeCurve curve;
   virtual void flush() = 0;                                            // seek / track change
   virtual double bufferedSeconds() = 0;                                // for end-of-playlist detection
   virtual void audioEnded() {}                                         // playlist finished and drained
@@ -28,7 +32,7 @@ class AudiodSink : public PlayerSink {
     if (leadMs) sink.setLeadMs(leadMs);
   }
   void feedPCMFrames(const uint8_t* d, size_t bytes) override { sink.write(reinterpret_cast<const int16_t*>(d), bytes / 4); }
-  void volumeChanged(uint16_t v) override { sink.setVolume(v / 65535.0f); }
+  void setGain(float linear) override { sink.setVolume(linear); }
   void flush() override { sink.flush(); }
   double bufferedSeconds() override { return sink.bufferedSeconds(); }
   void audioEnded() override { sink.idle(); }
@@ -44,7 +48,7 @@ class LocalQueueSink : public PlayerSink {
  public:
   explicit LocalQueueSink(const AudioQueueSink::Options& o) : q(o) {}
   void feedPCMFrames(const uint8_t* d, size_t bytes) override { q.feedPCMFrames(d, bytes); }
-  void volumeChanged(uint16_t v) override { q.volumeChanged(v); }
+  void setGain(float linear) override { q.setGain(linear); }
   void flush() override { q.flush(); }
   double bufferedSeconds() override { return q.bufferedSeconds(); }
   void audioEnded() override { q.stop(); }
@@ -54,3 +58,4 @@ class LocalQueueSink : public PlayerSink {
   AudioQueueSink q;
 };
 #endif
+
