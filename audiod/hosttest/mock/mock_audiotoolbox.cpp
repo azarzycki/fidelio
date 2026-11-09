@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -33,6 +34,13 @@ void CFRunLoopRun() {
   rl->stop = false;
 }
 void CFRunLoopStop(CFRunLoopRef rl) { std::lock_guard<std::mutex> l(rl->m); rl->stop = true; rl->cv.notify_all(); }
+int CFRunLoopRunInMode(CFStringRef, CFTimeInterval seconds, Boolean) {
+  __CFRunLoop* rl = CFRunLoopGetCurrent();
+  std::unique_lock<std::mutex> l(rl->m);
+  bool stopped = rl->cv.wait_for(l, std::chrono::milliseconds((long)(seconds * 1000)), [&] { return rl->stop; });
+  rl->stop = false;
+  return stopped ? 2 /*kCFRunLoopRunStopped*/ : 1 /*kCFRunLoopRunFinished/TimedOut*/;
+}
 struct __CFRunLoopTimer { int dummy; };
 CFRunLoopTimerRef CFRunLoopTimerCreate(CFAllocatorRef, CFAbsoluteTime, CFTimeInterval, CFOptionFlags, CFIndex, CFRunLoopTimerCallBack, void*) {
   return new __CFRunLoopTimer;
@@ -71,6 +79,11 @@ static std::atomic<int> gStopDelayMs{0}, gLive{0};
 static std::atomic<bool> gCompleting{true}, gAsyncReset{false};
 static std::atomic<int> gRefuse{0};
 static std::atomic<bool> gOtherAudio{false};
+static std::atomic<int> gSessionCalls{0};        // every AudioSession* entry point (B1.8: must stay 0 in bare mode)
+static std::atomic<bool> gSessionInitFails{false};
+static std::atomic<int> gSessionInitFailures{0};
+static std::atomic<int> gSessionInitCalls{0};
+static std::atomic<int> gSessionInitDelayMs{0};
 static std::string gRoute = "USB";
 static AudioSessionInterruptionListener gIntListener = nullptr;
 static void* gIntUd = nullptr;
@@ -169,12 +182,18 @@ OSStatus AudioQueueSetParameter(AudioQueueRef, AudioQueueParameterID, AudioQueue
 
 // ---------------------------------------------------------------- AudioSession
 OSStatus AudioSessionInitialize(CFRunLoopRef, CFStringRef, AudioSessionInterruptionListener l, void* ud) {
+  gSessionCalls++;
+  gSessionInitCalls++;
+  if (gSessionInitDelayMs > 0) usleep((useconds_t)gSessionInitDelayMs * 1000);  // the client's RPC to the system sound server timing out
+  if (gSessionInitFails) return kAudioSessionInitializationError;  // 'ini?' 1768843583, as on the device at cold boot
+  if (gSessionInitFailures > 0) { gSessionInitFailures--; return kAudioSessionInitializationError; }
   std::lock_guard<std::mutex> g(gMock);
   gIntListener = l; gIntUd = ud;
   return 0;
 }
-OSStatus AudioSessionSetProperty(AudioSessionPropertyID, UInt32, const void*) { return 0; }
+OSStatus AudioSessionSetProperty(AudioSessionPropertyID, UInt32, const void*) { gSessionCalls++; return 0; }
 OSStatus AudioSessionGetProperty(AudioSessionPropertyID id, UInt32* size, void* out) {
+  gSessionCalls++;
   if (id == kAudioSessionProperty_OtherAudioIsPlaying && size && *size == sizeof(UInt32)) { *(UInt32*)out = gOtherAudio ? 1 : 0; return 0; }
   if (id == kAudioSessionProperty_AudioRoute && size && *size == sizeof(CFStringRef)) {
     std::lock_guard<std::mutex> g(gMock);
@@ -184,11 +203,12 @@ OSStatus AudioSessionGetProperty(AudioSessionPropertyID id, UInt32* size, void* 
   return -1;
 }
 OSStatus AudioSessionAddPropertyListener(AudioSessionPropertyID id, AudioSessionPropertyListener l, void* ud) {
+  gSessionCalls++;
   std::lock_guard<std::mutex> g(gMock);
   if (id == kAudioSessionProperty_AudioRouteChange) { gRouteListener = l; gRouteUd = ud; }
   return 0;
 }
-OSStatus AudioSessionSetActive(Boolean) { return 0; }
+OSStatus AudioSessionSetActive(Boolean) { gSessionCalls++; return 0; }
 
 namespace mock {
 bool queueRunning() { std::lock_guard<std::mutex> g(gMock); if (!gLiveQueue) return false; std::lock_guard<std::mutex> l(gLiveQueue->m); return gLiveQueue->running; }
@@ -211,6 +231,11 @@ unsigned long completedBuffers() { return gCompleted; }
 void setStopDelayMs(int ms) { gStopDelayMs = ms; }
 void setAsyncResetDelivery(bool on) { gAsyncReset = on; }
 void setOtherAudioPlaying(bool on) { gOtherAudio = on; }
+int sessionCalls() { return gSessionCalls; }
+void setSessionInitFails(bool f) { gSessionInitFails = f; }
+void setSessionInitFailures(int n) { gSessionInitFailures = n; }
+int sessionInitCalls() { return gSessionInitCalls; }
+void setSessionInitDelayMs(int ms) { gSessionInitDelayMs = ms; }
 void refuseNextEnqueues(int n) { gRefuse = n; }
 int queuedBuffers() { std::lock_guard<std::mutex> g(gMock); if (!gLiveQueue) return 0; std::lock_guard<std::mutex> l(gLiveQueue->m); return (int)gLiveQueue->queued.size(); }
 void setCompleting(bool on) { gCompleting = on; }

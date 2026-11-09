@@ -73,6 +73,11 @@ local AudioQueue for standalone debugging; `--pcm-out` / `--no-audio` are unchan
 volume from SET_PARAMETER is sent to audiod as a VOLUME message (audiod applies it at the output);
 TEARDOWN sends STOP so audiod releases the output immediately. Since B1.1 the status files are
 `status-airplay.json` / `status-airplay.plist` / `cover-airplay.jpg`. See `audiod/README.md`.
+`--audio-session auto|on|off` applies to `--direct-audio` only (B1.8): `auto` (default) is the full
+AudioSession path, retried forever if AudioSessionInitialize fails (at cold boot the daemon starts
+before the audio session server: `'ini?'`) with a bare AudioQueue playing meanwhile and an in-place
+upgrade on success; `on` waits for the session; `off` is a bare queue with zero AudioSession calls
+(diagnosis only).
 
 ### Sender volume (B1.4)
 `--airplay-volume auto|honor|ignore` (default auto): -30..0 dB from the sender is applied as gain

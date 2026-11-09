@@ -101,7 +101,7 @@ struct Options {
   int initialVolumePct = 50; // --initial-volume: what Connect sees and what we play at before the first slider move
   VolumeCurve volumeCurve = VOLUME_LOG;  // --volume-curve
 #ifdef __APPLE__
-  AudioQueueSink::Options audio;  // --audio-route, --on-route-change (direct audio only)
+  AudioQueueSink::Options audio;  // --audio-route, --on-route-change, --audio-session (direct audio only)
 #endif
   std::string statusDir = "/var/mobile/fidelio";  // "" disables the status files
 };
@@ -155,6 +155,14 @@ static Options parseArgs(int argc, char** argv) {
       else if (v == "restart") o.audio.recovery = AudioQueueSink::RECOVER_RESTART;
       else if (v == "none") o.audio.recovery = AudioQueueSink::RECOVER_NONE;
       else throw std::invalid_argument("--on-route-change must be recreate|restart|none");
+#endif
+    } else if (a == "--audio-session") {
+      std::string v = next("--audio-session");
+#ifdef __APPLE__
+      if (v == "auto") o.audio.session = AudioQueueSink::SESSION_AUTO;
+      else if (v == "on") o.audio.session = AudioQueueSink::SESSION_ON;
+      else if (v == "off") o.audio.session = AudioQueueSink::SESSION_OFF;
+      else throw std::invalid_argument("--audio-session must be auto|on|off");
 #endif
     }
     else throw std::invalid_argument("unknown option " + a);
@@ -306,6 +314,10 @@ int main(int argc, char** argv) {
                  "  --on-route-change recreate|restart|none\n"
                  "                           what to do when the audio route changes or an interruption ends:\n"
                  "                           recreate the AudioQueue (default), stop/start it, or nothing\n"
+                 "  --audio-session auto|on|off\n"
+                 "                           auto (default): full AudioSession, retried forever if it fails, bare queue\n"
+                 "                           meanwhile; on: no audio until the session is up; off: bare queue, no\n"
+                 "                           AudioSession calls (A/B diagnosis only)\n"
                  "  --no-audio               diagnostic: no AudioQueue sink and no player thread;\n"
                  "                           decoded audio is discarded, Spirc events are logged\n"
                  "  --status-dir DIR         write status.json / status.plist / cover.jpg there\n"

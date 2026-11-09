@@ -36,6 +36,7 @@ struct Options {
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
   int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
   RaopSession::VolumeMode volumeMode = RaopSession::VOL_AUTO;  // --airplay-volume
+  int audioSession = 0;      // --audio-session auto(0)|on(1)|off(2), --direct-audio only (AudioQueueSink::SessionMode order)
 };
 
 static Options parse(int argc, char** argv) {
@@ -61,6 +62,13 @@ static Options parse(int argc, char** argv) {
       else { fprintf(stderr, "--airplay-volume must be auto|honor|ignore\n"); exit(1); }
     }
     else if (a == "--latency-ms") o.latencyMs = atoi(next("--latency-ms").c_str());
+    else if (a == "--audio-session") {
+      std::string v = next("--audio-session");
+      if (v == "auto") o.audioSession = 0;
+      else if (v == "on") o.audioSession = 1;
+      else if (v == "off") o.audioSession = 2;
+      else { fprintf(stderr, "--audio-session must be auto|on|off\n"); exit(1); }
+    }
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); exit(1); }
   }
   return o;
@@ -95,6 +103,9 @@ int main(int argc, char** argv) {
            "                        senders without remote volume, e.g. CenturyPlay, send permanently) at unity;\n"
            "                        honor: -144 dB mutes; ignore: always unity, the sender controls loudness\n"
            "  --direct-audio        play through a local AudioQueue instead of fidelio-audiod (standalone debugging)\n"
+           "  --audio-session auto|on|off\n"
+           "                        with --direct-audio: auto (default) = full AudioSession, retried forever if it fails, bare\n"
+           "                        queue meanwhile; on = no audio until the session is up; off = bare queue, no AudioSession calls\n"
            "  --no-audio            decode and discard, for isolation tests\n"
            "  --pcm-out FILE        write the decoded 44.1 kHz/16/stereo PCM to FILE instead of playing\n", AUDIOD_DEFAULT_SOCK);
     return 0;
@@ -111,7 +122,9 @@ int main(int argc, char** argv) {
     IOS3_TRACE("PCM file output: %s", o.pcmOut.c_str());
   } else if (o.directAudio) {
 #ifdef __APPLE__
-    out.reset(new AudioQueueOutput()); IOS3_TRACE("direct AudioQueue output created");
+    AudioQueueSink::Options aq;
+    aq.session = o.audioSession == 1 ? AudioQueueSink::SESSION_ON : o.audioSession == 2 ? AudioQueueSink::SESSION_OFF : AudioQueueSink::SESSION_AUTO;
+    out.reset(new AudioQueueOutput(aq)); IOS3_TRACE("direct AudioQueue output created (--audio-session %s)", AudioQueueSink::sessionModeName(aq.session));
 #else
     IOS3_TRACE("host build: no AudioQueue, use --pcm-out, --no-audio or audiod"); return 2;
 #endif

@@ -31,6 +31,32 @@
 // (kAudioSessionProperty_OtherAudioIsPlaying). While another app plays (the user pressed play in
 // the Music app) the sink stays paused and the grace timer is held; it resumes once other audio
 // has been off for the grace window, or on a real END callback. Any resume drops the ring.
+//
+// AudioSession availability (B1.8): the full AudioSession path (route following, interruptions,
+// the yield) is the PRIMARY path and the deployment target. At cold boot a RunAtLoad daemon starts
+// before the audio session server is ready: AudioSessionInitialize hangs past the 2 s wait and
+// returns 'ini?' (kAudioSessionInitializationError), and before B1.8 that was permanent (no retry),
+// so AudioQueueStart kept failing with the same code until a manual reload. Options::session:
+//   SESSION_AUTO (default): the session thread calls AudioSessionInitialize and RETRIES it forever
+//     with a 1, 2, 4, 8, 15 s backoff. init() waits up to 2 s for the first attempt: if the session
+//     is up, the behaviour is exactly the pre-B1.8 one. Otherwise the owner plays through a BARE
+//     queue (no AudioSession call is made from the owner thread while `sessionAvailable` is false;
+//     a queue whose start the half-initialized session spoiled is re-created clean as soon as the
+//     attempt returns; the completion watchdog and the start self-heal below work without a
+//     session) and, when a retry succeeds, the thread configures the session (category, route
+//     listener, override, SetActive) and flags an in-place UPGRADE: ensurePlaying() re-acquires the
+//     output on the real route like a route change (the ring survives; only the <= 138 ms the old
+//     queue owned are lost).
+//   SESSION_ON: the same retry loop, but no bare fallback: nothing is started until the session is
+//     up (strict: never unknowingly run without route following).
+//   SESSION_OFF: bare queue only, no session thread, zero AudioSession-family calls (last resort /
+//     A-B diagnosis).
+// Every AudioSession call site is guarded by `sessionAvailable` (false -> true once, under
+// queueMutex). Each Initialize attempt, its result and the eventual success are logged.
+//
+// Start self-heal (B1.8): when AudioQueueStart fails (any mode) it is retried with a backoff of
+// 250, 500, 1000, 2000 ms (capped), and from the second consecutive failure on the queue is
+// destroyed and created again before the retry; every attempt is logged.
 #include <AudioToolbox/AudioQueue.h>
 #include <AudioToolbox/AudioServices.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -47,10 +73,13 @@ class AudioQueueSink : public AudioSink {
  public:
   enum RouteOverride { ROUTE_AUTO, ROUTE_SPEAKER, ROUTE_LINEOUT };
   enum RouteRecovery { RECOVER_RECREATE, RECOVER_RESTART, RECOVER_NONE };
+  enum SessionMode { SESSION_AUTO, SESSION_ON, SESSION_OFF };
   struct Options {
     RouteOverride route = ROUTE_AUTO;        // kAudioSessionProperty_OverrideAudioRoute (speaker only; lineout = no override)
     RouteRecovery recovery = RECOVER_RECREATE;
+    SessionMode session = SESSION_AUTO;      // --audio-session auto|on|off (see "AudioSession availability" above)
   };
+  static const char* sessionModeName(SessionMode m) { return m == SESSION_ON ? "on" : m == SESSION_OFF ? "off" : "auto"; }
 
   AudioQueueSink();
   explicit AudioQueueSink(const Options& options);
@@ -70,8 +99,13 @@ class AudioQueueSink : public AudioSink {
   void tick();
   // Seconds of audio still buffered (ring + the real PCM inside the AudioQueue buffers).
   double bufferedSeconds();
-  // Current system audio route name ("Speaker", "LineOut", "Headphone", ...), "" if unknown.
+  // Current system audio route name ("Speaker", "LineOut", "Headphone", ...), "" if unknown;
+  // "default" in bare mode (no AudioSession to ask).
   std::string currentRoute();
+  // True once the AudioSession path is live (false in bare mode and while auto/on are still retrying).
+  bool sessionInUse();
+  // AudioSessionInitialize attempts made so far by the session thread (0 in bare mode).
+  int sessionAttempts();
   // Lifecycle changes so far (queue creations), for diagnostics and tests.
   unsigned long queueGeneration();
   // True once after the queue resumed from an interruption or a yield: the ring was dropped, and the
@@ -85,7 +119,12 @@ class AudioQueueSink : public AudioSink {
   void crossfade(size_t fadeFrames);
 
   static const long kInterruptGraceMs = 1000;    // an interruption with no end callback is forgotten after this
-  static const long kStartRetryMs = 500;         // retry AudioQueueStart this often while it fails
+  static const long kStartRetryMs = 250;         // first retry of a failed AudioQueueStart; doubles per failure up to kStartRetryMaxMs
+  static const long kStartRetryMaxMs = 2000;
+  static const int kStartRecreateAfter = 2;      // consecutive failures after which the queue is destroyed and created again first
+  static const long kSessionFirstWaitMs = 2000;  // init() waits this long for the first AudioSessionInitialize
+  static const long kSessionRetryMs = 1000;      // AudioSessionInitialize retry backoff: 1, 2, 4, 8 s ...
+  static const long kSessionRetryMaxMs = 15000;  // ... capped here, forever
   static const long kRecoverRetryMs = 1000;      // retry re-acquiring a missing/dead queue this often
   static const long kNoCompletionMs = 1000;      // "running" but no buffer completed for this long = dead queue
   static const long kFirstCompletionMs = 3000;   // ... except right after AudioQueueStart: the first completion may take longer
@@ -100,6 +139,8 @@ class AudioQueueSink : public AudioSink {
   static const size_t kResumeFadeFrames = 882;   // 20 ms fade-in after a resume / restart
 
   void init();
+  void startSessionThread();  // SESSION_ON / SESSION_AUTO: spawn the run-loop thread and wait up to kSessionFirstWaitMs for its first attempt
+  bool sessionLive();         // sessionAvailable under queueMutex
   static uint64_t nowMs();  // monotonic (mach_absolute_time on the device)
 
   // --- owner thread, lifecycleMutex held
@@ -110,6 +151,7 @@ class AudioQueueSink : public AudioSink {
   bool createQueue();
   void destroyQueue();
   void start();
+  uint64_t startBackoffMs() const;  // 250, 500, 1000, 2000 ms by consecutive AudioQueueStart failures
   void stopQueue();
   void resetAndPrime();
 
@@ -154,11 +196,13 @@ class AudioQueueSink : public AudioSink {
   unsigned long generation = 0;         // createQueue() count
 
   // --- owner thread only (lifecycleMutex)
-  bool startFailed = false;    // AudioQueueStart failed last time (log only changes)
+  bool startFailed = false;    // AudioQueueStart failed last time
+  int startFailures = 0;       // consecutive AudioQueueStart failures (reset by a success)
   uint64_t lastStartAttemptMs = 0;
   uint64_t lastRecoverMs = 0;
   int noCompletionRecoveries = 0;  // consecutive "no completions" re-acquires (reset by a completion)
   bool yieldLogged = false;        // "yielding" traced once per yield
+  bool waitLogged = false;         // SESSION_ON: "waiting for the AudioSession" traced once per wait
 
   // --- ring, under `mutex`
   PcmRing ring{kRingBytes};
@@ -171,8 +215,14 @@ class AudioQueueSink : public AudioSink {
   pthread_t sessionThread;
   bool sessionThreadStarted = false;
   CFRunLoopRef sessionRunLoop = nullptr;
-  bool sessionReady = false;
-  bool sessionOk = false;
+  bool sessionReady = false;     // under readyMutex: the first AudioSessionInitialize attempt returned (either way)
+  bool sessionOk = false;        // under readyMutex: AudioSessionInitialize succeeded
+  bool ownerProceeded = false;   // under readyMutex: init() stopped waiting; a later success must upgrade the live queue
+  bool sessionQuit = false;      // under readyMutex: destructor; ends the retry wait / run loop
+  int sessionTries = 0;          // under readyMutex: AudioSessionInitialize attempts so far
+  bool sessionAvailable = false; // under queueMutex: the AudioSession path is live (false -> true once)
+  bool sessionUpgradePending = false;  // under queueMutex: set by the thread on a late success, consumed by ensurePlaying()
+  bool sessionInitFailedPending = false;  // under queueMutex: set by the thread after a failed attempt, consumed by ensurePlaying()
   pthread_mutex_t readyMutex;
   pthread_cond_t readyCond;
 };

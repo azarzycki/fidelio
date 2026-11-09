@@ -43,23 +43,13 @@ void AudioQueueSink::init() {
   memset(&format, 0, sizeof format);
   softwareVolumeControl = false;  // we use the AudioQueue volume parameter
 
-  // The AudioSession lives on its own run-loop thread (see the header). Wait up to 2 s for it so
-  // the category/listeners are in place before the first AudioQueue is created.
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  pthread_attr_setstacksize(&attr, 64 * 1024);
-  sessionThreadStarted = pthread_create(&sessionThread, &attr, sessionThreadEntry, this) == 0;
-  pthread_attr_destroy(&attr);
-  if (sessionThreadStarted) {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    struct timespec ts = { tv.tv_sec + 2, tv.tv_usec * 1000 };
-    pthread_mutex_lock(&readyMutex);
-    while (!sessionReady && pthread_cond_timedwait(&readyCond, &readyMutex, &ts) == 0) {}
-    pthread_mutex_unlock(&readyMutex);
-    if (!sessionReady) IOS3_TRACE("AudioQueueSink: AudioSession thread did not come up in 2 s; continuing without route following");
+  // B1.8: bare mode makes no AudioSession call at all; `sessionAvailable` stays false and every
+  // call site below checks it. auto/on start the session thread, which retries forever.
+  if (opts.session == SESSION_OFF) {
+    IOS3_TRACE("AudioQueueSink: audio-session=off: bare AudioQueue, zero AudioSession calls (no route following, no interruption handling%s)",
+               opts.route == ROUTE_SPEAKER ? "; --audio-route speaker has no effect" : "");
   } else {
-    IOS3_TRACE("AudioQueueSink: cannot start the AudioSession thread; continuing without route following");
+    startSessionThread();
   }
 
   setParams(44100, 2, 16);
@@ -69,8 +59,12 @@ AudioQueueSink::~AudioQueueSink() {
   pthread_mutex_lock(&lifecycleMutex);
   destroyQueue();
   pthread_mutex_unlock(&lifecycleMutex);
-  if (sessionThreadStarted && sessionRunLoop) {
-    CFRunLoopStop(sessionRunLoop);
+  if (sessionThreadStarted) {
+    pthread_mutex_lock(&readyMutex);
+    sessionQuit = true;  // ends the retry wait or the run-loop poll
+    pthread_cond_broadcast(&readyCond);
+    pthread_mutex_unlock(&readyMutex);
+    if (sessionRunLoop) CFRunLoopStop(sessionRunLoop);
     pthread_join(sessionThread, nullptr);
   }
   pthread_cond_destroy(&readyCond);
@@ -81,6 +75,57 @@ AudioQueueSink::~AudioQueueSink() {
   pthread_mutex_destroy(&lifecycleMutex);
 }
 
+// SESSION_ON / SESSION_AUTO: the AudioSession lives on its own run-loop thread (see the header).
+// Wait up to kSessionFirstWaitMs for its first AudioSessionInitialize so that, when the session is
+// available, the category/listeners are in place before the first AudioQueue is created (the
+// pre-B1.8 behaviour, unchanged). If it is not, the owner proceeds: `auto` plays bare meanwhile,
+// `on` waits for the session; the thread keeps retrying and a later success upgrades in place.
+void AudioQueueSink::startSessionThread() {
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, 64 * 1024);
+  sessionThreadStarted = pthread_create(&sessionThread, &attr, sessionThreadEntry, this) == 0;
+  pthread_attr_destroy(&attr);
+  if (!sessionThreadStarted) {
+    IOS3_TRACE("AudioQueueSink: cannot start the AudioSession thread (audio-session=%s): %s", sessionModeName(opts.session),
+               opts.session == SESSION_ON ? "no audio (on = the session is required)" : "bare AudioQueue (no AudioSession call made)");
+    return;
+  }
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  struct timespec ts = { tv.tv_sec + kSessionFirstWaitMs / 1000, tv.tv_usec * 1000 };
+  pthread_mutex_lock(&readyMutex);
+  while (!sessionReady && pthread_cond_timedwait(&readyCond, &readyMutex, &ts) == 0) {}
+  bool ready = sessionReady, ok = sessionOk;
+  if (!ok) ownerProceeded = true;  // the thread's eventual success must upgrade the running queue
+  pthread_mutex_unlock(&readyMutex);
+  if (ok) {
+    IOS3_TRACE("AudioQueueSink: AudioSession in use (audio-session=%s)", sessionModeName(opts.session));
+    return;
+  }
+  const char* then = opts.session == SESSION_ON
+                         ? "no audio until it succeeds (on = the session is required); retrying with backoff"
+                         : "playing through a bare AudioQueue meanwhile (no AudioSession call from the player); retrying with backoff and "
+                           "upgrading in place when it succeeds";
+  if (!ready) IOS3_TRACE("AudioQueueSink: the first AudioSessionInitialize has not returned after %ld ms (audio-session=%s): %s", kSessionFirstWaitMs,
+                         sessionModeName(opts.session), then);
+  else IOS3_TRACE("AudioQueueSink: AudioSessionInitialize failed (audio-session=%s): %s", sessionModeName(opts.session), then);
+}
+
+bool AudioQueueSink::sessionLive() {
+  pthread_mutex_lock(&queueMutex);
+  bool live = sessionAvailable;
+  pthread_mutex_unlock(&queueMutex);
+  return live;
+}
+
+int AudioQueueSink::sessionAttempts() {
+  pthread_mutex_lock(&readyMutex);
+  int n = sessionTries;
+  pthread_mutex_unlock(&readyMutex);
+  return n;
+}
+
 // ---------------------------------------------------------------- AudioSession thread
 
 void* AudioQueueSink::sessionThreadEntry(void* self) {
@@ -88,34 +133,96 @@ void* AudioQueueSink::sessionThreadEntry(void* self) {
   return nullptr;
 }
 
+static void fourcc(OSStatus st, char out[5]) {
+  for (int i = 0; i < 4; i++) {
+    int c = (int)((st >> (24 - 8 * i)) & 0xff);
+    out[i] = (c >= 32 && c < 127) ? (char)c : '.';
+  }
+  out[4] = 0;
+}
+
 void AudioQueueSink::sessionThreadLoop() {
   sessionRunLoop = CFRunLoopGetCurrent();
-  OSStatus st = AudioSessionInitialize(sessionRunLoop, kCFRunLoopDefaultMode, interruptionCallback, this);
-  if (st == 0) {
-    UInt32 category = kAudioSessionCategory_MediaPlayback;
-    AudioSessionSetProperty(kAudioSessionProperty_AudioCategory, sizeof category, &category);
-    OSStatus lst = AudioSessionAddPropertyListener(kAudioSessionProperty_AudioRouteChange, routeChangeCallback, this);
-    applyRouteOverride();
-    OSStatus act = AudioSessionSetActive(true);
-    sessionOk = true;
-    IOS3_TRACE("AudioSession ready: route listener %ld, active %ld, route '%s', recovery=%s override=%s", (long)lst, (long)act,
-               currentRoute().c_str(),
-               opts.recovery == RECOVER_RECREATE ? "recreate" : opts.recovery == RECOVER_RESTART ? "restart" : "none",
-               opts.route == ROUTE_SPEAKER ? "speaker" : opts.route == ROUTE_LINEOUT ? "lineout(no override)" : "auto");
-  } else {
-    // A command-line process without a bundle may be refused; audio still works, routes are not followed.
-    IOS3_TRACE("AudioSessionInitialize -> %ld (no route following / interruption handling)", (long)st);
+  // 1. AudioSessionInitialize, retried forever with backoff. At cold boot a RunAtLoad daemon
+  //    starts before the audio session server is up: the first call hangs past the owner's wait
+  //    and returns 'ini?' (1768843583, kAudioSessionInitializationError: the registration RPC
+  //    timed out). Seconds later the same call succeeds, so every failure is transient.
+  OSStatus st;
+  uint64_t backoff = (uint64_t)kSessionRetryMs;
+  int attempt = 0;
+  for (;;) {
+    attempt++;
+    pthread_mutex_lock(&readyMutex);
+    sessionTries = attempt;
+    pthread_mutex_unlock(&readyMutex);
+    uint64_t t0 = nowMs();
+    st = AudioSessionInitialize(sessionRunLoop, kCFRunLoopDefaultMode, interruptionCallback, this);
+    uint64_t took = nowMs() - t0;
+    if (st == kAudioSessionAlreadyInitialized) {  // 'init': a previous attempt did register us after all
+      IOS3_TRACE("AudioSessionInitialize attempt #%d -> 'init' (already initialized): treating as success", attempt);
+      st = 0;
+    }
+    if (st == 0) break;
+    char code[5];
+    fourcc(st, code);
+    IOS3_TRACE("AudioSession not ready: AudioSessionInitialize attempt #%d -> %ld ('%s') after %llu ms; retrying in %llu ms (%s)", attempt,
+               (long)st, code, (unsigned long long)took, (unsigned long long)backoff,
+               opts.session == SESSION_ON ? "no audio until it succeeds" : "playing bare meanwhile");
+    pthread_mutex_lock(&queueMutex);
+    sessionInitFailedPending = true;  // the owner re-creates a bare queue whose start the half-initialized session may have spoiled
+    pthread_mutex_unlock(&queueMutex);
+    pthread_mutex_lock(&readyMutex);
+    sessionReady = true;  // the owner stops waiting after the first failure
+    pthread_cond_broadcast(&readyCond);
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    struct timespec ts = { tv.tv_sec + (time_t)(backoff / 1000), tv.tv_usec * 1000 + (long)(backoff % 1000) * 1000000L };
+    if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+    while (!sessionQuit && pthread_cond_timedwait(&readyCond, &readyMutex, &ts) == 0) {}
+    bool quit = sessionQuit;
+    pthread_mutex_unlock(&readyMutex);
+    if (quit) return;
+    backoff *= 2;
+    if (backoff > (uint64_t)kSessionRetryMaxMs) backoff = kSessionRetryMaxMs;
   }
+
+  // 2. configure the session, then publish it: a late success (the owner already runs a bare
+  //    queue) is an in-place upgrade that ensurePlaying() performs on the owner thread.
+  UInt32 category = kAudioSessionCategory_MediaPlayback;
+  AudioSessionSetProperty(kAudioSessionProperty_AudioCategory, sizeof category, &category);
+  OSStatus lst = AudioSessionAddPropertyListener(kAudioSessionProperty_AudioRouteChange, routeChangeCallback, this);
+  applyRouteOverride();
+  OSStatus act = AudioSessionSetActive(true);
   pthread_mutex_lock(&readyMutex);
+  bool late = ownerProceeded;
   sessionReady = true;
+  sessionOk = true;
   pthread_cond_broadcast(&readyCond);
   pthread_mutex_unlock(&readyMutex);
-  if (st != 0) return;
+  pthread_mutex_lock(&queueMutex);
+  sessionAvailable = true;
+  if (late) sessionUpgradePending = true;
+  pthread_mutex_unlock(&queueMutex);
+  if (attempt > 1 || late)
+    IOS3_TRACE("AudioSession acquired on retry %d: route '%s'; route+interruption listeners attached (listener %ld, active %ld)%s", attempt,
+               currentRoute().c_str(), (long)lst, (long)act, late ? "; upgrading the running output in place" : "");
+  IOS3_TRACE("AudioSession ready after %d attempt%s%s: route listener %ld, active %ld, route '%s', recovery=%s override=%s", attempt,
+             attempt == 1 ? "" : "s", late ? " (late)" : "", (long)lst, (long)act,
+             currentRoute().c_str(), opts.recovery == RECOVER_RECREATE ? "recreate" : opts.recovery == RECOVER_RESTART ? "restart" : "none",
+             opts.route == ROUTE_SPEAKER ? "speaker" : opts.route == ROUTE_LINEOUT ? "lineout(no override)" : "auto");
 
-  // Keep the run loop alive even when AudioSession has nothing scheduled.
+  // 3. serve the callbacks until the destructor asks us to quit. Keep the run loop alive even when
+  //    AudioSession has nothing scheduled; poll the quit flag once a second (a CFRunLoopStop that
+  //    races the start of the loop would otherwise be lost).
   CFRunLoopTimerRef keepAlive = CFRunLoopTimerCreate(nullptr, CFAbsoluteTimeGetCurrent() + 1e9, 1e9, 0, 0, nullptr, nullptr);
   CFRunLoopAddTimer(sessionRunLoop, keepAlive, kCFRunLoopDefaultMode);
-  CFRunLoopRun();  // until CFRunLoopStop from the destructor
+  for (;;) {
+    pthread_mutex_lock(&readyMutex);
+    bool quit = sessionQuit;
+    pthread_mutex_unlock(&readyMutex);
+    if (quit) break;
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, false);
+  }
   CFRunLoopRemoveTimer(sessionRunLoop, keepAlive, kCFRunLoopDefaultMode);
   CFRelease(keepAlive);
 }
@@ -128,7 +235,10 @@ void AudioQueueSink::applyRouteOverride() {
   if (st != 0) IOS3_TRACE("OverrideAudioRoute -> %ld", (long)st);
 }
 
+bool AudioQueueSink::sessionInUse() { return sessionLive(); }
+
 std::string AudioQueueSink::currentRoute() {
+  if (!sessionLive()) return "default";  // bare mode: nothing to ask; the system picks the route
   CFStringRef route = nullptr;
   UInt32 size = sizeof route;
   if (AudioSessionGetProperty(kAudioSessionProperty_AudioRoute, &size, &route) != 0 || !route) return "";
@@ -150,6 +260,7 @@ void AudioQueueSink::routeChangeCallback(void* ud, AudioSessionPropertyID id, UI
 // audiod, on the next feed in a producer's --direct-audio mode).
 void AudioQueueSink::onInterruption(UInt32 state) {
   pthread_mutex_lock(&queueMutex);
+  if (!sessionAvailable) { pthread_mutex_unlock(&queueMutex); return; }  // not published yet (still configuring)
   if (state == kAudioSessionBeginInterruption) {
     interrupted = true;
     pausedForInterruption = false;
@@ -167,6 +278,7 @@ void AudioQueueSink::onInterruption(UInt32 state) {
 }
 
 void AudioQueueSink::onRouteChange(const void* data) {
+  if (!sessionLive()) return;
   long reason = -1;
   char oldRoute[64] = "?";
   if (data) {
@@ -189,7 +301,7 @@ void AudioQueueSink::onRouteChange(const void* data) {
 
 // Re-point the output at the current route and resume if playback is wanted.
 void AudioQueueSink::reacquireRoute(const char* why) {
-  OSStatus act = AudioSessionSetActive(true);
+  OSStatus act = sessionLive() ? AudioSessionSetActive(true) : 0;  // no session (yet): no session call, just the queue
   pthread_mutex_lock(&queueMutex);
   bool want = wantPlaying;
   RouteRecovery mode = opts.recovery;
@@ -296,16 +408,32 @@ bool AudioQueueSink::setParams(uint32_t sampleRate, uint8_t channelCount, uint8_
 void AudioQueueSink::start() {
   pthread_mutex_lock(&queueMutex);
   AudioQueueRef q = queue;
+  if (opts.session == SESSION_ON && !sessionAvailable) {  // strict: never play without the session
+    pthread_mutex_unlock(&queueMutex);
+    if (!waitLogged) { IOS3_TRACE("audio-session=on: playback wanted but the AudioSession is not up yet: waiting for it (no bare fallback)"); waitLogged = true; }
+    return;
+  }
+  waitLogged = false;
   if (!q || running || interrupted) { pthread_mutex_unlock(&queueMutex); return; }
   running = true;  // set before priming so a callback racing us behaves as "running"
   pthread_mutex_unlock(&queueMutex);
   // Prime every buffer the queue does not own (with silence if nothing is queued yet) and start.
   // `q` cannot be disposed meanwhile: only the owner thread does that, and we are it.
+  bool live = sessionLive();
   primeBuffers(q);
-  if (!startFailed) IOS3_TRACE("AudioQueueStart begin (route '%s')", currentRoute().c_str());
+  // Every attempt is logged (B1.8): a daemon that cannot start must say so on each retry.
+  if (!startFailed) IOS3_TRACE("AudioQueueStart begin (route '%s', %s)", currentRoute().c_str(), live ? "AudioSession" : "bare");
+  else IOS3_TRACE("AudioQueueStart retry #%d after %d failure%s (route '%s', %s)", startFailures + 1, startFailures, startFailures == 1 ? "" : "s",
+                  currentRoute().c_str(), live ? "AudioSession re-activated" : "bare");
   OSStatus st = AudioQueueStart(q, nullptr);
-  // Retried every kStartRetryMs while it fails: log changes only.
-  if (st == 0 || !startFailed) IOS3_TRACE("AudioQueueStart -> %ld", (long)st);
+  if (st == 0) {
+    IOS3_TRACE("AudioQueueStart -> 0%s", startFailed ? " (recovered)" : "");
+    startFailures = 0;
+  } else {
+    startFailures++;
+    IOS3_TRACE("AudioQueueStart -> %ld (failure #%d; next retry in %llu ms%s)", (long)st, startFailures, (unsigned long long)startBackoffMs(),
+               startFailures >= kStartRecreateAfter ? ", recreating the queue first" : "");
+  }
   startFailed = st != 0;
   pthread_mutex_lock(&queueMutex);
   if (queue == q) {
@@ -313,6 +441,13 @@ void AudioQueueSink::start() {
     else { startedAtMs = nowMs(); lastCompletionMs = startedAtMs; completedSinceStart = false; }  // the completion watchdog counts from here
   }
   pthread_mutex_unlock(&queueMutex);
+}
+
+// Backoff before the next AudioQueueStart after `startFailures` consecutive failures: 250, 500, 1000, 2000 ms.
+uint64_t AudioQueueSink::startBackoffMs() const {
+  int n = startFailures > 0 ? startFailures - 1 : 0;
+  uint64_t b = (uint64_t)kStartRetryMs << (n > 6 ? 6 : n);
+  return b > (uint64_t)kStartRetryMaxMs ? (uint64_t)kStartRetryMaxMs : b;
 }
 
 void AudioQueueSink::stopQueue() {
@@ -348,6 +483,9 @@ void AudioQueueSink::ensurePlaying(const char* from) {
   interruptionEndPending = false;
   uint64_t since = interruptedSinceMs, lastDone = lastCompletionMs;
   bool firstPending = !completedSinceStart;
+  bool haveSession = sessionAvailable, upgrade = sessionUpgradePending, initFailed = sessionInitFailedPending;
+  sessionUpgradePending = false;
+  sessionInitFailedPending = false;
   AudioQueueRef q = queue;
   pthread_mutex_unlock(&queueMutex);
 
@@ -358,6 +496,25 @@ void AudioQueueSink::ensurePlaying(const char* from) {
     if (queue == q) { running = false; pausedForInterruption = true; }
     pthread_mutex_unlock(&queueMutex);
     isRunning = false;
+  }
+  // 1b. the AudioSession came up after the output was already running bare (B1.8): re-acquire the
+  //     output on the real route exactly like a route change. The ring survives, so playback goes
+  //     on with the audio in hand; nothing is dropped from the stream.
+  if (upgrade) {
+    IOS3_TRACE("%s: AudioSession is up (attempt #%d): %s, route '%s', buffered audio kept%s", from, sessionAttempts(),
+               have ? "upgrading the bare output in place" : "acquiring the output on it", currentRoute().c_str(), want ? ", resuming" : "");
+    reacquireRoute("session upgrade");
+    return;
+  }
+  // 1c. an AudioSessionInitialize attempt just failed (B1.8). If the bare queue is not playing (on
+  //     the device the AudioQueueStart issued while that RPC was in flight failed with the session's
+  //     own error), throw it away and create a clean one now instead of waiting for the backoff.
+  if (initFailed && want && have && !isRunning && !isInterrupted && opts.session != SESSION_ON) {
+    IOS3_TRACE("%s: AudioSession attempt failed while the output was not playing: re-creating a clean bare AudioQueue", from);
+    startFailed = false;  // a fresh queue, a fresh start
+    startFailures = 0;
+    reacquireRoute("session init failed");
+    return;
   }
   // 2. the route changed: the system has settled on a route, so whatever interrupted us is over
   //    (its end callback never came on the device); re-acquire the output on the new route
@@ -376,7 +533,7 @@ void AudioQueueSink::ensurePlaying(const char* from) {
   // 3. the interruption ended: if the queue is already running (the watchdog restarted it), only
   //    re-activate the session; otherwise fall through to a plain start (no recreate)
   if (endPending) {
-    OSStatus act = AudioSessionSetActive(true);
+    OSStatus act = haveSession ? AudioSessionSetActive(true) : 0;
     pthread_mutex_lock(&queueMutex);
     interrupted = false;
     pthread_mutex_unlock(&queueMutex);
@@ -437,16 +594,27 @@ void AudioQueueSink::ensurePlaying(const char* from) {
     pthread_mutex_lock(&queueMutex);
     interrupted = false;
     pthread_mutex_unlock(&queueMutex);
-    OSStatus act = AudioSessionSetActive(true);
+    OSStatus act = haveSession ? AudioSessionSetActive(true) : 0;
     IOS3_TRACE("%s: interruption began %llu ms ago and never ended, no other audio playing: clearing it (AudioSessionSetActive -> %ld) and restarting",
                from, (unsigned long long)held, (long)act);
     yieldLogged = false;
     resumeFromInterruption(from);
   }
-  // 7. start, retrying every kStartRetryMs while it fails (a genuine interruption keeps it failing)
-  if (startFailed && now - lastStartAttemptMs < (uint64_t)kStartRetryMs) return;
-  lastStartAttemptMs = now;
-  if (startFailed) AudioSessionSetActive(true);  // a failed start usually means the session was taken away
+  // 7. start. After a failure (a genuine interruption keeps it failing; so did the system-context
+  //    daemon of B1.8) retry with a 250/500/1000/2000 ms backoff, and from the kStartRecreateAfter-th
+  //    consecutive failure on destroy and create the queue before the retry (self-heal).
+  if (startFailed) {
+    if (now - lastStartAttemptMs < startBackoffMs()) return;
+    lastStartAttemptMs = now;
+    if (startFailures >= kStartRecreateAfter) {
+      IOS3_TRACE("%s: AudioQueueStart failed %d times in a row: recreating the AudioQueue before retry #%d", from, startFailures, startFailures + 1);
+      destroyQueue();
+      if (!createQueue()) return;  // step 4 re-acquires it on a later tick (rate-limited)
+    }
+    if (haveSession) AudioSessionSetActive(true);  // with a session, a failed start usually means it was taken away
+  } else {
+    lastStartAttemptMs = now;
+  }
   start();
 }
 
@@ -513,6 +681,7 @@ bool AudioQueueSink::isConsuming() {
 }
 
 bool AudioQueueSink::otherAudioIsPlaying() {
+  if (!sessionLive()) return false;  // no session: nobody to ask, never yield
   UInt32 v = 0, size = sizeof v;
   if (AudioSessionGetProperty(kAudioSessionProperty_OtherAudioIsPlaying, &size, &v) != 0) return false;
   return v != 0;

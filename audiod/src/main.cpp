@@ -63,6 +63,12 @@ int main(int argc, char** argv) {
              "                           and the new source's start from zero instead of a hard cut (0 = hard flush)\n"
              "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
              "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
+             "  --audio-session auto|on|off   (AudioQueue) auto (default): full AudioSession path (route following,\n"
+             "                           interruptions, yield); if AudioSessionInitialize fails it is retried forever (1..15 s\n"
+             "                           backoff) while audio plays through a bare queue, and the output upgrades in place when\n"
+             "                           it succeeds (cold boot: the daemon starts before the audio session server). on: the\n"
+             "                           same, but no audio until the session is up. off: bare queue only, zero AudioSession\n"
+             "                           calls (A/B diagnosis only)\n"
              "  --status-dir DIR         write DIR/active-source (default /var/mobile/fidelio); --no-status disables\n"
              "  --event-log FILE         machine-readable transition log: '<ms> <kind> <from> <to> <reason>'\n"
              "  --no-silence / --silence do not / do feed silence between sources (default: on for\n"
@@ -104,9 +110,15 @@ int main(int argc, char** argv) {
       else if (v == "restart") aq.recovery = AudioQueueSink::RECOVER_RESTART;
       else if (v == "none") aq.recovery = AudioQueueSink::RECOVER_NONE;
       else { fprintf(stderr, "--on-route-change must be recreate|restart|none\n"); return 1; }
+    } else if (a == "--audio-session") {
+      std::string v = next("--audio-session");
+      if (v == "auto") aq.session = AudioQueueSink::SESSION_AUTO;
+      else if (v == "on") aq.session = AudioQueueSink::SESSION_ON;
+      else if (v == "off") aq.session = AudioQueueSink::SESSION_OFF;
+      else { fprintf(stderr, "--audio-session must be auto|on|off\n"); return 1; }
     }
 #else
-    else if (a == "--audio-route" || a == "--on-route-change") next(a.c_str());  // accepted, no AudioQueue on the host
+    else if (a == "--audio-route" || a == "--on-route-change" || a == "--audio-session") next(a.c_str());  // accepted, no AudioQueue on the host
 #endif
     else if (a == "--tick-ms") so.tickMs = atoi(next("--tick-ms"));
     else if (a == "--producing-gap-ms") t.producingGapMs = strtoull(next(a.c_str()), nullptr, 10);
@@ -128,6 +140,7 @@ int main(int argc, char** argv) {
     out.reset(fo);
   } else {
 #ifdef __APPLE__
+    IOS3_TRACE("fidelio-audiod: AudioQueue output, --audio-session %s", AudioQueueSink::sessionModeName(aq.session));
     out.reset(new AudioQueueOutput(aq));
     if (!feedSilenceSet) so.feedSilence = false;  // the AudioQueue sink pads silence itself
 #else

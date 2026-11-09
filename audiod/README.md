@@ -213,3 +213,54 @@ steal and a 2 s gap that may.
   crossfade the largest sample-to-sample step anywhere in the played output is the sines' own slope
   (470), with the hard flush it is a click (2538 in the run recorded); B plays cleanly after the
   window and the release fades to silence.
+
+## B1.8 (cold-boot race: the AudioSession self-heals; bare fallback meanwhile)
+
+- **Root cause (device, clean single-instance tests and a real reboot):** a plain
+  `/Library/LaunchDaemons` audiod (`UserName mobile`, no environment, production args) initializes
+  its AudioSession fine and gets `route 'USB'` once the system is settled; the daemon context is not
+  the problem (earlier HOME / bundle / bootstrap-namespace suspicions came from a contaminated test
+  with a second audiod holding the session). The only failure is **boot timing**: with `RunAtLoad`
+  the daemon starts before the audio session server is ready, `AudioSessionInitialize` hangs past
+  the 2 s wait and returns `1768843583` (`'ini?'`, kAudioSessionInitializationError: the client's
+  registration RPC timed out), and before B1.8 that state was permanent: no retry, and every later
+  `AudioQueueStart` (made after asking the dead session for the route, hence `route ''`) failed with
+  the same code until a manual reload. Reloading the identical daemon seconds later works.
+- **Fix: the session init self-heals** (`--audio-session auto`, the default, and `on`):
+  - The session thread retries `AudioSessionInitialize` forever with a **1, 2, 4, 8, 15 s** backoff
+    (capped), logging each attempt: `AudioSession not ready: AudioSessionInitialize attempt #n ->
+    1768843583 ('ini?') after N ms; retrying in M ms (playing bare meanwhile)`. `init()` still waits
+    2 s for the first attempt, so when the server is up (ssh, post-boot reload) nothing changes
+    from b17: category, listeners and override are in place before the first queue.
+  - When a retry succeeds: `AudioSession acquired on retry k: route 'USB'; route+interruption
+    listeners attached ...; upgrading the running output in place`. The thread sets the category,
+    adds the route-change listener, applies the override, activates the session and flags the
+    owner thread, which re-acquires the output on the real route exactly like a route change
+    (`AudioSession is up (attempt #k): upgrading the bare output in place, route 'USB', buffered
+    audio kept`): the ring survives, nothing is dropped from the stream, only the <= 138 ms the old
+    queue owned. From then on route following (undock -> speaker, re-dock -> line-out),
+    interruptions and the yield behave exactly as in b17.
+  - **While the session is down the output plays through a bare AudioQueue** (`auto`): no
+    AudioSession-family call is made from the player thread (the old fallback asked
+    `AudioSessionGetProperty(AudioRoute)` before every start and `AudioSessionSetActive` in every
+    recovery path); the start logs `route 'default', bare`. A queue whose start was issued while the
+    first Initialize RPC was still in flight (the device case) is thrown away and re-created clean
+    the moment that attempt returns, instead of waiting for the start backoff. `on` = the same retry
+    loop but strict: no audio until the session is up (`audio-session=on: playback wanted but the
+    AudioSession is not up yet: waiting`). `off` = bare queue only, zero AudioSession calls, A/B
+    diagnosis only.
+  - Start self-heal (every mode): a failed `AudioQueueStart` is retried after 250, 500, 1000,
+    2000 ms; from the 2nd consecutive failure the queue is destroyed and created again first; every
+    attempt is logged. The completion watchdog is unchanged.
+  - No plist environment, bundle identifier or bootstrap change is needed.
+- **Tests:** `hosttest/aqsink_bare_test` (mock counts every AudioSession entry point; 23 checks):
+  `off` makes 0 calls through playback, flush, crossfade, a dead-queue recovery and a 2.2 s
+  failing-start episode; `auto` with Initialize failing for good plays bare and makes no call other
+  than the Initialize retries (3 attempts in 3.3 s: 0, 1, 3 s); `auto` with Initialize failing twice
+  then succeeding plays bare at once and upgrades in place at the third attempt (~3 s: generation
+  +1, still running, ring not cleared, no resume signalled, the interruption listener is wired:
+  begin pauses, END resumes); `auto` with the first Initialize hanging 2.6 s returns from the
+  constructor at 2.0 s, plays bare, upgrades when the late success lands; `on` with Initialize
+  failing twice issues no AudioQueueStart until the session is up, then plays; `on`/`auto` with the
+  session available at once = the b17 path. `aqsink_test` (26: route following, interruptions,
+  yield, watchdog) is the regression guard and is unchanged.

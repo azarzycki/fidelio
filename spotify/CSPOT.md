@@ -144,7 +144,10 @@ Known unknowns, in the order I would expect to hit them:
 cspot-ios3 no longer opens the AudioQueue itself: the player thread feeds `fidelio-audiod`
 over `/var/mobile/fidelio/audiod.sock` (`--audiod-sock PATH`, env `AUDIOD_SOCK`), which
 arbitrates between Spotify and AirPlay. `--direct-audio` restores the local AudioQueue
-(`--audio-route` / `--on-route-change` apply to it); `--no-audio` is unchanged.
+(`--audio-route` / `--on-route-change` / `--audio-session auto|on|off` apply to it; B1.8: `auto`
+retries a failed AudioSessionInitialize forever and plays bare meanwhile, `on` waits for the session,
+`off` is a bare queue with no AudioSession calls, for A/B only);
+`--no-audio` is unchanged.
 `--sink-test N` plays N seconds of a 440 Hz tone through the selected sink and exits (no
 Spotify login needed): run it on the device to prove the audiod path. The CLI now also builds
 on a Linux host (`-DCSPOT_DIR=<cspot tree>`, no AudioQueue) for the audiod host tests.

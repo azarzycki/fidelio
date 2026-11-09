@@ -42,6 +42,7 @@ CFStringRef mock_cfstr(const char* literal);
 
 CFRunLoopRef CFRunLoopGetCurrent(void);
 void CFRunLoopRun(void);
+int CFRunLoopRunInMode(CFStringRef mode, CFTimeInterval seconds, Boolean returnAfterSourceHandled);
 void CFRunLoopStop(CFRunLoopRef rl);
 CFRunLoopTimerRef CFRunLoopTimerCreate(CFAllocatorRef, CFAbsoluteTime fireDate, CFTimeInterval interval, CFOptionFlags, CFIndex order,
                                        CFRunLoopTimerCallBack, void* context);
@@ -91,6 +92,7 @@ typedef UInt32 AudioSessionPropertyID;
 typedef void (*AudioSessionInterruptionListener)(void* clientData, UInt32 state);
 typedef void (*AudioSessionPropertyListener)(void* clientData, AudioSessionPropertyID, UInt32 size, const void* data);
 enum { kAudioSessionBeginInterruption = 1, kAudioSessionEndInterruption = 0 };
+enum { kAudioSessionNotInitialized = '!ini', kAudioSessionAlreadyInitialized = 'init', kAudioSessionInitializationError = 'ini?' };
 enum {
   kAudioSessionProperty_AudioCategory = 'acat',
   kAudioSessionProperty_AudioRouteChange = 'roch',
@@ -126,4 +128,9 @@ void setAsyncResetDelivery(bool on);  // Reset/Stop hand the dropped buffers bac
 void refuseNextEnqueues(int n);       // the next n AudioQueueEnqueueBuffer calls fail with kAudioQueueErr_EnqueueDuringReset (strands buffers)
 int queuedBuffers();                  // buffers the live queue currently owns
 void setOtherAudioPlaying(bool on);   // what kAudioSessionProperty_OtherAudioIsPlaying reports (another app owns the audio)
+int sessionCalls();                   // AudioSession* calls so far, all entry points (B1.8: zero in bare mode)
+void setSessionInitFails(bool);       // AudioSessionInitialize returns 'ini?' (the audio session server is not up yet) until cleared
+void setSessionInitFailures(int n);   // ... the next n calls fail, then it succeeds (the context became usable)
+int sessionInitCalls();               // AudioSessionInitialize calls so far
+void setSessionInitDelayMs(int ms);   // AudioSessionInitialize blocks this long first (the thread "does not come up")
 }  // namespace mock
