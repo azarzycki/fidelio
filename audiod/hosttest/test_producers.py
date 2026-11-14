@@ -203,6 +203,32 @@ if CSPOT:
     check(len(wk) == 1 and wk[0][3] == "spotify" and wk[0][4] == "wake+launch", f"wake-on-play fired once for the none -> spotify start ({[' '.join(e) for e in wk]})")
     check("set 0.300" not in " ".join(" ".join(e) for e in hw) and "set 0.500" not in " ".join(" ".join(e) for e in hw),
           "nothing was set at startup (no set to the initial 30 % or to --initial-volume 50 %)")
+
+    # ---------------------------------------------------------------- 4. B1.10 item 2: a backpressure stall must not reconnect
+    # AUDIOD_STALL_ACTIVE_MS=800 makes audiod refuse to read the active source for 800 ms (> the 500 ms
+    # send timeout, < the 1500 ms release) once it becomes active -- the device condition. The producer
+    # must ride it out on ONE connection (writeFrame absorbs backpressure), not drop and reconnect.
+    SOCK3, OUT3, EVT3 = f"{TMP}/audiod3.sock", f"{TMP}/out3.pcm", f"{TMP}/events3.log"
+    for f in (SOCK3, OUT3, EVT3):
+        if os.path.exists(f): os.unlink(f)
+    env3 = dict(os.environ, AUDIOD_STALL_ACTIVE_MS="800")
+    audiod3 = subprocess.Popen([AUDIOD, "--sock", SOCK3, "--pcm-out-paced", "0", "--pcm-out", OUT3, "--event-log", EVT3,
+                                "--no-status", "--spotify-volume", "software", "--wake-on-play", "off"],
+                               stdout=open(f"{TMP}/audiod3.log", "w"), stderr=subprocess.STDOUT, env=env3)
+    for _ in range(50):
+        if os.path.exists(SOCK3): break
+        time.sleep(0.05)
+    cs = subprocess.run([CSPOT, "--sink-test", "6", "--audiod-sock", SOCK3, "--no-status"], capture_output=True, text=True, env=env3)
+    open(f"{TMP}/cspot-stall.log", "w").write(cs.stdout + cs.stderr)
+    time.sleep(0.3)
+    audiod3.terminate(); audiod3.wait()
+    ev3 = [l.split() for l in open(EVT3)]
+    recon = [e for e in ev3 if len(e) > 4 and e[1] == "takeover" and e[4] == "reconnect"]
+    conns = cs.stdout.count("connected to") + cs.stderr.count("connected to")
+    stalled = "STALL HOOK" in open(f"{TMP}/audiod3.log").read()
+    check(cs.returncode == 0 and stalled and conns == 1 and len(recon) == 0,
+          f"a 800 ms backpressure stall is ridden out on one connection (connects {conns}, reconnect events {len(recon)}, stall engaged {stalled})")
+
 print("\nevents:")
 for e in events(): print(f"  {e[0]:6d} {e[1]:12s} {e[2]:>8s} -> {e[3]:<8s} {e[4]}")
 print("\n" + (f"{len(fails)} FAILURES" if fails else "all producer checks passed"))

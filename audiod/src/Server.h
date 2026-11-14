@@ -92,6 +92,7 @@ class Server {
   void pollHardwareVolume(uint64_t now);        // buttons / other changes -> HWVOLUME to v2 clients
   void sendToClient(Client& c, uint32_t type, const void* payload, size_t len);  // non-blocking; a full buffer drops the message
   void sendWelcome(Client& c);
+  void sendHwVolumeTo(Client& c);   // B1.10: current hardware level to one (active) source; arms the grace
   void broadcastHwVolume();
   // B1.9 B
   void maybeWake(const Event& e);
@@ -105,6 +106,11 @@ class Server {
   float hwLevel = -1;            // last level we know (-1 = unknown)
   uint64_t lastHwPollMs = 0;
   uint64_t lastWakeMs = 0;
+  // B1.10 test hook (AUDIOD_STALL_ACTIVE_MS): gate reads of the active source for this long once it
+  // first becomes active, to reproduce the device backpressure stall on the host.
+  uint64_t stallActiveMs = 0;
+  uint64_t activeSinceMs = 0;
+  int stalledActiveId = -1;
   int listenFd = -1;
   int nextId = 1;
   std::map<int, Client> clients;  // by fd

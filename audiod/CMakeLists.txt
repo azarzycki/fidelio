@@ -32,6 +32,10 @@ target_include_directories(framing_test PRIVATE ${INC})
 target_link_libraries(framing_test PRIVATE audiod_common)
 
 # A tiny producer that streams a file through SocketSink (exercises reconnect too)
+add_executable(writeframe_test hosttest/writeframe_test.cpp)
+target_include_directories(writeframe_test PRIVATE ${INC})
+target_link_libraries(writeframe_test PRIVATE audiod_common pthread)
+
 add_executable(socketsink_producer hosttest/socketsink_producer.cpp)
 target_include_directories(socketsink_producer PRIVATE ${INC})
 target_link_libraries(socketsink_producer PRIVATE audiod_common)

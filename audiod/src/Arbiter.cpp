@@ -50,14 +50,22 @@ void Arbiter::onAudio(int id, size_t bytes, uint64_t now, bool loud) {
   auto it = sources.find(id);
   if (it == sources.end()) return;
   Source& s = it->second;
+  // B1.10: a recency event that lands within volumeGraceMs of a hardware-volume report WE sent this
+  // source is a side effect of that report (the Spotify controller replies to our volume notify with
+  // a Replace/seek -> FLUSH, or the source briefly re-primes); it must NOT make the source "newest" or
+  // a background source steals the output on a volume-button press. The first audio ever is exempt.
+  bool inVolumeGrace = s.volumeReportMs && now - s.volumeReportMs < tun.volumeGraceMs;
   // A new stream (recency event): first audio ever / after STOP / after FLUSH, or after the bytes
   // stopped for releaseMs. Not: a quiet passage, not a hiccup shorter than releaseMs.
-  if (s.newStream || !s.haveAudio || now - s.lastAudioMs >= tun.releaseMs) { s.streamSinceMs = now; s.newStream = false; }
+  if (s.newStream || !s.haveAudio || now - s.lastAudioMs >= tun.releaseMs) {
+    if (inVolumeGrace && s.haveAudio) s.newStream = false;  // consume the FLUSH/gap without a recency bump
+    else { s.streamSinceMs = now; s.newStream = false; }
+  }
   if (loud) {
     if (!producing(s, now)) s.loudRunSinceMs = now;  // a new loud run after a gap (or the first)
     // Sound after >= quietReleaseMs of silence (or the first sound ever) is a resume: a new stream
     // for recency, symmetric with the silent release. A shorter quiet passage is not.
-    if (!s.haveLoud || now - s.lastLoudMs >= tun.quietReleaseMs) s.streamSinceMs = now;
+    if ((!s.haveLoud || now - s.lastLoudMs >= tun.quietReleaseMs) && !inVolumeGrace) s.streamSinceMs = now;
     s.haveLoud = true;
     s.lastLoudMs = now;
   }
@@ -70,6 +78,11 @@ void Arbiter::onAudio(int id, size_t bytes, uint64_t now, bool loud) {
 void Arbiter::onFlush(int id) {
   auto it = sources.find(id);
   if (it != sources.end()) it->second.newStream = true;
+}
+
+void Arbiter::noteVolumeReport(int id, uint64_t now) {
+  auto it = sources.find(id);
+  if (it != sources.end()) it->second.volumeReportMs = now;
 }
 
 void Arbiter::onStop(int id, uint64_t now) {

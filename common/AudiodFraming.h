@@ -35,7 +35,10 @@ class FrameParser {
 
 // Writes header + payload to fd (blocking, retrying on EINTR/partial writes).
 // Returns false on any error (EPIPE, ECONNRESET, ...); the caller reconnects.
-bool writeFrame(int fd, uint32_t type, const void* payload, size_t len);
+// On a full send buffer (EAGAIN under SO_SNDTIMEO) writeFrame RETRIES, keeping the frame atomic,
+// and returns false only after maxStallMs of no progress (backpressure is normal, B1.10) or on a
+// real error. maxStallMs 0 = fail on the first EAGAIN (old behaviour).
+bool writeFrame(int fd, uint32_t type, const void* payload, size_t len, long maxStallMs = AUDIOD_SEND_STUCK_MS);
 
 // HELLO helpers.
 AudiodHello makeHello(const std::string& name, uint8_t priority = 0, uint8_t version = AUDIOD_PROTO_VERSION);

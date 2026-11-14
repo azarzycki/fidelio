@@ -50,6 +50,7 @@ Server::Server(const ServerOptions& o, const Tunables& t, AudioOutput* output, H
   leadFrames = (size_t)opts.leadMs * 44100 / 1000;
   if (leadFrames > kRingFrames) leadFrames = kRingFrames;
   if (!opts.eventLog.empty()) eventFile = fopen(opts.eventLog.c_str(), "w");
+  if (const char* e = getenv("AUDIOD_STALL_ACTIVE_MS")) stallActiveMs = (uint64_t)atoll(e);
   // B1.9 A: absolute Spotify volume needs the hardware API; read the level once (never set at startup)
   if (hw) {
     hwAvailable = hw->available() && hw->get(hwLevel);
@@ -116,11 +117,24 @@ void Server::sendWelcome(Client& c) {
   w.flags = abs ? AUDIOD_VOL_ABSOLUTE : 0;
   w.slider = abs ? levelToSlider(hwLevel) : 0;
   sendToClient(c, AUDIOD_MSG_WELCOME, &w, sizeof w);
+  if (abs) arbiter.noteVolumeReport(c.id, nowMs());  // the connect-time level counts as a report
+}
+
+// B1.10: send the current hardware level to ONE source (on takeover, or the active source on a
+// change). Reporting it to a BACKGROUND source is what let a volume-button press make a backgrounded
+// Spotify steal the output (its controller replied to our volume notify with a track reload -> FLUSH),
+// so a non-active source is told only when it next becomes active. The report arms the arbiter grace.
+void Server::sendHwVolumeTo(Client& c) {
+  if (c.version < AUDIOD_PROTO_VERSION_2 || !absoluteActive()) return;
+  AudiodHwVolume v = { levelToSlider(hwLevel), AUDIOD_VOL_ABSOLUTE };
+  sendToClient(c, AUDIOD_MSG_HWVOLUME, &v, sizeof v);
+  arbiter.noteVolumeReport(c.id, nowMs());
 }
 
 void Server::broadcastHwVolume() {
-  AudiodHwVolume v = { levelToSlider(hwLevel), (uint16_t)(absoluteActive() ? AUDIOD_VOL_ABSOLUTE : 0) };
-  for (auto& kv : clients) if (kv.second.hello) sendToClient(kv.second, AUDIOD_MSG_HWVOLUME, &v, sizeof v);
+  // B1.10: only the ACTIVE source is told now; others are told when they next become active
+  // (sendHwVolumeTo on takeover), so a background source can never act on a volume change.
+  if (Client* c = clientById(arbiter.activeId())) sendHwVolumeTo(*c);
 }
 
 // A user moved the slider of a slider-driven source: set the hardware (clamped), log it, and if the
@@ -357,6 +371,7 @@ void Server::afterTick() {
         if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: takeover #%d with %zu frames (head %zu)", c->id, c->ringFrames, c->ringHead);
         if (c->ringFrames > leadFrames) { c->ringHead = (c->ringHead + c->ringFrames - leadFrames) % kRingFrames; c->ringFrames = leadFrames; }
         out->setVolume(c->volume);
+        sendHwVolumeTo(*c);  // B1.10: it is active now -> give it the current hardware level
       }
     }
     if (e.kind == Event::RELEASE) {
@@ -424,9 +439,15 @@ void Server::run() {
     // drained and overwritten like an inactive source, so it never hard-blocks.
     int activeId = arbiter.activeId();
     bool gateActive = opts.backpressure && activeId >= 0 && arbiter.outputRunning() && out->consuming();
+    // B1.10 test hook: once a source becomes active, refuse to read it for stallActiveMs (reproduce
+    // the device backpressure stall); the producer must ride it out, not disconnect.
+    uint64_t nowg = nowMs();
+    if (stallActiveMs && activeId >= 0 && activeId != stalledActiveId) { stalledActiveId = activeId; activeSinceMs = nowg; IOS3_TRACE("STALL HOOK: gating reads of active #%d for %llu ms", activeId, (unsigned long long)stallActiveMs); }
+    bool forceStall = stallActiveMs && activeId >= 0 && activeId == stalledActiveId && nowg - activeSinceMs < stallActiveMs;
     for (auto& kv : clients) {
       short ev = POLLIN;
       if (gateActive && kv.second.id == activeId && kv.second.ringFrames >= kStagingFrames) ev = 0;
+      if (forceStall && kv.second.id == activeId) ev = 0;
       pfds.push_back({kv.first, ev, 0});
     }
     int rc = poll(pfds.data(), pfds.size(), opts.tickMs);

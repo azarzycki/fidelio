@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+#include <time.h>
 #include <unistd.h>
 
 namespace audiod {
@@ -37,12 +38,14 @@ bool FrameParser::next(Message& out) {
   return true;
 }
 
-bool writeFrame(int fd, uint32_t type, const void* payload, size_t len) {
+bool writeFrame(int fd, uint32_t type, const void* payload, size_t len, long maxStallMs) {
   if (len > AUDIOD_MAX_PAYLOAD) return false;
   AudiodMsgHeader h = { type, (uint32_t)len };
   struct iovec iov[2] = { { &h, sizeof h }, { const_cast<void*>(payload), len } };
   int n = len ? 2 : 1;
   size_t total = sizeof h + len, done = 0;
+  struct timespec stallStart = {0, 0};
+  bool stalling = false;
   while (done < total) {
     // skip fully written iovecs
     struct iovec cur[2];
@@ -58,8 +61,21 @@ bool writeFrame(int fd, uint32_t type, const void* payload, size_t len) {
     ssize_t w = writev(fd, cur, c);
     if (w < 0) {
       if (errno == EINTR) continue;
+      if ((errno == EAGAIN || errno == EWOULDBLOCK) && maxStallMs > 0) {
+        // Backpressure (B1.10): audiod is deliberately not reading this active source right now
+        // (B1.5), so the send buffer is full. `done` is preserved, so the frame stays atomic;
+        // keep retrying (each writev blocks up to SO_SNDTIMEO) and give up only after maxStallMs
+        // of no progress -- that is a genuinely dead audiod, not normal pacing.
+        struct timespec nowts;
+        clock_gettime(CLOCK_MONOTONIC, &nowts);
+        if (!stalling) { stallStart = nowts; stalling = true; continue; }
+        long stalledMs = (nowts.tv_sec - stallStart.tv_sec) * 1000 + (nowts.tv_nsec - stallStart.tv_nsec) / 1000000;
+        if (stalledMs >= maxStallMs) return false;
+        continue;
+      }
       return false;
     }
+    if (w > 0) stalling = false;  // progress: the stall is over
     done += (size_t)w;
   }
   return true;

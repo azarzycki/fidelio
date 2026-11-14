@@ -41,6 +41,9 @@ struct Tunables {
   uint64_t idleStopMs = 5000;
   uint64_t ghostMs = 10000;        // a disconnected source's identity survives this long for a same-name reconnect
   int silenceThreshold = 24;       // peak |sample| a frame must exceed to count as sound (0 = any frame); dither floor
+  uint64_t volumeGraceMs = 2000;   // B1.10: within this of a hardware-volume report WE sent a source,
+                                   // a FLUSH/STOP/gap from it is NOT a recency event (the controller
+                                   // replying to our volume notify must not let a background source steal)
 };
 
 struct Source {
@@ -56,6 +59,7 @@ struct Source {
   uint64_t lastLoudMs = 0;         // last AUDIO whose peak exceeded silenceThreshold
   uint64_t loudRunSinceMs = 0;     // start of the current loud run (reset after > producingGapMs without sound): takeover debounce
   uint64_t streamSinceMs = 0;      // start of the current stream (recency for most-recent-wins)
+  uint64_t volumeReportMs = 0;     // B1.10: last time audiod sent THIS source an HWVOLUME/WELCOME level
   uint64_t bytes = 0;
 };
 
@@ -78,7 +82,10 @@ class Arbiter {
   void removeSource(int id, uint64_t now);        // disconnect: the source becomes a ghost (released by the quiet rule if active)
   void onAudio(int id, size_t bytes, uint64_t now, bool loud);  // AUDIO frame received; loud = peak > threshold
   void onFlush(int id);                            // FLUSH message: the next audio is a new stream (seek / track change)
-  void onStop(int id, uint64_t now);               // STOP message
+  void onStop(int id, uint64_t now);
+  // B1.10: audiod just sent this source a hardware-volume report; arm the grace window so the
+  // controller's reply (a FLUSH/seek/track reload) cannot register as a recency event for it.
+  void noteVolumeReport(int id, uint64_t now);               // STOP message
   // Advance time: evaluates release / takeover / idle stop. Call on every AUDIO and on a timer.
   void tick(uint64_t now);
 

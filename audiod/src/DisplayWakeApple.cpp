@@ -16,6 +16,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 #include "DisplayWake.h"
+#include "ObjcPool.h"
 #include "ios3_trace.h"
 
 namespace {
@@ -40,6 +41,7 @@ class SpringBoardWaker : public DisplayWaker {
     else if (!launch) why = "SBSLaunchApplicationWithIdentifier missing";
   }
   bool wake(const std::string& bundleId) override {
+    ObjcAutoreleasePool pool;  // B1.10: SBS/CF calls may autorelease
     if (!launch) {
       if (!unavailableLogged) { IOS3_TRACE("wake-on-play: unavailable (%s): no-op", why.c_str()); unavailableLogged = true; }
       return false;

@@ -18,6 +18,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 #include "HardwareVolume.h"
+#include "ObjcPool.h"
 #include "ios3_trace.h"
 
 namespace {
@@ -36,6 +37,7 @@ class AVSystemControllerVolume : public HardwareVolume {
   bool available() override { return ok; }
   bool get(float& level) override {
     if (!ok) return false;
+    ObjcAutoreleasePool pool;  // B1.10: the 1 s poll must not leak
     float v = 0;
     signed char r = ((MsgSendGetVolume)objc_msgSend)(controller, selGet, &v, (id)category);
     if (!r) { if (!getFailedLogged) { IOS3_TRACE("AVSystemController getVolume:forCategory: returned NO"); getFailedLogged = true; } return false; }
@@ -45,6 +47,7 @@ class AVSystemControllerVolume : public HardwareVolume {
   }
   bool set(float level) override {
     if (!ok) return false;
+    ObjcAutoreleasePool pool;  // B1.10
     signed char r = ((MsgSendSetVolume)objc_msgSend)(controller, selSet, level, (id)category);
     if (r) lastKnown = level;
     else IOS3_TRACE("AVSystemController setVolumeTo:%.3f forCategory:Audio/Video returned NO", level);
@@ -63,6 +66,7 @@ class AVSystemControllerVolume : public HardwareVolume {
 
  private:
   void load() {
+    ObjcAutoreleasePool pool;  // B1.10: sharedAVSystemController / getVolume autorelease
     void* h = dlopen("/System/Library/PrivateFrameworks/Celestial.framework/Celestial", RTLD_LAZY);
     if (!h) { why = std::string("dlopen Celestial: ") + (dlerror() ? dlerror() : "?"); return; }
     Class cls = (Class)objc_getClass("AVSystemController");  // the 3.1 SDK declares it as returning id
@@ -84,6 +88,7 @@ class AVSystemControllerVolume : public HardwareVolume {
     observing = true;
   }
   static void onNotification(CFNotificationCenterRef, void* observer, CFStringRef, const void*, CFDictionaryRef userInfo) {
+    ObjcAutoreleasePool pool;  // B1.10: CF/ObjC accessors in the callback must not leak
     AVSystemControllerVolume* self = static_cast<AVSystemControllerVolume*>(observer);
     if (!userInfo) return;
     CFStringRef cat = (CFStringRef)CFDictionaryGetValue(userInfo, CFSTR("AVSystemController_AudioCategoryNotificationParameter"));

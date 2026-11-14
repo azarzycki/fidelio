@@ -18,6 +18,10 @@
 
 #define AUDIOD_NAME_MAX    32
 #define AUDIOD_MAX_PAYLOAD (64 * 1024)   // reject frames larger than this (DoS guard)
+// B1.10: a send that keeps hitting a full socket buffer is normal backpressure (audiod gates the
+// active source, B1.5); only after this long with NO progress is audiod treated as dead and the
+// connection dropped. Must exceed the backpressure stall (output 0.45 s + jitter) by a safe margin.
+#define AUDIOD_SEND_STUCK_MS 4000
 
 enum AudiodMsgType {
   AUDIOD_MSG_HELLO = 1,   // client -> server, first message on the connection

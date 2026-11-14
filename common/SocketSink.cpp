@@ -232,8 +232,10 @@ void SocketSink::write(const int16_t* frames, size_t numFrames) {
     if (fd < 0) { droppedFrames += numFrames; return; }
     while (numFrames > 0) {
       size_t n = numFrames < kMaxFramesPerMsg ? numFrames : kMaxFramesPerMsg;
+      // writeFrame absorbs normal backpressure stalls now (B1.10); a failure here means audiod has
+      // not read for AUDIOD_SEND_STUCK_MS (truly dead) or a hard socket error, both worth reconnecting.
       if (!audiod::writeFrame(fd, AUDIOD_MSG_AUDIO, frames, n * 4)) {
-        disconnect(errno == EAGAIN || errno == EWOULDBLOCK ? "send timeout, audiod not reading" : "write");
+        disconnect(errno == EAGAIN || errno == EWOULDBLOCK ? "audiod not reading for 4 s" : "write");
         droppedFrames += numFrames;
         break;
       }
