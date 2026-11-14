@@ -8,13 +8,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <thread>
 
+#include "DacpRemote.h"
 #include "Dmap.h"
+#include "RaopSession.h"
 #include "StatusFile.h"
 #include "ios3_trace.h"
+
+static uint64_t rtspNowMs() { struct timeval tv; gettimeofday(&tv, nullptr); return (uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000; }
 
 static std::string lower(std::string s) { for (auto& c : s) c = (char)tolower((unsigned char)c); return s; }
 static std::string trim(const std::string& s) {
@@ -156,6 +162,57 @@ void RtspServer::handleConnection(Conn* c) {
   delete c;
 }
 
+void RtspServer::onPreempted(const std::string& by) {
+  if (preempt.policy == PRE_NONE) { IOS3_TRACE("preempted by %s: --airplay-preempt none, keep draining", by.c_str()); return; }
+  bool expected = false;
+  if (!preemptBusy.compare_exchange_strong(expected, true)) return;  // one policy run at a time
+  std::thread([this, by] { runPreemptPolicy(by); preemptBusy = false; }).detach();
+}
+
+void RtspServer::forceDisconnect(const char* why) {
+  std::scoped_lock l(sessionMutex);
+  if (!session || !sessionOwner) return;
+  std::string ip = sessionPeerIp.empty() ? std::string(inet_ntoa(sessionOwner->peer.sin_addr)) : sessionPeerIp;
+  cooldownUntil[ip] = rtspNowMs() + preempt.cooldownMs;
+  IOS3_TRACE("preempt: disconnecting the AirPlay session (%s); %u ms cool-down for %s", why, preempt.cooldownMs, ip.c_str());
+  int fd = sessionOwner->fd;
+  session->teardown();
+  session.reset();
+  sessionOwner = nullptr;
+  status->setPlaying(false);
+  status->setState("stopped");
+  shutdown(fd, SHUT_RDWR);  // unblock the owner connection's readRequest so it closes
+}
+
+// Background: pause the sender (DACP), verify from the stream, and disconnect if it ignored us.
+void RtspServer::runPreemptPolicy(std::string by) {
+  std::string dId, dAr, ip;
+  RaopSession* sp = nullptr;
+  { std::scoped_lock l(sessionMutex); dId = dacpId; dAr = dacpActiveRemote; ip = sessionPeerIp; sp = session.get(); }
+  if (!sp) return;  // already gone
+  bool haveDacp = !dId.empty() && !dAr.empty();
+  if (preempt.policy == PRE_PAUSE_ONLY || preempt.policy == PRE_PAUSE_THEN_DISCONNECT) {
+    if (haveDacp) { bool sent = dacp::sendPause(dId, dAr, ip); IOS3_TRACE("preempt(%s): DACP pause %s", by.c_str(), sent ? "sent" : "FAILED"); }
+    else IOS3_TRACE("preempt(%s): sender offered no remote control (no DACP-ID/Active-Remote)", by.c_str());
+  }
+  if (preempt.policy == PRE_PAUSE_ONLY) return;  // keep draining; never disconnect
+  if (preempt.policy == PRE_PAUSE_THEN_DISCONNECT) {
+    // lastPacket()/lastFlush() are in RaopSession's monotonic clock, so measure the window with the
+    // same clock (not the wall-clock rtspNowMs used for the cool-down).
+    uint64_t t0 = RaopSession::nowMsPublic();
+    usleep((useconds_t)preempt.verifyMs * 1000);  // watch the stream (holding no lock)
+    uint64_t lastPkt = 0, lastFlush = 0;
+    bool still = false;
+    { std::scoped_lock l(sessionMutex); still = (session.get() == sp); if (still) { lastPkt = sp->lastPacket(); lastFlush = sp->lastFlush(); } }
+    if (!still) { IOS3_TRACE("preempt(%s): session already gone, nothing to do", by.c_str()); return; }
+    bool flushed = lastFlush > t0;
+    bool stillArriving = lastPkt != 0 && RaopSession::nowMsPublic() - lastPkt < 1000;  // a packet within the last second
+    if (flushed || !stillArriving) { IOS3_TRACE("preempt(%s): verified paused (flush=%d, audio %s): keeping the session", by.c_str(), (int)flushed, stillArriving ? "arriving" : "stopped"); return; }
+    IOS3_TRACE("preempt(%s): still streaming after %u ms -> disconnecting", by.c_str(), preempt.verifyMs);
+  }
+  forceDisconnect(preempt.policy == PRE_DISCONNECT ? "policy disconnect" : "ignored the pause");
+}
+
 void RtspServer::endSession(Conn* c, const char* why) {
   std::scoped_lock l(sessionMutex);
   if (sessionOwner == c && session) {
@@ -182,6 +239,17 @@ void RtspServer::handle(Conn* c, const RtspRequest& req) {
     std::string resp = crypto.appleResponse(chall, ip, hwaddr);
     if (!resp.empty()) h["Apple-Response"] = resp;
     else IOS3_TRACE("could not compute Apple-Response");
+  }
+
+  // B1.12: record the sender's remote-control headers (any request may carry them) and its IP.
+  {
+    std::string ar = req.header("Active-Remote"), di = req.header("DACP-ID");
+    if (!ar.empty() || !di.empty()) {
+      std::scoped_lock l(sessionMutex);
+      if (!ar.empty()) dacpActiveRemote = ar;
+      if (!di.empty()) dacpId = di;
+      sessionPeerIp = inet_ntoa(c->peer.sin_addr);
+    }
   }
 
   const std::string& m = req.method;
@@ -228,6 +296,18 @@ static std::string sdpAttr(const std::string& sdp, const char* key) {  // "a=key
 }
 
 void RtspServer::onAnnounce(Conn* c, const RtspRequest& req, int& code, std::map<std::string, std::string>& h) {
+  // B1.12: a client we just force-disconnected is in a cool-down; refuse a new session with 453
+  // ("Not Enough Bandwidth"), the response AirPlay receivers give when already in use, so the sender
+  // backs off instead of immediately stealing the output back.
+  {
+    std::string ip = inet_ntoa(c->peer.sin_addr);
+    std::scoped_lock l(sessionMutex);
+    auto it = cooldownUntil.find(ip);
+    if (it != cooldownUntil.end()) {
+      if (rtspNowMs() < it->second) { IOS3_TRACE("ANNOUNCE from %s refused: preempt cool-down (%llu ms left)", ip.c_str(), (unsigned long long)(it->second - rtspNowMs())); code = 453; return; }
+      cooldownUntil.erase(it);
+    }
+  }
   std::string sdp(req.body.begin(), req.body.end());
   std::string rtpmap = sdpAttr(sdp, "rtpmap"), fmtp = sdpAttr(sdp, "fmtp"), rsaaeskey = sdpAttr(sdp, "rsaaeskey"), aesiv = sdpAttr(sdp, "aesiv");
   IOS3_TRACE("ANNOUNCE sdp: rtpmap='%s' fmtp='%s' encrypted=%s", rtpmap.c_str(), fmtp.c_str(), rsaaeskey.empty() ? "no" : "yes");

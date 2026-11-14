@@ -37,6 +37,9 @@ struct Options {
   int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
   RaopSession::VolumeMode volumeMode = RaopSession::VOL_AUTO;  // --airplay-volume
   int audioSession = 0;      // --audio-session auto(0)|on(1)|off(2), --direct-audio only (AudioQueueSink::SessionMode order)
+  int preemptPolicy = 0;     // --airplay-preempt: 0 pause-then-disconnect, 1 pause-only, 2 disconnect, 3 none
+  int preemptVerifyMs = 3000;   // --preempt-verify-ms
+  int preemptCooldownMs = 10000;  // --preempt-cooldown-ms
 };
 
 static Options parse(int argc, char** argv) {
@@ -69,6 +72,16 @@ static Options parse(int argc, char** argv) {
       else if (v == "off") o.audioSession = 2;
       else { fprintf(stderr, "--audio-session must be auto|on|off\n"); exit(1); }
     }
+    else if (a == "--airplay-preempt") {
+      std::string v = next("--airplay-preempt");
+      if (v == "pause-then-disconnect") o.preemptPolicy = 0;
+      else if (v == "pause-only") o.preemptPolicy = 1;
+      else if (v == "disconnect") o.preemptPolicy = 2;
+      else if (v == "none") o.preemptPolicy = 3;
+      else { fprintf(stderr, "--airplay-preempt must be pause-then-disconnect|pause-only|disconnect|none\n"); exit(1); }
+    }
+    else if (a == "--preempt-verify-ms") o.preemptVerifyMs = atoi(next("--preempt-verify-ms").c_str());
+    else if (a == "--preempt-cooldown-ms") o.preemptCooldownMs = atoi(next("--preempt-cooldown-ms").c_str());
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); exit(1); }
   }
   return o;
@@ -114,6 +127,7 @@ int main(int argc, char** argv) {
              (int)o.noAudio, o.statusDir.empty() ? "(off)" : o.statusDir.c_str());
 
   std::unique_ptr<AudioOutput> out;
+  SocketSink* sink = nullptr;  // B1.12: the audiod sink, if used; wired to the RtspServer preempt handler
   if (o.noAudio) out.reset(new NullOutput());
   else if (!o.pcmOut.empty()) {
     FileOutput* fo = new FileOutput(o.pcmOut.c_str());
@@ -131,6 +145,8 @@ int main(int argc, char** argv) {
   } else {
     SocketSink* ss = new SocketSink("airplay", o.audiodSock);
     if (o.audiodLeadMs > 0) ss->setLeadMs((unsigned)o.audiodLeadMs);
+    ss->enableServerMessages();  // B1.12: read PREEMPTED (audiod handed the output to another source)
+    sink = ss;                   // wired to the RtspServer's preempt handler below
     out.reset(ss);
     IOS3_TRACE("streaming to fidelio-audiod at %s", o.audiodSock.c_str());
   }
@@ -144,6 +160,15 @@ int main(int argc, char** argv) {
   snprintf(macStr, sizeof macStr, "%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
   RtspServer server((uint16_t)o.port, o.name, mac, out.get(), &status, o.latencyMs);
+  // B1.12: the RtspServer owns the preempt policy (DACP pause / verify / disconnect / cool-down); the
+  // audiod sink delivers the PREEMPTED signal to it.
+  RtspServer::PreemptOptions po;
+  po.policy = o.preemptPolicy == 1 ? RtspServer::PRE_PAUSE_ONLY : o.preemptPolicy == 2 ? RtspServer::PRE_DISCONNECT
+            : o.preemptPolicy == 3 ? RtspServer::PRE_NONE : RtspServer::PRE_PAUSE_THEN_DISCONNECT;
+  po.verifyMs = (unsigned)o.preemptVerifyMs;
+  po.cooldownMs = (unsigned)o.preemptCooldownMs;
+  server.setPreemptOptions(po);
+  if (sink) sink->setPreemptCallback(&RtspServer::preemptTrampoline, &server);
   uint16_t port = server.listen();
   if (!port) { IOS3_TRACE("cannot listen on RTSP port %d", o.port); return 2; }
   IOS3_TRACE("RTSP listening on port %u", port);

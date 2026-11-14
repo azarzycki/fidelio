@@ -141,6 +141,7 @@ void RaopSession::flush(uint16_t seq, bool haveSeq) {
     if (haveSeq) { expectedSeq = seq; haveExpected = true; } else haveExpected = false;
     haveNewest = false; haveLastRx = false; primed = false; everPrimed = false;
   }
+  lastFlushMs = nowMs();
   out->flush();
   IOS3_TRACE("FLUSH: buffer dropped, next seq %s%u", haveSeq ? "" : "(unknown) ", seq);
 }
@@ -181,6 +182,8 @@ void RaopSession::setVolumeDb(float db) {
   IOS3_TRACE("volume %.2f dB -> gain %.4f (%s)", db, lin, volumeMode == VOL_IGNORE ? "ignored" : db <= -144.0f ? (volumeMode == VOL_HONOR ? "mute honored" : "sentinel: unity") : "honored");
   out->setVolume(lin);
 }
+
+uint64_t RaopSession::nowMsPublic() { return nowMs(); }
 
 bool RaopSession::audioFlowing() {
   uint64_t t = lastPacketMs.load();

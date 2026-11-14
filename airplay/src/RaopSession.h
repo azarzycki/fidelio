@@ -50,6 +50,10 @@ class RaopSession {
   const char* codecName() const { return codec == CODEC_ALAC ? "ALAC" : codec == CODEC_PCM ? "PCM" : ""; }
   // Packets received in the last ~3 s? (drives the playing/paused state)
   bool audioFlowing();
+  // B1.12 (preempt verify): raw monotonic ms of the last RTP audio packet and the last FLUSH (0 = none).
+  uint64_t lastPacket() const { return lastPacketMs.load(); }
+  uint64_t lastFlush() const { return lastFlushMs.load(); }
+  static uint64_t nowMsPublic();
   // Simple stats for the log.
   std::string stats();
 
@@ -112,6 +116,7 @@ class RaopSession {
   bool everPrimed = false;    // primed at least once this stream: later primes use the shorter reprime cushion
 
   std::atomic<uint64_t> lastPacketMs{0};
+  std::atomic<uint64_t> lastFlushMs{0};  // B1.12: when the sender last sent FLUSH
   std::atomic<uint32_t> statPackets{0}, statResent{0}, statLost{0}, statLate{0}, statDecodeErr{0}, statSkipped{0};
   std::atomic<uint32_t> statConcealed{0}, statUnderrun{0};
   uint8_t* rxBuf = nullptr;

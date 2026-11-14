@@ -384,6 +384,7 @@ void Server::afterTick() {
     logEvent(e);
     updateLockPlugin(e);  // B1.11: enable the lock bundle on none -> source
     maybeWake(e);  // B1.9 B: none -> source
+    schedulePreempt(e);  // B1.12: a source -> source switch -> tell the loser to pause
     if (e.kind == Event::TAKEOVER) {
       out->crossfade(fadeFrames());  // the old source's tail ramps out under the new one's ramp-in; its lead is dropped
       lastSilenceMs = 0;
@@ -414,6 +415,37 @@ size_t Server::fadeFrames() const { return (size_t)opts.crossfadeMs * 44100 / 10
 Server::Client* Server::clientById(int id) {
   for (auto& kv : clients) if (kv.second.id == id) return &kv.second;
   return nullptr;
+}
+
+Server::Client* Server::clientByName(const std::string& name) {
+  for (auto& kv : clients) if (kv.second.hello && kv.second.name == name) return &kv.second;
+  return nullptr;
+}
+
+// B1.12: schedule a PREEMPTED for the source that just lost the output. The delay filters a flap
+// (a takeover that immediately reverses) so the active source is never left paused.
+void Server::schedulePreempt(const Event& e) {
+  if (!opts.preemptPause) return;
+  if (e.kind != Event::TAKEOVER || e.from.empty() || e.reason == "reconnect") return;  // only source -> source
+  if (Client* loser = clientByName(e.from)) {
+    if (loser->version < AUDIOD_PROTO_VERSION_2) return;  // v1 (raop uses DACP, which it drives itself when v2)
+    loser->preemptDueMs = e.atMs + opts.preemptDelayMs;
+    loser->preemptBy = e.to;
+  }
+}
+
+void Server::firePreempts(uint64_t now) {
+  for (auto& kv : clients) {
+    Client& c = kv.second;
+    if (!c.preemptDueMs || now < c.preemptDueMs) continue;
+    c.preemptDueMs = 0;
+    if (arbiter.activeId() == c.id) continue;  // it flapped back to active: do not pause it
+    AudiodPreempted p;
+    memset(&p, 0, sizeof p);
+    strncpy(p.by, c.preemptBy.c_str(), AUDIOD_NAME_MAX - 1);
+    sendToClient(c, AUDIOD_MSG_PREEMPTED, &p, sizeof p);
+    logEvent(Event{Event::WAKE, now, c.name, c.preemptBy, "preempted (told to pause)"});
+  }
 }
 
 void Server::ringAppend(Client& c, const int16_t* frames, size_t n) {
@@ -485,6 +517,7 @@ void Server::run() {
     afterTick();
     out->tick();
     pollHardwareVolume(now);  // B1.9 A: buttons / external changes -> the producers
+    firePreempts(now);        // B1.12: tell a source that lost the output to pause
     if (out->resumed()) {
       // The output was paused (interruption / yielding to another app) and just resumed: the active
       // source's ring holds audio from before the pause. Drop it; the producer keeps sending current audio.

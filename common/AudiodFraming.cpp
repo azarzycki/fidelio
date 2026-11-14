@@ -11,7 +11,7 @@ namespace audiod {
 
 static bool knownType(uint32_t t) {
   return t == AUDIOD_MSG_HELLO || t == AUDIOD_MSG_AUDIO || t == AUDIOD_MSG_FLUSH || t == AUDIOD_MSG_STOP || t == AUDIOD_MSG_META ||
-         t == AUDIOD_MSG_VOLUME || t == AUDIOD_MSG_WELCOME || t == AUDIOD_MSG_HWVOLUME;
+         t == AUDIOD_MSG_VOLUME || t == AUDIOD_MSG_WELCOME || t == AUDIOD_MSG_HWVOLUME || t == AUDIOD_MSG_PREEMPTED;
 }
 
 void FrameParser::feed(const uint8_t* data, size_t len) {

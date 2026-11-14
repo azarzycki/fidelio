@@ -45,6 +45,10 @@ struct ServerOptions {
   // B1.11: a SpringBoard lock-screen bundle enabled while a source plays (default off so a bad
   // bundle cannot affect playback). "" = off.
   std::string lockPlugin;
+  // B1.12: tell a source that lost the output to pause (so a background session cannot roll on and
+  // steal the output). Sent only to v2 clients; raop reacts via DACP (its own policy).
+  bool preemptPause = true;         // --preempt-pause on|off
+  unsigned preemptDelayMs = 500;    // wait this long before telling the loser, so a flap never pauses the active source
 };
 
 class Server {
@@ -71,6 +75,8 @@ class Server {
     bool sliderDriven = false;  // sent a VOLUME with AUDIOD_VOL_SLIDER: in absolute mode its gain is unity and the slider drives the hardware
     uint16_t slider = 0;
     bool sendFailedLogged = false;
+    uint64_t preemptDueMs = 0;      // B1.12: send PREEMPTED to this client at/after this time (0 = none pending)
+    std::string preemptBy;          // ... naming the source that took over
   };
   static const size_t kRingFrames = 88200;  // 2 s: an inactive source's lead (up to SocketSink's cap) plus slack
   static const size_t kStagingFrames = 1764;  // 40 ms: with backpressure the active source's ring is only a staging area
@@ -99,6 +105,11 @@ class Server {
   void broadcastHwVolume();
   // B1.9 B
   void maybeWake(const Event& e);
+  // B1.12: a source lost the output -> after a flap-filtering delay, tell it (PREEMPTED) if it is
+  // still not active. Scheduled on the TAKEOVER, fired from the run loop.
+  void schedulePreempt(const Event& e);
+  void firePreempts(uint64_t now);
+  Client* clientByName(const std::string& name);
   // B1.11: enable the lock-screen bundle on a none -> source start, disable it on the return to none
   void updateLockPlugin(const Event& e);
   void disableLockPlugin();

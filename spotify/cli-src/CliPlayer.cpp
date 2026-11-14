@@ -39,6 +39,15 @@ CliPlayer::CliPlayer(std::unique_ptr<PlayerSink> sink, std::shared_ptr<cspot::Sp
   this->isPaused = false;
 
   // B1.9: audiod drives the hardware volume -> what the Connect controller shows must follow it
+  // B1.12: audiod handed the output to another source -> pause for real (controller shows paused,
+  // the CDN decode stalls, position preserved). A no-op if we are already paused/stopped.
+  this->audioSink->onPreemptedUser = this;
+  this->audioSink->onPreempted = [](void* user, const char* by) {
+    CliPlayer* self = static_cast<CliPlayer*>(user);
+    if (self->isPaused || self->pauseRequested) { CSPOT_LOG(info, "PREEMPTED by %s: already paused", by); return; }
+    CSPOT_LOG(info, "PREEMPTED by %s: pausing Spotify (controller will show paused)", by);
+    self->handler->setPause(true);  // Paused state + notify controller + PLAY_PAUSE -> our loop stops reading
+  };
   this->audioSink->onHardwareVolumeUser = this;
   this->audioSink->onHardwareVolume = [](void* user, bool absolute, uint16_t slider) {
     CliPlayer* self = static_cast<CliPlayer*>(user);

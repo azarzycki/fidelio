@@ -83,9 +83,11 @@ void SocketSink::drainIncoming() {
               absolute ? (std::to_string(hwSlider * 100 / 65535) + " % (slider " + std::to_string(hwSlider) + ")").c_str() : "");
       fflush(stdout);
       pendingReport = { true, absolute, hwSlider };
-      if (absolute) {
+      if (absolute && sliderVolume) {
         // The hardware level is the truth now: adopt it, and tell the server (report-only: no set)
         // that this source is slider-driven, so it plays at unity gain under the hardware level.
+        // Only a slider-capable sink (Spotify) does this; a plain-gain sink (raop, B1.12 v2 for
+        // PREEMPTED) keeps its own volume and ignores the hardware level here.
         slider = hwSlider;
         haveSlider = true;
         volume = 1.0f;
@@ -101,6 +103,14 @@ void SocketSink::drainIncoming() {
       hwSlider = h.slider;
       if (haveSlider) slider = h.slider;  // what we would echo is now the true level
       pendingReport = { true, absolute, hwSlider };
+    } else if (msg.type == AUDIOD_MSG_PREEMPTED) {
+      char by[AUDIOD_NAME_MAX + 1] = {0};
+      size_t n = msg.payload.size() < AUDIOD_NAME_MAX ? msg.payload.size() : AUDIOD_NAME_MAX;
+      memcpy(by, msg.payload.data(), n);
+      pendingPreempt = by;
+      preemptPending = true;
+      fprintf(stdout, "SocketSink[%s]: PREEMPTED by %s\n", name.c_str(), by);
+      fflush(stdout);
     }
     // anything else from the server is ignored
   }
@@ -110,14 +120,24 @@ void SocketSink::fireReport() {
   void (*cb)(void*, bool, uint16_t);
   void* user;
   HwReport r;
+  void (*pcb)(void*, const char*);
+  void* puser;
+  std::string pby;
+  bool pfire;
   {
     std::lock_guard<std::mutex> l(m);
     r = pendingReport;
     pendingReport.fire = false;
     cb = hwCb;
     user = hwUser;
+    pcb = preemptCb;
+    puser = preemptUser;
+    pfire = preemptPending;
+    pby = pendingPreempt;
+    preemptPending = false;
   }
   if (r.fire && cb) cb(user, r.absolute, r.slider);
+  if (pfire && pcb) pcb(puser, pby.c_str());
 }
 
 void SocketSink::poll() {

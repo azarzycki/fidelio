@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <stdint.h>
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -25,7 +26,16 @@ struct RtspRequest {
 
 class RtspServer {
  public:
+  // B1.12: what to do with the AirPlay sender when audiod hands the output to another source.
+  enum PreemptPolicy { PRE_PAUSE_THEN_DISCONNECT, PRE_PAUSE_ONLY, PRE_DISCONNECT, PRE_NONE };
+  struct PreemptOptions { PreemptPolicy policy = PRE_PAUSE_THEN_DISCONNECT; unsigned verifyMs = 3000; unsigned cooldownMs = 10000; };
+
   RtspServer(uint16_t port, const std::string& name, const uint8_t hwaddr[6], AudioOutput* out, StatusFile* status, int latencyMs);
+  void setPreemptOptions(const PreemptOptions& o) { preempt = o; }
+  // Called (from the SocketSink thread) when audiod pre-empts AirPlay. Non-blocking: the policy runs
+  // on its own thread so the takeover and the new source are never delayed.
+  void onPreempted(const std::string& by);
+  static void preemptTrampoline(void* self, const char* by) { static_cast<RtspServer*>(self)->onPreempted(by ? by : ""); }
   // Binds the listening socket; returns the port actually bound (0 on failure).
   uint16_t listen();
   // Runs the accept loop forever.
@@ -52,6 +62,8 @@ class RtspServer {
   void onSetParameter(Conn* c, const RtspRequest& req, int& code);
   void onTeardown(Conn* c);
   void endSession(Conn* c, const char* why);
+  void runPreemptPolicy(std::string by);   // B1.12, background thread
+  void forceDisconnect(const char* why);   // tear down the session and shut the owner socket; start the cool-down
 
   uint16_t port;
   std::string name;
@@ -66,4 +78,10 @@ class RtspServer {
   std::unique_ptr<RaopSession> session;  // the active one, owned by one connection
   Conn* sessionOwner = nullptr;
   float lastVolumeDb = -20.0f;
+  // B1.12: remote-control headers from the sender (under sessionMutex), the cool-down, and a guard
+  // so only one preempt policy runs at a time.
+  PreemptOptions preempt;
+  std::string dacpId, dacpActiveRemote, sessionPeerIp;
+  std::map<std::string, uint64_t> cooldownUntil;  // peer IP -> monotonic ms until which a new session is refused
+  std::atomic<bool> preemptBusy{false};
 };

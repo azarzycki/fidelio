@@ -40,6 +40,9 @@ class SocketSink : public AudioOutput {
   // B1.9: speak protocol v2 (read WELCOME / HWVOLUME); connect at once instead of on the first write.
   // cspot does this; raop stays v1 (it never reads the socket).
   void enableServerMessages();
+  // B1.12: this sink drives the hardware volume via the slider (Spotify). A plain v2 sink (raop,
+  // which reads server messages only for PREEMPTED) leaves this off and keeps its own gain.
+  void enableSliderVolume() { std::lock_guard<std::mutex> l(m); sliderVolume = true; }
   // Non-blocking: reconnect if needed (rate-limited) and read whatever the server sent. Call it
   // periodically (cspot: from the player loop); write() calls it too.
   void poll();
@@ -51,6 +54,11 @@ class SocketSink : public AudioOutput {
   // hardware level changes: (absolute, slider).
   void setHardwareVolumeCallback(void (*cb)(void* user, bool absolute, uint16_t slider), void* user) {
     std::lock_guard<std::mutex> l(m); hwCb = cb; hwUser = user;
+  }
+  // B1.12: audiod handed the output to another source (PREEMPTED). `by` = the taker. Fired from
+  // poll()/write() without the mutex, like the hardware-volume callback.
+  void setPreemptCallback(void (*cb)(void* user, const char* by), void* user) {
+    std::lock_guard<std::mutex> l(m); preemptCb = cb; preemptUser = user;
   }
   double bufferedSeconds() override;      // how far ahead of real time the stream is (0..kLeadMs)
   void idle() override;                   // waits out the lead, then sends STOP; the connection stays open
@@ -91,11 +99,16 @@ class SocketSink : public AudioOutput {
   bool haveSlider = false;
   bool sliderApply = true;
   bool v2 = false;            // enableServerMessages(): HELLO v2, read replies
+  bool sliderVolume = false;  // enableSliderVolume(): adopt the hardware level as our slider (Spotify only)
   bool welcomed = false;      // WELCOME received on the current connection family
   bool absolute = false;      // ... and it said the hardware is slider-driven
   uint16_t hwSlider = 0;
   void (*hwCb)(void*, bool, uint16_t) = nullptr;
   void* hwUser = nullptr;
+  void (*preemptCb)(void*, const char*) = nullptr;
+  void* preemptUser = nullptr;
+  std::string pendingPreempt;
+  bool preemptPending = false;
   audiod::FrameParser inParser;
   unsigned leadMsCap = kDefaultLeadMs;
   bool sendVolume();

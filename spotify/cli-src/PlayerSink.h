@@ -31,6 +31,9 @@ class PlayerSink {
   // to the Connect controller as the device volume.
   void (*onHardwareVolume)(void* user, bool absolute, uint16_t slider) = nullptr;
   void* onHardwareVolumeUser = nullptr;
+  // B1.12: audiod handed the output to another source; the CLI pauses playback for real.
+  void (*onPreempted)(void* user, const char* by) = nullptr;
+  void* onPreemptedUser = nullptr;
   virtual void flush() = 0;                                            // seek / track change
   virtual double bufferedSeconds() = 0;                                // for end-of-playlist detection
   virtual void audioEnded() {}                                         // playlist finished and drained
@@ -42,7 +45,9 @@ class AudiodSink : public PlayerSink {
   AudiodSink(const std::string& sockPath, unsigned leadMs = 0) : sink("spotify", sockPath), path(sockPath) {
     if (leadMs) sink.setLeadMs(leadMs);
     sink.enableServerMessages();  // protocol v2: WELCOME / HWVOLUME (the hardware volume, B1.9)
+    sink.enableSliderVolume();    // Spotify drives the hardware volume via the slider (B1.9)
     sink.setHardwareVolumeCallback(&AudiodSink::hwTrampoline, this);
+    sink.setPreemptCallback(&AudiodSink::preemptTrampoline, this);
     sink.poll();  // connect now so WELCOME (absolute? level?) is known before Spotify asks for our volume
   }
   void feedPCMFrames(const uint8_t* d, size_t bytes) override { sink.write(reinterpret_cast<const int16_t*>(d), bytes / 4); }
@@ -60,6 +65,10 @@ class AudiodSink : public PlayerSink {
   static void hwTrampoline(void* user, bool absolute, uint16_t slider) {
     AudiodSink* self = static_cast<AudiodSink*>(user);
     if (self->onHardwareVolume) self->onHardwareVolume(self->onHardwareVolumeUser, absolute, slider);
+  }
+  static void preemptTrampoline(void* user, const char* by) {
+    AudiodSink* self = static_cast<AudiodSink*>(user);
+    if (self->onPreempted) self->onPreempted(self->onPreemptedUser, by);
   }
   SocketSink sink;
   std::string path;

@@ -31,7 +31,8 @@ enum AudiodMsgType {
   AUDIOD_MSG_META  = 5,   // client -> server, now-playing text (optional, v2)
   AUDIOD_MSG_VOLUME = 6,  // client -> server, this source's playback volume (AudiodVolume, 4 or 8 bytes)
   AUDIOD_MSG_WELCOME = 7, // server -> client (HELLO version >= 2 only), right after HELLO (AudiodWelcome)
-  AUDIOD_MSG_HWVOLUME = 8 // server -> client (version >= 2 only), the hardware volume changed (AudiodHwVolume)
+  AUDIOD_MSG_HWVOLUME = 8,// server -> client (version >= 2 only), the hardware volume changed (AudiodHwVolume)
+  AUDIOD_MSG_PREEMPTED = 9 // server -> client (version >= 2 only): another source took the output (AudiodPreempted)
 };
 
 // B1.9: Spotify Connect's slider can drive the device's real output volume ("absolute" mode in
@@ -91,6 +92,13 @@ typedef struct {
   uint16_t slider;         // 0..65535
   uint16_t flags;          // AUDIOD_VOL_ABSOLUTE
 } AudiodHwVolume;
+
+// PREEMPTED payload (server -> client, version >= 2): B1.12. audiod handed the output to another
+// source; a slider-less producer (Spotify) should pause for real so its controller shows paused and
+// a background session cannot roll on and steal the output. `by` is the source that took over.
+typedef struct {
+  char by[AUDIOD_NAME_MAX];  // nul-padded name of the new active source
+} AudiodPreempted;
 
 // META payload (v2). Nul-padded UTF-8; truncate on overflow.
 typedef struct {

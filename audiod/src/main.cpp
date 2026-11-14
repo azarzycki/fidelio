@@ -13,6 +13,9 @@
 #include "PacedFileOutput.h"
 #ifdef __APPLE__
 #include "AudioQueueOutput.h"
+#ifdef __APPLE__
+#include "ObjcPool.h"
+#endif
 #endif
 #include "Arbiter.h"
 #include "Server.h"
@@ -71,6 +74,8 @@ int main(int argc, char** argv) {
              "  --wake-bundle ID         (default com.fidelio.nowplaying)\n"
              "  --lock-plugin NAME|off   (default off) while a source plays, enable the SpringBoard lock-screen bundle\n"
              "                           NAME.lockbundle (SBEnableLockScreenBundle, dlopen'ed; no-op if unavailable)\n"
+             "  --preempt-pause on|off   (default on) tell a source that loses the output to pause (B1.12), so a\n"
+             "                           background session cannot roll on and steal it back\n"
              "                           and the new source's start from zero instead of a hard cut (0 = hard flush)\n"
              "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
              "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
@@ -123,6 +128,8 @@ int main(int argc, char** argv) {
       else { fprintf(stderr, "--wake-on-play must be on|off\n"); return 1; }
     } else if (a == "--wake-bundle") so.wakeBundle = next("--wake-bundle");
     else if (a == "--lock-plugin") { std::string v = next("--lock-plugin"); so.lockPlugin = (v == "off") ? "" : v; }
+    else if (a == "--preempt-pause") { std::string v = next("--preempt-pause"); if (v == "on") so.preemptPause = true; else if (v == "off") so.preemptPause = false; else { fprintf(stderr, "--preempt-pause must be on|off\n"); return 1; } }
+    else if (a == "--preempt-delay-ms") so.preemptDelayMs = (unsigned)atoi(next("--preempt-delay-ms"));
     else if (a == "--crossfade-ms") so.crossfadeMs = (unsigned)atoi(next(a.c_str()));
     else if (a == "--status-dir") so.statusDir = next("--status-dir");
     else if (a == "--no-status") so.statusDir.clear();
@@ -186,8 +193,14 @@ int main(int argc, char** argv) {
   std::unique_ptr<HardwareVolume> hw;
   std::unique_ptr<DisplayWaker> waker;
 #ifdef __APPLE__
-  if (getenv("AUDIOD_MOCK_HW_VOLUME")) hw.reset(new MockHardwareVolume()); else hw.reset(createAVSystemControllerVolume());
-  waker.reset(createSpringBoardWaker());
+  {
+    // B1.10 follow-up: wrap the WHOLE backend load (dlopen of Celestial/SpringBoardServices, their
+    // +load/+initialize, the first sharedAVSystemController and the observer registration) in one
+    // autorelease pool, so the handful of objects autoreleased on the startup path do not leak.
+    ObjcAutoreleasePool pool;
+    if (getenv("AUDIOD_MOCK_HW_VOLUME")) hw.reset(new MockHardwareVolume()); else hw.reset(createAVSystemControllerVolume());
+    waker.reset(createSpringBoardWaker());
+  }
 #else
   hw.reset(new MockHardwareVolume());
   waker.reset(new MockDisplayWaker());

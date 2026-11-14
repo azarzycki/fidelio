@@ -36,6 +36,10 @@ ap.add_argument("--expect-pcm")
 ap.add_argument("--packets", type=int, default=400)
 ap.add_argument("--volume", type=float, default=-15.0, help="SET_PARAMETER volume in dB (-144 = the AirPlay mute sentinel)")
 ap.add_argument("--jitter", action="store_true", help="model a jittery WiFi: hold packets ~250 ms every ~2 s, then send them in a burst")
+# B1.12 preempt test: stream continuously and react to a DACP pause from the receiver.
+ap.add_argument("--preempt-test", choices=["honor", "ignore", "none"], help="honor/ignore: advertise DACP + run a mock DACP server that honours/ignores pause; none: advertise no remote control")
+ap.add_argument("--dacp-listen", type=int, default=0, help="port for the mock DACP server (honor/ignore)")
+ap.add_argument("--stream-secs", type=float, default=8.0, help="how long to stream in --preempt-test mode")
 args = ap.parse_args()
 
 sock = socket.create_connection((args.host, args.port), timeout=5)
@@ -50,8 +54,9 @@ def check(cond, msg):
 def request(method, uri, headers=None, body=b"", ctype=None):
     global cseq
     cseq += 1
-    h = {"CSeq": str(cseq), "User-Agent": "raop_sender/1.0", "Client-Instance": "ABCDEF0123456789",
-         "DACP-ID": "ABCDEF0123456789", "Active-Remote": "1234567890"}
+    h = {"CSeq": str(cseq), "User-Agent": "raop_sender/1.0", "Client-Instance": "ABCDEF0123456789"}
+    if args.preempt_test != "none":  # "none" = a sender with no remote control (no DACP headers)
+        h.update({"DACP-ID": "ABCDEF0123456789", "Active-Remote": "1234567890"})
     if headers: h.update(headers)
     if body:
         h["Content-Type"] = ctype or "text/parameters"
@@ -215,6 +220,56 @@ def service_timing():
 resent, timing_answered = [], []
 sync_sent = 0
 t0 = time.time()
+
+# --- B1.12 preempt test: a mock DACP server + a continuous stream that reacts to pause ------------
+if args.preempt_test:
+    import http.server, threading
+    paused = {"v": False, "requests": 0}
+    httpd = None
+    if args.preempt_test in ("honor", "ignore") and args.dacp_listen:
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/ctrl-int/1/pause":
+                    paused["requests"] += 1
+                    if args.preempt_test == "honor": paused["v"] = True
+                self.send_response(200); self.send_header("Content-Length", "0"); self.end_headers()
+            def log_message(self, *a): pass
+        httpd = http.server.HTTPServer(("127.0.0.1", args.dacp_listen), H)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    sock.setblocking(False)  # so we can notice the receiver dropping the RTSP connection
+    disconnected = False
+    i = 0
+    end = time.time() + args.stream_secs
+    while time.time() < end and not paused["v"]:
+        send_packet(i); i += 1
+        if i % 125 == 0:
+            now = time.time() + 2208988800
+            rtp_now = (rtp_base + i * FRAMES) & 0xFFFFFFFF
+            sync = struct.pack(">BBHI", 0x80, 0xD4, 7, (rtp_now - 11025) & 0xFFFFFFFF) + struct.pack(">II", int(now), int((now % 1) * 2**32)) + struct.pack(">I", rtp_now)
+            ctrl_s.sendto(sync, (args.host, control_port))
+        service_control(); service_timing()
+        try:
+            if sock.recv(1) == b"": disconnected = True; break
+        except (BlockingIOError, socket.timeout): pass
+        except OSError: disconnected = True; break
+        d = t0 + (i + 1) * FRAMES / 44100.0 - time.time()
+        if d > 0: time.sleep(d)
+    # if we honoured the pause, keep the RTSP connection open a bit so the receiver can verify + decide
+    if paused["v"]:
+        quiet_end = time.time() + 4.0
+        while time.time() < quiet_end and not disconnected:
+            service_control(); service_timing()
+            try:
+                if sock.recv(1) == b"": disconnected = True
+            except (BlockingIOError, socket.timeout): pass
+            except OSError: disconnected = True
+            time.sleep(0.05)
+    print(f"PREEMPT paused={int(paused['v'])} disconnected={int(disconnected)} pause_requests={paused['requests']} streamed={i}")
+    if httpd: httpd.shutdown()
+    try: sock.close()
+    except OSError: pass
+    sys.exit(0)
+
 N = args.packets
 for i in range(N):
     # drop packets 50..52 on first send so the receiver asks for them (answered from the backlog)
