@@ -69,6 +69,8 @@ int main(int argc, char** argv) {
              "  --wake-on-play on|off    (default on) when playback starts from nothing, wake the screen and bring the\n"
              "                           NowPlaying app to the front (SpringBoardServices, dlopen'ed; no-op if unavailable)\n"
              "  --wake-bundle ID         (default com.fidelio.nowplaying)\n"
+             "  --lock-plugin NAME|off   (default off) while a source plays, enable the SpringBoard lock-screen bundle\n"
+             "                           NAME.lockbundle (SBEnableLockScreenBundle, dlopen'ed; no-op if unavailable)\n"
              "                           and the new source's start from zero instead of a hard cut (0 = hard flush)\n"
              "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
              "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
@@ -120,6 +122,7 @@ int main(int argc, char** argv) {
       else if (v == "off") so.wakeOnPlay = false;
       else { fprintf(stderr, "--wake-on-play must be on|off\n"); return 1; }
     } else if (a == "--wake-bundle") so.wakeBundle = next("--wake-bundle");
+    else if (a == "--lock-plugin") { std::string v = next("--lock-plugin"); so.lockPlugin = (v == "off") ? "" : v; }
     else if (a == "--crossfade-ms") so.crossfadeMs = (unsigned)atoi(next(a.c_str()));
     else if (a == "--status-dir") so.statusDir = next("--status-dir");
     else if (a == "--no-status") so.statusDir.clear();

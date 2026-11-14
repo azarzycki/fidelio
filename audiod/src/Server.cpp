@@ -175,6 +175,26 @@ void Server::pollHardwareVolume(uint64_t now) {
 
 // ---------------------------------------------------------------- B1.9 B: wake on play
 
+// B1.11: enable the lock-screen bundle on the same none -> source transition that wakes the display
+// (same debounce), and disable it when nothing is active any more. dlopen/dlsym; no-op if the flag
+// is off or the API is unavailable.
+void Server::updateLockPlugin(const Event& e) {
+  if (opts.lockPlugin.empty() || !waker) return;
+  if (e.kind != Event::TAKEOVER || !e.from.empty() || e.reason == "reconnect") return;  // only none -> source
+  if (lockEnabled) return;
+  if (waker->enableLockBundle(opts.lockPlugin)) {
+    lockEnabled = true;
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "lock-plugin enabled " + opts.lockPlugin});
+  }
+}
+
+void Server::disableLockPlugin() {
+  if (!lockEnabled || !waker) return;
+  waker->disableLockBundle(opts.lockPlugin);
+  lockEnabled = false;
+  logEvent(Event{Event::WAKE, nowMs(), "", "none", "lock-plugin disabled " + opts.lockPlugin});
+}
+
 void Server::maybeWake(const Event& e) {
   if (!opts.wakeOnPlay || !waker) return;
   if (e.kind != Event::TAKEOVER || !e.from.empty() || e.reason == "reconnect") return;  // only none -> source, not a switch or a reconnect
@@ -362,6 +382,7 @@ void Server::writeActiveSourceFile(const std::string& name) {
 void Server::afterTick() {
   for (const Event& e : arbiter.drainEvents()) {
     logEvent(e);
+    updateLockPlugin(e);  // B1.11: enable the lock bundle on none -> source
     maybeWake(e);  // B1.9 B: none -> source
     if (e.kind == Event::TAKEOVER) {
       out->crossfade(fadeFrames());  // the old source's tail ramps out under the new one's ramp-in; its lead is dropped
@@ -383,6 +404,7 @@ void Server::afterTick() {
     if (e.kind == Event::IDLE_STOP) { out->flush(); out->idle(); }
   }
   std::string a = arbiter.activeName();
+  if (a.empty()) disableLockPlugin();  // B1.11: nothing active -> turn the lock bundle off
   writeActiveSourceFile(a.empty() ? "none" : a);
   pump();
 }

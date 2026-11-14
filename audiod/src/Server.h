@@ -42,6 +42,9 @@ struct ServerOptions {
   bool wakeOnPlay = true;      // --wake-on-play on|off
   std::string wakeBundle = "com.fidelio.nowplaying";
   unsigned wakeMinIntervalMs = 5000;  // debounce: at most one wake per this interval
+  // B1.11: a SpringBoard lock-screen bundle enabled while a source plays (default off so a bad
+  // bundle cannot affect playback). "" = off.
+  std::string lockPlugin;
 };
 
 class Server {
@@ -96,6 +99,9 @@ class Server {
   void broadcastHwVolume();
   // B1.9 B
   void maybeWake(const Event& e);
+  // B1.11: enable the lock-screen bundle on a none -> source start, disable it on the return to none
+  void updateLockPlugin(const Event& e);
+  void disableLockPlugin();
 
   ServerOptions opts;
   Arbiter arbiter;
@@ -106,6 +112,7 @@ class Server {
   float hwLevel = -1;            // last level we know (-1 = unknown)
   uint64_t lastHwPollMs = 0;
   uint64_t lastWakeMs = 0;
+  bool lockEnabled = false;  // B1.11: the lock bundle is currently enabled
   // B1.10 test hook (AUDIOD_STALL_ACTIVE_MS): gate reads of the active source for this long once it
   // first becomes active, to reproduce the device backpressure stall on the host.
   uint64_t stallActiveMs = 0;

@@ -1,0 +1,69 @@
+// Fidelio lock-screen plugin for iOS 5.1.1 (iPad1,1). Principal class of Fidelio.lockbundle, loaded
+// by SpringBoard into /System/Library/SpringBoardPlugins/. It subclasses SpringBoard's private
+// SBAwayViewPluginController, whose @implementation lives inside SpringBoard: the interface below is
+// declared from the live-device dump (B1.11) and the class symbol is left undefined at link time
+// (-undefined dynamic_lookup), resolved when SpringBoard loads the bundle.
+//
+// SAFETY: this code runs INSIDE SpringBoard, so a crash is a respring. Every entry point is wrapped
+// in @try/@catch, missing/half-written status files are tolerated, no file work happens unless the
+// view is on screen, and everything is released in purgeView/dealloc. Compiled against the iPhone OS
+// 3.1.2 SDK (nothing iOS-5-only at compile time); UIKit classes used (UIView/UIImageView/UILabel/
+// UIProgressView/UIImage) all exist in 3.1 and run on 5.1.
+#import <UIKit/UIKit.h>
+
+// --- SpringBoard's base class, declared from the 5.1.1 runtime dump (only what we use/override).
+@interface SBAwayViewPluginController : NSObject
+- (id)init;
+- (id)view;
+- (void)setView:(id)view;
+- (void)loadView;
+- (void)viewWillAppear:(BOOL)animated;
+- (void)viewDidAppear:(BOOL)animated;
+- (void)viewWillDisappear:(BOOL)animated;
+- (void)viewDidDisappear:(BOOL)animated;
+- (int)orientation;
+- (void)setOrientation:(int)orientation;
+- (void)disable;
+- (void)purgeView;
+- (BOOL)canScreenDim;
+- (BOOL)showDateView;
+- (BOOL)showAwayItems;
+- (BOOL)viewCanBeDisplayed;
+- (BOOL)viewWantsFullscreenLayout;
+- (BOOL)wantsAutomaticFullscreenTimer;
+- (BOOL)wantsSwipeGestureRecognizer;
+- (BOOL)canBeAlwaysFullscreen;
+- (int)pluginPriority;
+- (BOOL)retainsPriorityWhileInactive;
+- (BOOL)shouldShowLockStatusBarTime;
+- (BOOL)shouldDisableOnUnlock;
+- (BOOL)shouldDisableOnRelock;
+@end
+
+@interface FidelioLockPluginController : SBAwayViewPluginController {
+  UIView* content;          // our root view (also returned by -view)
+  UIImageView* coverView;
+  UILabel* sourceLabel;
+  UILabel* titleLabel;
+  UILabel* artistLabel;
+  UILabel* albumLabel;
+  UIView* track;            // progress background
+  UIView* trackFill;        // progress fill
+  UILabel* elapsedLabel;
+  UILabel* remainingLabel;
+  UILabel* idleLabel;
+  NSTimer* timer;           // 1 Hz, only while visible
+  BOOL visible;
+
+  NSDictionary* status;     // last good status-<source>.plist
+  NSString* source;         // "spotify" / "airplay" / "" (none)
+  NSDate* readTime;         // when `status` was read (smooth position)
+  NSString* coverName;      // filename we last loaded
+  NSDate* coverMtime;
+  unsigned long long coverSize;
+
+  BOOL keepScreenOn;        // lockplugin.plist KeepScreenOn
+  NSDate* prefsMtime;       // to reload the prefs file when it changes
+  BOOL haveContent;         // a live source with a status file right now
+}
+@end

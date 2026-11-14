@@ -17,6 +17,13 @@ target_include_directories(fidelio-audiod PRIVATE ${INC})
 target_compile_options(fidelio-audiod PRIVATE -O2 -Wall)
 target_link_libraries(fidelio-audiod PRIVATE audiod_common)
 if(APPLE)
+  # B1.11: fidelio-lockctl enables/disables a SpringBoard lock-screen bundle by name (dlopen'ed).
+  add_executable(fidelio-lockctl src/lockctl.cpp)
+  target_include_directories(fidelio-lockctl PRIVATE ${INC})
+  target_compile_options(fidelio-lockctl PRIVATE -O2 -Wall)
+endif()
+
+if(APPLE)
   # The hardware output: the route-following AudioQueue sink shared with the producers' --direct-audio.
   target_sources(fidelio-audiod PRIVATE ${REPO}/airplay/src/AudioQueueSink.cpp src/HardwareVolumeApple.cpp src/DisplayWakeApple.cpp)
   # B1.9: the private Celestial / SpringBoardServices / GraphicsServices frameworks are dlopen'ed at

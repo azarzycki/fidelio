@@ -25,6 +25,7 @@ typedef mach_port_t (*ServerPortFn)(void);
 typedef int (*LaunchFn)(CFStringRef, Boolean);
 typedef kern_return_t (*DimFn)(mach_port_t, Boolean);
 typedef void (*ResetIdleFn)(void);
+typedef kern_return_t (*EnableLockFn)(mach_port_t, unsigned char, const char*);  // SBEnableLockScreenBundle (B1.11)
 
 class SpringBoardWaker : public DisplayWaker {
  public:
@@ -35,6 +36,7 @@ class SpringBoardWaker : public DisplayWaker {
       serverPort = (ServerPortFn)dlsym(sbs, "SBSSpringBoardServerPort");
       launch = (LaunchFn)dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
       dim = (DimFn)dlsym(sbs, "SBDimScreen");
+      enableLock = (EnableLockFn)dlsym(sbs, "SBEnableLockScreenBundle");
     }
     if (gs) resetIdle = (ResetIdleFn)dlsym(gs, "GSEventResetIdleTimer");
     if (!sbs) why = "dlopen SpringBoardServices failed";
@@ -57,18 +59,33 @@ class SpringBoardWaker : public DisplayWaker {
                resetIdle ? "called" : "missing", bundleId.c_str(), rc, rc == 0 ? "" : " (refused: locked device or unknown app?)");
     return rc == 0;
   }
+  bool enableLockBundle(const std::string& name) override { return setLock(name, true); }
+  bool disableLockBundle(const std::string& name) override { return setLock(name, false); }
   std::string describe() override {
     return launch ? std::string("SpringBoardServices (undim: ") + (dim && serverPort ? "SBDimScreen" : "missing") + ", idle reset: " + (resetIdle ? "yes" : "no") + ")"
                   : "SpringBoardServices unavailable: " + why;
   }
 
  private:
+  bool setLock(const std::string& name, bool enable) {
+    if (!enableLock || !serverPort) {
+      if (!lockUnavailableLogged) { IOS3_TRACE("lock-plugin: SBEnableLockScreenBundle unavailable: no-op"); lockUnavailableLogged = true; }
+      return false;
+    }
+    mach_port_t p = serverPort();
+    if (!p) return false;
+    kern_return_t kr = enableLock(p, enable ? 1 : 0, name.c_str());
+    IOS3_TRACE("lock-plugin: SBEnableLockScreenBundle(%s, \"%s\") -> %d", enable ? "enable" : "disable", name.c_str(), (int)kr);
+    return kr == 0;
+  }
   ServerPortFn serverPort = nullptr;
   LaunchFn launch = nullptr;
   DimFn dim = nullptr;
   ResetIdleFn resetIdle = nullptr;
+  EnableLockFn enableLock = nullptr;
   std::string why;
   bool unavailableLogged = false;
+  bool lockUnavailableLogged = false;
 };
 
 }  // namespace
