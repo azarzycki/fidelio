@@ -43,6 +43,12 @@ blocking work on iapd's thread beyond a short non-blocking connect to audiod's s
 
 `IOS3_SDK=... PATH=<toolchain>/bin:$PATH ./build.sh [outdir]` — produces `DockRemote.dylib` (ARMv6,
 fake-signed) and copies `DockRemote.plist` (the iapd filter). MobileSubstrate is resolved at run time.
+`MSHookMessageEx` is looked up where it is exported (B1.16.5): first in the images already loaded, then in
+`/usr/lib/libsubstrate.dylib`, `CydiaSubstrate.framework/CydiaSubstrate` and `MobileSubstrate.dylib`, stopping
+at the first that has the symbol. On the phone `MobileSubstrate.dylib` is only the injection stub
+(`SubstrateBootstrap.dylib`) and exports no `MSHook*`; e1ae8c3 opened it, never fell back, and logged
+`NOT hooked (substrate found, ...)`. The load line now names the library the hook came from, e.g.
+`DockRemote: hooked -[SimpleRemote sendEventRecord:toApp:] with MSHookMessageEx from an image already loaded`.
 
 ## Install / remove — iapd restarts once, which drops the dock until a reseat
 

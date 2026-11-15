@@ -90,19 +90,44 @@ static char new_sendEventRecord(id self, SEL _cmd, void* record, id app) {
   return 0;
 }
 
+// B1.16.5: find MSHookMessageEx where it is actually EXPORTED. On the phone (iPhone OS 3.1.3)
+// /Library/MobileSubstrate/MobileSubstrate.dylib is only the injection stub (a symlink to
+// CydiaSubstrate.framework/Libraries/SubstrateBootstrap.dylib) and exports no MSHook* at all; the hook
+// functions live in CydiaSubstrate (/usr/lib/libsubstrate.dylib -> libsubstrate.0.dylib ->
+// CydiaSubstrate.framework/CydiaSubstrate). e1ae8c3 opened the stub, which succeeded, so the fallback
+// never ran and the hook never bound. Try the images already loaded first, then each candidate, and stop
+// at the first that has the symbol, not the first that opens. *where names the source for the log.
+static MSHookMessageEx_t findHookMessageEx(const char** where) {
+  void* f = dlsym(RTLD_DEFAULT, "MSHookMessageEx");
+  if (f) { *where = "an image already loaded"; return (MSHookMessageEx_t)f; }
+  static const char* const libs[] = {
+    "/usr/lib/libsubstrate.dylib",
+    "/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate",
+    "/Library/MobileSubstrate/MobileSubstrate.dylib",
+  };
+  for (unsigned i = 0; i < sizeof libs / sizeof libs[0]; i++) {
+    void* h = dlopen(libs[i], RTLD_LAZY);  // kept open: the hook lives in it
+    if (!h) continue;
+    f = dlsym(h, "MSHookMessageEx");
+    if (f) { *where = libs[i]; return (MSHookMessageEx_t)f; }
+  }
+  *where = "none of the substrate libraries";
+  return 0;
+}
+
 __attribute__((constructor))
 static void DockRemoteInit() {
   @try {
-    void* sub = dlopen("/Library/MobileSubstrate/MobileSubstrate.dylib", RTLD_LAZY);
-    if (!sub) sub = dlopen("/usr/lib/libsubstrate.dylib", RTLD_LAZY);
-    MSHookMessageEx_t MSHookMessageEx = sub ? (MSHookMessageEx_t)dlsym(sub, "MSHookMessageEx") : 0;
+    const char* where = "";
+    MSHookMessageEx_t MSHookMessageEx = findHookMessageEx(&where);
     Class cls = objc_getClass("SimpleRemote");
     if (MSHookMessageEx && cls) {
       MSHookMessageEx(cls, @selector(sendEventRecord:toApp:), (IMP)new_sendEventRecord, (IMP*)&orig_sendEventRecord);
-      syslog(LOG_NOTICE, "DockRemote: hooked -[SimpleRemote sendEventRecord:toApp:] (observe-only until the swallow flag is set)");
+      syslog(LOG_NOTICE, "DockRemote: hooked -[SimpleRemote sendEventRecord:toApp:] with MSHookMessageEx from %s (observe-only until the swallow flag is set)", where);
     } else {
-      syslog(LOG_NOTICE, "DockRemote: NOT hooked (substrate %s, SimpleRemote %s) — safe no-op",
-             sub ? "found" : "missing", cls ? "found" : "missing");
+      // Say exactly what is missing: the hook function (not exported by any library tried) or the class.
+      syslog(LOG_NOTICE, "DockRemote: NOT hooked (MSHookMessageEx %s, SimpleRemote class %s) — safe no-op",
+             MSHookMessageEx ? "found" : "not exported by any substrate library", cls ? "found" : "missing");
     }
   } @catch (...) {}
 }
