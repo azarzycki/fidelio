@@ -7,7 +7,36 @@
 // Everything that touches files or UIKit runs behind this: a throw inside SpringBoard is a respring.
 #define GUARD(...) @try { __VA_ARGS__ } @catch (NSException* e) { NSLog(@"Fidelio lock plugin caught: %@", e); }
 
+// B1.16.3: NSLog is invisible on the iPad (no syslog there), so trace the lifecycle to a file when
+// /var/mobile/fidelio/lockplugin.debug exists — the only way to tell "SpringBoard never called us"
+// from "called and drew nothing". Cheap (a stat per call) and off unless the debug file is present.
+static void LPTrace(NSString* line) {
+  @try {
+    static NSString* dbg = @"/var/mobile/fidelio/lockplugin.debug";
+    if (![[NSFileManager defaultManager] fileExistsAtPath:dbg]) return;
+    NSString* log = @"/var/mobile/fidelio/lockplugin.log";
+    NSString* entry = [NSString stringWithFormat:@"%.3f %@\n", CFAbsoluteTimeGetCurrent(), line];
+    NSFileHandle* h = [NSFileHandle fileHandleForWritingAtPath:log];
+    if (!h) { [entry writeToFile:log atomically:NO encoding:NSUTF8StringEncoding error:NULL]; return; }
+    [h seekToEndOfFile]; [h writeData:[entry dataUsingEncoding:NSUTF8StringEncoding]]; [h closeFile];
+  } @catch (NSException* e) {}
+}
+
 @implementation FidelioLockPluginController
+
+// SpringBoard calls this CLASS method and stores the result in its _awayViewPluginControllers dict
+// (and later sends it -disable / -purgeView). We return a RETAINED singleton: one controller for the
+// life of SpringBoard, stable across enable/disable cycles, so the dict's retain/release can never
+// leave us with a dangling instance, and we never create a second one. The small permanent retain is
+// deliberate (a lock-screen plugin lives as long as SpringBoard does).
++ (id)rootViewController {
+  static FidelioLockPluginController* shared = nil;
+  @try {
+    if (!shared) shared = [[self alloc] init];
+    LPTrace([NSString stringWithFormat:@"+rootViewController -> %@", shared]);
+  } @catch (NSException* e) { LPTrace(@"+rootViewController EXCEPTION"); }
+  return shared;
+}
 
 static NSString* Trim(NSString* s) {
   return s ? [s stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
@@ -48,8 +77,10 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
 }
 
 - (void)loadView {
+  LPTrace(@"loadView");
   GUARD(
-    content = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 768, 1024)];
+    CGRect scr = [UIScreen mainScreen].bounds;  // 320x480 on the phone, 768x1024 on the iPad
+    content = [[UIView alloc] initWithFrame:scr];
     content.backgroundColor = [UIColor clearColor];
     content.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     content.userInteractionEnabled = NO;  // never swallow the slide-to-unlock gesture
@@ -122,7 +153,12 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
 }
 
 // --- visibility: refresh once a second ONLY while on screen ---------------------------------------
+- (void)viewWillAppear:(BOOL)animated {
+  LPTrace(@"viewWillAppear");
+  GUARD([super viewWillAppear:animated]; [self layout];)
+}
 - (void)viewDidAppear:(BOOL)animated {
+  LPTrace(@"viewDidAppear");
   GUARD(
     [super viewDidAppear:animated];
     visible = YES;
@@ -135,7 +171,8 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
   [timer invalidate]; [timer release]; timer = nil; visible = NO;
 }
 - (void)viewWillDisappear:(BOOL)animated { GUARD([super viewWillDisappear:animated]; [self stopTimer];) }
-- (void)viewDidDisappear:(BOOL)animated  { GUARD([super viewDidDisappear:animated]; [self stopTimer];) }
+- (void)viewDidDisappear:(BOOL)animated  { LPTrace(@"viewDidDisappear"); GUARD([super viewDidDisappear:animated]; [self stopTimer];) }
+- (void)disable { LPTrace(@"disable"); GUARD([self stopTimer]; [super disable];) }
 
 - (void)loadPrefs {
   NSString* p = [FIDELIO_DIR stringByAppendingPathComponent:@"lockplugin.plist"];
@@ -165,7 +202,11 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
     [self loadPrefs];
     NSString* src = [self pickSource];
     if (![src isEqualToString:source]) { [source release]; source = [src copy]; [status release]; status = nil; }
+    BOOL had = haveContent;
     haveContent = [source length] > 0;
+    LPTrace([NSString stringWithFormat:@"refresh: pickSource='%@' haveContent=%d", src, (int)haveContent]);
+    // B1.16.3: the base class may cache displayability; keep it in sync when our content appears/goes.
+    if (haveContent != had) { @try { [self setViewCanBeDisplayed:haveContent]; } @catch (NSException* e) {} }
 
     if (haveContent) {
       NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"status-%@.plist", source]];
@@ -250,6 +291,7 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
 - (BOOL)shouldDisableOnRelock { return NO; }
 
 - (void)purgeView {
+  LPTrace(@"purgeView");
   GUARD(
     [self stopTimer];
     [coverView release]; coverView = nil;

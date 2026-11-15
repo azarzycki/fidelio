@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Build Fidelio.lockbundle (an MH_BUNDLE, ARMv6, iPhone OS 3.1.2 SDK) for SpringBoard on iOS 5.1.1.
-#   IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH ./build.sh [outdir]
+# Build the SpringBoard lock-screen plugin (an MH_BUNDLE, ARMv6, iPhone OS 3.1.2 SDK).
+#   IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH ./build.sh [outdir] [ext]
+#   ext = lockbundle (iOS 5.1.1 iPad, default) or bundle (iPhone OS 3.1.3).
 # The principal class subclasses SpringBoard's private SBAwayViewPluginController; only that class's
 # two ObjC symbols are left undefined (-U), so every OTHER symbol is still validated against the SDK
 # dylibs at link time and SpringBoard resolves the base class when it loads the bundle.
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT="${1:-build}"
-BND="$OUT/Fidelio.lockbundle"
+# B1.16.3: the bundle extension differs by OS — .lockbundle on iOS 5.1.1, .bundle on iPhone OS 3.1.3;
+# both go in /System/Library/SpringBoardPlugins and are enabled by the base name "Fidelio" (SpringBoard
+# appends the extension). Same binary + Info.plist for both. Pass the extension as $2 (default lockbundle).
+EXT="${2:-lockbundle}"
+BND="$OUT/Fidelio.$EXT"
 rm -rf "$BND" "$OUT"/*.o
 mkdir -p "$BND"
 SUP1='_OBJC_CLASS_$_SBAwayViewPluginController'

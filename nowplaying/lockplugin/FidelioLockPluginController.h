@@ -29,6 +29,7 @@
 - (BOOL)showDateView;
 - (BOOL)showAwayItems;
 - (BOOL)viewCanBeDisplayed;
+- (void)setViewCanBeDisplayed:(BOOL)can;  // B1.16.3: the base class caches visibility; set it when our content changes
 - (BOOL)viewWantsFullscreenLayout;
 - (BOOL)wantsAutomaticFullscreenTimer;
 - (BOOL)wantsSwipeGestureRecognizer;
@@ -66,4 +67,7 @@
   NSDate* prefsMtime;       // to reload the prefs file when it changes
   BOOL haveContent;         // a live source with a status file right now
 }
+// B1.16.3: SpringBoard gets the controller from the CLASS method +rootViewController (it does NOT
+// alloc/init the principal class); without it the whole bundle is dropped before anything is created.
++ (id)rootViewController;
 @end
