@@ -71,6 +71,8 @@ Server::Server(const ServerOptions& o, const Tunables& tn, AudioOutput* output, 
              opts.airplayAbsolute && !hwReady() ? " requested but hardware unavailable -> software fallback" : "");
   IOS3_TRACE("wake-on-play: %s%s%s", opts.wakeOnPlay && waker ? "on (" : "off", opts.wakeOnPlay && waker ? waker->describe().c_str() : "",
              opts.wakeOnPlay && waker ? (", app " + opts.wakeBundle + ")").c_str() : "");
+  IOS3_TRACE("unlock-on-play: %s (url %s, launch retried for %u ms; %s)", opts.unlockOnPlay ? "on" : "off", opts.unlockUrl.c_str(), opts.unlockTimeoutMs,
+             waker && waker->canUnlock() ? "SBSOpenSensitiveURLAndUnlock available" : "SBSOpenSensitiveURLAndUnlock NOT available: a locked device stays locked");
 }
 
 // ---------------------------------------------------------------- B1.9 A: absolute volume
@@ -178,16 +180,14 @@ void Server::pollHardwareVolume(uint64_t now) {
 
 // ---------------------------------------------------------------- B1.9 B: wake on play
 
-// B1.11: enable the lock-screen bundle on the same none -> source transition that wakes the display
-// (same debounce), and disable it when nothing is active any more. dlopen/dlsym; no-op if the flag
-// is off or the API is unavailable.
-void Server::updateLockPlugin(const Event& e) {
-  if (opts.lockPlugin.empty() || !waker) return;
-  if (e.kind != Event::TAKEOVER || !e.from.empty() || e.reason == "reconnect") return;  // only none -> source
-  if (lockEnabled) return;
+// B1.11: enable the lock-screen bundle for a playback start from nothing (onStartFromNone decides
+// when), and disable it when nothing is active any more. dlopen/dlsym; no-op if the flag is off or the
+// API is unavailable.
+void Server::enableLockPlugin(const std::string& source, uint64_t atMs) {
+  if (opts.lockPlugin.empty() || !waker || lockEnabled) return;
   if (waker->enableLockBundle(opts.lockPlugin)) {
     lockEnabled = true;
-    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "lock-plugin enabled " + opts.lockPlugin});
+    logEvent(Event{Event::WAKE, atMs, "none", source, "lock-plugin enabled " + opts.lockPlugin});
   }
 }
 
@@ -216,20 +216,98 @@ void Server::maybeReloadSettings(uint64_t now) {
   applyLiveConfig();                                      // push tunables into the arbiter, recompute derived
   settings->refreshValues();                             // manifest reflects the live config
   if (!settingsDir.empty()) settings->writeManifest(settingsDir);
-  IOS3_TRACE("settings.conf changed: applied live (max_volume=%d crossfade=%u wake=%d preempt=%d spotify_abs=%d airplay_abs=%d)",
-             opts.maxVolumePct, opts.crossfadeMs, (int)opts.wakeOnPlay, (int)opts.preemptPause, (int)opts.absoluteVolume, (int)opts.airplayAbsolute);
+  IOS3_TRACE("settings.conf changed: applied live (max_volume=%d crossfade=%u wake=%d unlock=%d preempt=%d spotify_abs=%d airplay_abs=%d)",
+             opts.maxVolumePct, opts.crossfadeMs, (int)opts.wakeOnPlay, (int)opts.unlockOnPlay, (int)opts.preemptPause, (int)opts.absoluteVolume,
+             (int)opts.airplayAbsolute);
 }
 
-void Server::maybeWake(const Event& e) {
-  if (!opts.wakeOnPlay || !waker) return;
-  if (e.kind != Event::TAKEOVER || !e.from.empty() || e.reason == "reconnect") return;  // only none -> source, not a switch or a reconnect
+// B1.9 B + B1.16.4 + B1.11, for a playback start from nothing (not a switch, not a reconnect).
+// Order: when an unlock may be attempted, the wake (and unlock) comes first and the lock plugin is
+// enabled only if audiod does not unlock the device: never enabled and then immediately unlocked
+// past. When no unlock can happen, the B1.11 order stays: plugin first, so a lock screen that lights
+// up already shows the track.
+void Server::onStartFromNone(const Event& e) {
+  if (e.kind != Event::TAKEOVER || !e.from.empty() || e.reason == "reconnect") return;
+  bool unlockPossible = opts.wakeOnPlay && waker && opts.unlockOnPlay && waker->canUnlock();
+  if (!unlockPossible) enableLockPlugin(e.to, e.atMs);
+  WakeResult w = maybeWake(e);
+  if (unlockPossible && w != WAKE_UNLOCKING) enableLockPlugin(e.to, e.atMs);  // not unlocked by us: plugin as before
+}
+
+Server::WakeResult Server::maybeWake(const Event& e) {
+  if (!opts.wakeOnPlay || !waker) return WAKE_NOT_RUN;
   if (lastWakeMs && e.atMs - lastWakeMs < opts.wakeMinIntervalMs) {
     logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "debounced (" + std::to_string(e.atMs - lastWakeMs) + " ms since the last wake)"});
-    return;
+    return WAKE_NOT_RUN;
   }
   lastWakeMs = e.atMs;
-  bool ok = waker->wake(opts.wakeBundle);
-  logEvent(Event{Event::WAKE, e.atMs, "none", e.to, (ok ? "wake+launch " : "wake FAILED ") + opts.wakeBundle});
+  int rc = waker->wake(opts.wakeBundle);
+  if (rc == DisplayWaker::kLaunchOk) {
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake+launch " + opts.wakeBundle});
+    return WAKE_DONE;
+  }
+  if (rc != DisplayWaker::kLaunchLocked) {
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake FAILED " + opts.wakeBundle + " (launch " + std::to_string(rc) + ")"});
+    return WAKE_DONE;
+  }
+  // B1.16.4: the launch was refused because the device is locked.
+  if (!opts.unlockOnPlay) {
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake: device locked, unlock-on-play off: staying on the lock screen"});
+    return WAKE_DONE;
+  }
+  if (!waker->canUnlock()) {
+    if (!unlockUnavailableLogged) {
+      IOS3_TRACE("unlock-on-play: SBSOpenSensitiveURLAndUnlock is not available on this system: a locked device stays locked (logged once)");
+      unlockUnavailableLogged = true;
+    }
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake: device locked, unlock unavailable: staying on the lock screen"});
+    return WAKE_DONE;
+  }
+  if (waker->openURLAndUnlock(opts.unlockUrl) != 1) {
+    // One request per playback start, never a retry loop: a refusal is logged once and left alone.
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake: device locked, unlock request failed (" + opts.unlockUrl + "): staying on the lock screen"});
+    return WAKE_DONE;
+  }
+  uint64_t now = nowMs();
+  unlockWait.active = true;
+  unlockWait.source = e.to;
+  unlockWait.startMs = now;
+  unlockWait.nextMs = now + kUnlockRetryMs;
+  unlockWait.launches = 0;
+  logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake: device locked, unlock requested (" + opts.unlockUrl + ")"});
+  return WAKE_UNLOCKING;
+}
+
+// B1.16.4: the unlock request only says SpringBoard received it; the launch succeeding is the proof
+// that the device unlocked. One launch per kUnlockRetryMs from the run loop, never a blocking wait.
+void Server::tickUnlock(uint64_t now) {
+  if (!unlockWait.active || now < unlockWait.nextMs) return;
+  int rc = waker->launch(opts.wakeBundle);
+  unlockWait.launches++;
+  uint64_t waited = now - unlockWait.startMs;
+  std::string tries = std::to_string(unlockWait.launches) + (unlockWait.launches == 1 ? " launch" : " launches");
+  if (rc == DisplayWaker::kLaunchOk) {
+    unlockWait.active = false;
+    // Agreed rule: audiod unlocked the device and the app is in front (it keeps the screen awake),
+    // so the lock plugin stays off for this start.
+    logEvent(Event{Event::WAKE, now, "none", unlockWait.source, "unlocked: launch ok after " + std::to_string(waited) + " ms (" + tries + ")"});
+    return;
+  }
+  if (rc != DisplayWaker::kLaunchLocked || waited >= opts.unlockTimeoutMs) {
+    unlockWait.active = false;
+    logEvent(Event{Event::WAKE, now, "none", unlockWait.source, "unlock not confirmed after " + std::to_string(waited) + " ms (launch " + std::to_string(rc) + ", " +
+                                                                  tries + "): staying on the lock screen"});
+    std::string active = arbiter.activeName();
+    if (!active.empty()) enableLockPlugin(active, now);  // still locked: the plugin shows the track
+    return;
+  }
+  unlockWait.nextMs = now + kUnlockRetryMs;
+}
+
+void Server::cancelUnlock(const char* why, uint64_t now) {
+  if (!unlockWait.active) return;
+  unlockWait.active = false;
+  logEvent(Event{Event::WAKE, now, "none", unlockWait.source, std::string("unlock wait cancelled: ") + why});
 }
 
 Server::~Server() {
@@ -440,8 +518,7 @@ void Server::handleControl(Client& c, const Message& m) {
 void Server::afterTick() {
   for (const Event& e : arbiter.drainEvents()) {
     logEvent(e);
-    updateLockPlugin(e);  // B1.11: enable the lock bundle on none -> source
-    maybeWake(e);  // B1.9 B: none -> source
+    onStartFromNone(e);  // B1.9 B wake, B1.16.4 unlock, B1.11 lock plugin: none -> source only
     schedulePreempt(e);  // B1.12: a source -> source switch -> tell the loser to pause
     if (e.kind == Event::TAKEOVER) {
       out->crossfade(fadeFrames());  // the old source's tail ramps out under the new one's ramp-in; its lead is dropped
@@ -464,7 +541,10 @@ void Server::afterTick() {
   }
   std::string a = arbiter.activeName();
   if (!a.empty()) lastActiveName = a;  // B1.16: remember it for a later PLAY with nothing active
-  if (a.empty()) disableLockPlugin();  // B1.11: nothing active -> turn the lock bundle off
+  if (a.empty()) {  // nothing active: stop waiting for an unlock (B1.16.4), turn the lock bundle off (B1.11)
+    cancelUnlock("nothing is playing any more", nowMs());
+    disableLockPlugin();
+  }
   writeActiveSourceFile(a.empty() ? "none" : a);
   pump();
 }
@@ -577,6 +657,7 @@ void Server::run() {
     out->tick();
     pollHardwareVolume(now);  // B1.9 A: buttons / external changes -> the producers
     firePreempts(now);        // B1.12: tell a source that lost the output to pause
+    tickUnlock(now);          // B1.16.4: retry the launch after an unlock request
     maybeReloadSettings(now);  // B1.14: pick up a settings.conf change
     if (out->resumed()) {
       // The output was paused (interruption / yielding to another app) and just resumed: the active

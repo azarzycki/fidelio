@@ -33,6 +33,9 @@ if(APPLE)
   find_program(IOS3_LDID armv6-ios3-ldid)
   if(IOS3_STRIP AND IOS3_LDID)
     foreach(tgt fidelio-audiod fidelio-lockctl)
+      # B1.16.4: the signature is made at link time, so a changed plist must relink (otherwise the
+      # target that did not change keeps its old entitlements: found when opensensitiveurl was added).
+      set_property(TARGET ${tgt} APPEND PROPERTY LINK_DEPENDS ${ENTS})
       add_custom_command(TARGET ${tgt} POST_BUILD
         COMMAND ${IOS3_STRIP} -x $<TARGET_FILE:${tgt}>
         COMMAND ${IOS3_LDID} -S${ENTS} $<TARGET_FILE:${tgt}>

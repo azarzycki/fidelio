@@ -12,5 +12,10 @@
 	<true/>
 	<key>com.apple.springboard.activateawayviewplugins</key>
 	<true/>
+	<!-- B1.16.4: SBSOpenSensitiveURLAndUnlock (unlock-on-play). The device proof on the iPad was made with
+	     com.apple.springboard.openurlswhenlocked as well; this set leaves it out until a device test shows
+	     it is needed (tools/build-arm.sh also produces a fidelio-audiod signed with it, for that test). -->
+	<key>com.apple.springboard.opensensitiveurl</key>
+	<true/>
 </dict>
 </plist>

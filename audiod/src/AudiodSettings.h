@@ -88,6 +88,14 @@ inline void buildRegistry(fidelio::Registry& r, ServerOptions& so, Tunables& t, 
   o.write=[&so](const std::string& v){ so.wakeOnPlay = (v=="on"); return true; };
   r.add(o);
 
+  // B1.16.4: unlock a locked device when playback starts (needs wake on play).
+  o = {}; o.key="unlock_on_play"; o.flag="--unlock-on-play"; o.type=O::BOOL;
+  o.def="on"; o.title="Unlock on play"; o.desc="When playback starts and the device is locked, unlock it and show NowPlaying (works only without a passcode; needs Wake on play). Off: the device stays on the lock screen.";
+  o.group="Display";
+  o.read=[&so]{ return b2s(so.unlockOnPlay); };
+  o.write=[&so](const std::string& v){ so.unlockOnPlay = (v=="on"); return true; };
+  r.add(o);
+
   o = {}; o.key="lock_plugin"; o.flag="--lock-plugin"; o.type=O::BOOL;
   o.def="off"; o.title="Lock-screen plugin"; o.desc="Show the track on the lock screen (iPad; needs Fidelio.lockbundle installed)."; o.group="Display";
   o.read=[&so]{ return so.lockPlugin.empty() ? std::string("off") : std::string("on"); };

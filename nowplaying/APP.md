@@ -48,6 +48,8 @@ ssh root@phone 'chown -R mobile:mobile /Applications/NowPlaying.app; chmod +x /A
 ```
 If the icon does not appear after the respring: `uicache` (Cydia's) or `su mobile -c uicache`, then respring again. The binary is already fake-signed; re-sign with `ldid -S NowPlaying.app/NowPlaying` only if you rebuild it. The app needs no entitlements; it only reads `/var/mobile/fidelio` (owned by `mobile`, same user it runs as).
 
+**URL scheme (1.3.1, B1.16.4).** The app registers the scheme `nowplaying:`; fidelio-audiod opens it with `SBSOpenSensitiveURLAndUnlock` so that unlocking a locked device for playback lands directly in the app. Opening the URL only brings the app forward; its content is ignored. iOS reads an app's URL schemes when it rebuilds its app list, not on a respring alone, so after installing or updating 1.3.1 run `uicache` (Cydia's, as `mobile`: `su mobile -c uicache`), then respring. Check: `uiopen nowplaying:` over SSH, where the `uiopen` tool is installed, should open the app. Without the registration SpringBoard has no app for the URL, and whether it still unlocks is untested. If audiod logs `unlock not confirmed`, check the registration first. `--unlock-url prefs:` (the URL of the device proof) is a fallback for that test; it opens Settings first, then audiod's launch retry brings NowPlaying forward.
+
 ## Build
 ```sh
 export IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH

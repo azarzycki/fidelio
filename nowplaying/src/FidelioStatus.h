@@ -6,7 +6,7 @@
 #import <UIKit/UIKit.h>
 
 #define FIDELIO_DIR @"/var/mobile/fidelio"
-#define FIDELIO_APP_VERSION @"1.3.0 (settings)"
+#define FIDELIO_APP_VERSION @"1.3.1 (url scheme)"
 #define FIDELIO_STALE_S 15.0          // status file older than this: the player is not updating it
 #define FIDELIO_ACTIVE_SOURCE_STALE_S 30.0  // active-source older than this (audiod rewrites it every 10 s): audiod is gone
 #define FIDELIO_COVER_PX 256.0f       // the cover is shown at 256x256 (non-Retina), so that is all we keep

@@ -316,7 +316,7 @@ steal and a 2 s gap that may.
   Symbols confirmed exported by the SDK binaries; there is no `SBSUndimScreen` in 3.1, so the undim
   semantics of `SBDimScreen(false)` are assumed (the symbol takes one byte argument). Locked device:
   expected = the screen wakes, the launch is refused or lands behind the lock (the return code is
-  logged); unlock is not attempted. Unavailable framework/symbol = logged once, no-op.
+  logged); unlock is not attempted (B1.16.4 adds it, see below). Unavailable framework/symbol = logged once, no-op.
 - Tests: `hosttest/test_wake.py` (8 checks: one wake per none -> source, none on a switch, debounced
   inside 5 s, wakes again after, none on a reconnect) with the host's mock waker;
   `test_producers.py` section 3 (8 checks, mock hardware via `AUDIOD_MOCK_HW_VOLUME` /
@@ -325,3 +325,47 @@ steal and a 2 s gap that may.
   60 % picked up and reported, one wake; plus the fallback (first audiod without a backend logs it,
   the B1.7 peaks prove software mode). `framing_test` +11 (v2 HELLO, both VOLUME forms, WELCOME /
   HWVOLUME round-trip).
+
+## B1.16.4 (unlock on play when the device is locked)
+
+On the locked iPad the wake's launch is refused with `3` (device locked); iOS 5 does not launch an
+app over the lock screen. audiod now unlocks first when it may:
+
+- **Sequence** (playback start from none only, after the wake debounce): `wake()` as in B1.9. If its
+  launch returns `3` and `--unlock-on-play on` (default; registry `unlock_on_play`, Display group, live),
+  audiod calls `SBSOpenSensitiveURLAndUnlock(CFURL(--unlock-url), true)` once (default `nowplaying:`, the
+  app's own URL scheme, so the unlock lands in NowPlaying), then retries
+  `SBSLaunchApplicationWithIdentifier` every 500 ms until it returns `0` or `--unlock-timeout-ms` (default
+  5000) pass. The call's `true` only means SpringBoard received the request. Disassembled in the 3.1.2 SDK,
+  it returns the MIG result of `SBOpenSensitiveURL(port, utf8, unlock)`. So the retried launch succeeding is
+  the proof that the device unlocked.
+- **Never blocking:** the retries are ticked from the run loop, one SpringBoard call per tick that is
+  due. Every call is timed in the trace (`... -> 3 (12 ms)`) so a slow SpringBoard shows up in the device log.
+- **Failure handling:** works only without a passcode. With one, SpringBoard cannot unlock by itself (it may
+  show the keypad), and the timeout ends the wait. A failed request is logged once for that start and never retried in a loop. A missing symbol is
+  logged once per process. If playback stops while audiod waits, the wait is cancelled.
+- **Lock plugin precedence (agreed):** the plugin is enabled only when audiod does not unlock the device
+  for that start: already unlocked (launch `0`), unlock off, symbol missing, request failed, or not
+  confirmed within the timeout. When no unlock can be attempted it is enabled before the wake (the B1.11
+  order, so a lock screen that lights up already shows the track); otherwise after the outcome is known.
+  It is never enabled and then immediately unlocked past. NowPlaying disables the idle timer, so after an
+  unlock the device does not auto-lock while the app is in front.
+- **Both devices:** the 3.1.2 SDK exports `SBSOpenSensitiveURLAndUnlock` too, so the phone attempts the
+  unlock as well if its launch returns `3` while locked. Set `audiod.unlock_on_play=off` on a device that
+  should stay on the lock screen.
+- **Entitlements:** `common/fidelio-springboard.entitlements.plist` adds
+  `com.apple.springboard.opensensitiveurl`. The device proof also carried
+  `com.apple.springboard.openurlswhenlocked`; `tools/build-arm.sh` additionally produces
+  `fidelio-audiod-openurlswhenlocked` (same binary, signed with that key as well) for the device A/B.
+- **App:** NowPlaying 1.3.1 registers `nowplaying:` (`CFBundleURLTypes`) and accepts the URL without
+  looking at it. iOS registers a URL scheme when it rebuilds its app list: run `uicache` after installing.
+- **Event log** (kind `wake`): `wake: device locked, unlock requested (nowplaying:)`, `unlocked: launch ok
+  after N ms (K launches)`, `unlock not confirmed after N ms (launch R, K launches): staying on the lock
+  screen`, `wake: device locked, unlock-on-play off | unlock unavailable | unlock request failed (...):
+  staying on the lock screen`, `unlock wait cancelled: nothing is playing any more`.
+- **Tests:** `hosttest/test_unlock.py` (22 checks; the host mock waker plays a locked device through
+  `AUDIOD_MOCK_LOCKED`, `AUDIOD_MOCK_UNLOCK=ok|stuck|refuse|missing`, `AUDIOD_MOCK_UNLOCK_MS`): launch 0 ->
+  no unlock; launch 3 + unlock ok -> retried to 0, plugin off; symbol missing -> one log line per
+  process, plugin before the wake; setting off -> no unlock call; request failed -> one call, no loop;
+  accepted but never unlocked -> bounded retries, plugin after giving up; playback stopped while
+  waiting -> cancelled. `test_settings.py` +2 (manifest default, live change).

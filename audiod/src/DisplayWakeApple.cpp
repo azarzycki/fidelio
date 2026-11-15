@@ -6,11 +6,18 @@
 // and by GraphicsServices:
 //   GSEventResetIdleTimer               void (void)
 // There is no SBSUndimScreen in 3.1; SBDimScreen(port, false) is the undim call of that era (symbol
-// confirmed, undim semantics assumed; verified on the device). What a LOCKED device does with the
-// launch request cannot be decided off-device: expected is that the screen wakes (undim + idle
-// reset) and the launch is refused or deferred behind the lock; unlock is not attempted.
+// confirmed, undim semantics assumed; verified on the device). A LOCKED iOS 5 device refuses the
+// launch with 3 (verified on the iPad).
+// B1.16.4: SBSOpenSensitiveURLAndUnlock  Boolean (CFURLRef url, Boolean unlock)
+// Exported by the 3.1.2 SDK's SpringBoardServices too (so the phone has it). Disassembled there: it
+// takes the URL's string (at most 1023 UTF-8 bytes), sends SBOpenSensitiveURL(port, utf8, unlock) to
+// SpringBoard and returns true when that MIG call succeeded: proof the request arrived, not that the
+// device unlocked. Verified on the 5.1.1 iPad: (prefs:, true) unlocked it and a launch 3 s later
+// returned 0. SpringBoard checks the caller's entitlements (com.apple.springboard.opensensitiveurl;
+// see common/fidelio-springboard.entitlements.plist).
 #include <dlfcn.h>
 #include <mach/mach.h>
+#include <mach/mach_time.h>
 #include <stdio.h>
 
 #include <CoreFoundation/CoreFoundation.h>
@@ -27,6 +34,13 @@ typedef kern_return_t (*DimFn)(mach_port_t, Boolean);
 typedef void (*ResetIdleFn)(void);
 typedef kern_return_t (*EnableLockFn)(mach_port_t, unsigned char, const char*);  // SBEnableLockScreenBundle (B1.11)
 typedef CFStringRef (*LaunchErrStrFn)(int);  // B1.15 A: SBSApplicationLaunchingErrorString(code) -> message
+typedef Boolean (*OpenUnlockFn)(CFURLRef, Boolean);  // B1.16.4: SBSOpenSensitiveURLAndUnlock
+
+uint64_t monoMs() {
+  static mach_timebase_info_data_t tb;
+  if (tb.denom == 0) mach_timebase_info(&tb);
+  return mach_absolute_time() / 1000000ull * tb.numer / tb.denom;
+}
 
 class SpringBoardWaker : public DisplayWaker {
  public:
@@ -35,51 +49,85 @@ class SpringBoardWaker : public DisplayWaker {
     void* gs = dlopen("/System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices", RTLD_LAZY);
     if (sbs) {
       serverPort = (ServerPortFn)dlsym(sbs, "SBSSpringBoardServerPort");
-      launch = (LaunchFn)dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
+      launchFn = (LaunchFn)dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
       dim = (DimFn)dlsym(sbs, "SBDimScreen");
       enableLock = (EnableLockFn)dlsym(sbs, "SBEnableLockScreenBundle");
       launchErrStr = (LaunchErrStrFn)dlsym(sbs, "SBSApplicationLaunchingErrorString");
+      openUnlock = (OpenUnlockFn)dlsym(sbs, "SBSOpenSensitiveURLAndUnlock");
     }
     if (gs) resetIdle = (ResetIdleFn)dlsym(gs, "GSEventResetIdleTimer");
     if (!sbs) why = "dlopen SpringBoardServices failed";
-    else if (!launch) why = "SBSLaunchApplicationWithIdentifier missing";
+    else if (!launchFn) why = "SBSLaunchApplicationWithIdentifier missing";
   }
-  bool wake(const std::string& bundleId) override {
+  int wake(const std::string& bundleId) override {
     ObjcAutoreleasePool pool;  // B1.10: SBS/CF calls may autorelease
-    if (!launch) {
+    if (!launchFn) {
       if (!unavailableLogged) { IOS3_TRACE("wake-on-play: unavailable (%s): no-op", why.c_str()); unavailableLogged = true; }
-      return false;
+      return kUnavailable;
     }
     // 1. undim / wake the screen (best effort), 2. reset the idle timer, 3. foreground the app
     kern_return_t kr = KERN_SUCCESS;
     if (dim && serverPort) { mach_port_t p = serverPort(); if (p) kr = dim(p, 0); }
     if (resetIdle) resetIdle();
+    char err[200];
+    uint64_t ms = 0;
+    int rc = launchDecoded(bundleId, err, sizeof err, &ms);
+    IOS3_TRACE("wake-on-play: SBDimScreen(false) -> %d, GSEventResetIdleTimer %s, SBSLaunchApplicationWithIdentifier(%s) -> %d%s (%llu ms)", (int)kr,
+               resetIdle ? "called" : "missing", bundleId.c_str(), rc, err, (unsigned long long)ms);
+    return rc;
+  }
+  // B1.16.4: the launch alone, retried after an unlock request.
+  int launch(const std::string& bundleId) override {
+    ObjcAutoreleasePool pool;
+    if (!launchFn) return kUnavailable;
+    char err[200];
+    uint64_t ms = 0;
+    int rc = launchDecoded(bundleId, err, sizeof err, &ms);
+    IOS3_TRACE("unlock-on-play: SBSLaunchApplicationWithIdentifier(%s) -> %d%s (%llu ms)", bundleId.c_str(), rc, err, (unsigned long long)ms);
+    return rc;
+  }
+  bool canUnlock() override { return openUnlock != nullptr; }
+  int openURLAndUnlock(const std::string& url) override {
+    ObjcAutoreleasePool pool;
+    if (!openUnlock) return kUnavailable;
+    CFURLRef u = CFURLCreateWithBytes(nullptr, (const UInt8*)url.data(), (CFIndex)url.size(), kCFStringEncodingUTF8, nullptr);
+    if (!u) { IOS3_TRACE("unlock-on-play: '%s' is not a valid URL", url.c_str()); return 0; }
+    uint64_t t0 = monoMs();
+    Boolean ok = openUnlock(u, true);
+    uint64_t ms = monoMs() - t0;
+    CFRelease(u);
+    IOS3_TRACE("unlock-on-play: SBSOpenSensitiveURLAndUnlock(%s, unlock) -> %s (%llu ms)", url.c_str(), ok ? "true (request delivered)" : "false", (unsigned long long)ms);
+    return ok ? 1 : 0;
+  }
+  bool enableLockBundle(const std::string& name) override { return setLock(name, true); }
+  bool disableLockBundle(const std::string& name) override { return setLock(name, false); }
+  std::string describe() override {
+    return launchFn ? std::string("SpringBoardServices (undim: ") + (dim && serverPort ? "SBDimScreen" : "missing") + ", idle reset: " + (resetIdle ? "yes" : "no") +
+                          ", unlock: " + (openUnlock ? "SBSOpenSensitiveURLAndUnlock" : "missing") + ")"
+                    : "SpringBoardServices unavailable: " + why;
+  }
+
+ private:
+  // SBSLaunchApplicationWithIdentifier + the B1.15 A decode of a non-zero result into err (" (error ...)").
+  int launchDecoded(const std::string& bundleId, char* err, size_t errLen, uint64_t* ms) {
     CFStringRef id = CFStringCreateWithCString(nullptr, bundleId.c_str(), kCFStringEncodingUTF8);
-    int rc = launch(id, 0);
+    uint64_t t0 = monoMs();
+    int rc = launchFn(id, 0);
+    *ms = monoMs() - t0;
     CFRelease(id);
     // B1.15 A: decode the launch result. SBSApplicationLaunchingErrorString (if present) names the
     // code (0 ok, 1 "SpringBoard is not running" in the table but in practice the unentitled-caller
     // code, 3 device locked, 7 app not found, ...). On a non-zero result print the resolved string or
     // the number; on code 1 add the real cause we proved on the device: a missing entitlement.
-    char err[160] = "";
+    err[0] = 0;
     if (rc != 0) {
       char name[96] = "";
       if (launchErrStr) { CFStringRef m = launchErrStr(rc); if (m) { CFStringGetCString(m, name, sizeof name, kCFStringEncodingUTF8); } }
-      snprintf(err, sizeof err, " (error %d%s%s%s)", rc, name[0] ? ": " : "", name,
+      snprintf(err, errLen, " (error %d%s%s%s)", rc, name[0] ? ": " : "", name,
                rc == 1 ? "; binary probably lacks com.apple.springboard.launchapplications" : "");
     }
-    IOS3_TRACE("wake-on-play: SBDimScreen(false) -> %d, GSEventResetIdleTimer %s, SBSLaunchApplicationWithIdentifier(%s) -> %d%s", (int)kr,
-               resetIdle ? "called" : "missing", bundleId.c_str(), rc, err);
-    return rc == 0;
+    return rc;
   }
-  bool enableLockBundle(const std::string& name) override { return setLock(name, true); }
-  bool disableLockBundle(const std::string& name) override { return setLock(name, false); }
-  std::string describe() override {
-    return launch ? std::string("SpringBoardServices (undim: ") + (dim && serverPort ? "SBDimScreen" : "missing") + ", idle reset: " + (resetIdle ? "yes" : "no") + ")"
-                  : "SpringBoardServices unavailable: " + why;
-  }
-
- private:
   bool setLock(const std::string& name, bool enable) {
     if (!enableLock || !serverPort) {
       if (!lockUnavailableLogged) { IOS3_TRACE("lock-plugin: SBEnableLockScreenBundle unavailable: no-op"); lockUnavailableLogged = true; }
@@ -92,11 +140,12 @@ class SpringBoardWaker : public DisplayWaker {
     return kr == 0;
   }
   ServerPortFn serverPort = nullptr;
-  LaunchFn launch = nullptr;
+  LaunchFn launchFn = nullptr;
   DimFn dim = nullptr;
   ResetIdleFn resetIdle = nullptr;
   EnableLockFn enableLock = nullptr;
   LaunchErrStrFn launchErrStr = nullptr;
+  OpenUnlockFn openUnlock = nullptr;
   std::string why;
   bool unavailableLogged = false;
   bool lockUnavailableLogged = false;

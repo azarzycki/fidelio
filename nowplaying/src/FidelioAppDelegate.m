@@ -81,6 +81,14 @@ extern char** environ;
 
 // iPhone OS 3 keeps the frontmost app running while the screen is locked (sleep button) or a call /
 // alert is on top; nothing is visible then, so do not poll the file and relayout once a second.
+// B1.16.4: the app's own URL scheme (nowplaying:, CFBundleURLTypes in Info.plist). fidelio-audiod passes it
+// to SBSOpenSensitiveURLAndUnlock so that unlocking a locked device lands directly in this app. The URL's
+// content is ignored: being opened is all it is for. (iOS 3.0-4.1 call this method; 4.2+ call it too
+// when the newer openURL:sourceApplication:annotation: is not implemented.)
+- (BOOL)application:(UIApplication*)application handleOpenURL:(NSURL*)url {
+  return YES;
+}
+
 - (void)applicationWillResignActive:(UIApplication*)application {
   [self stopTimer];
 }
