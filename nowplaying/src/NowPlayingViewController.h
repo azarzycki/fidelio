@@ -12,6 +12,9 @@
   UILabel* elapsedLabel;
   UILabel* remainingLabel;
   UILabel* stateLabel;
+  UIButton* prevBtn;
+  UIButton* playBtn;
+  UIButton* nextBtn;
   NSString* notice;         // watchdog note shown instead of the state line until noticeUntil
   NSTimeInterval noticeUntil;
 }

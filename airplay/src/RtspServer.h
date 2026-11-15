@@ -37,6 +37,9 @@ class RtspServer {
   // on its own thread so the takeover and the new source are never delayed.
   void onPreempted(const std::string& by);
   static void preemptTrampoline(void* self, const char* by) { static_cast<RtspServer*>(self)->onPreempted(by ? by : ""); }
+  // B1.16: audiod routed a transport verb to AirPlay -> DACP it to the sender (background, non-blocking).
+  void onControl(uint8_t verb);
+  static void controlTrampoline(void* self, uint8_t verb) { static_cast<RtspServer*>(self)->onControl(verb); }
   // B1.13: the audiod sink, so AirPlay volume can drive the hardware (absolute mode). The server
   // learns the mode and the current hardware level from the sink's WELCOME/HWVOLUME callback.
   void setSink(::SocketSink* s) { sink = s; }

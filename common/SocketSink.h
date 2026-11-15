@@ -60,6 +60,11 @@ class SocketSink : public AudioOutput {
   void setPreemptCallback(void (*cb)(void* user, const char* by), void* user) {
     std::lock_guard<std::mutex> l(m); preemptCb = cb; preemptUser = user;
   }
+  // B1.16: audiod routed a transport verb to this (active) source. Fired from poll()/write() without
+  // the mutex. verb is AUDIOD_CTRL_*.
+  void setControlCallback(void (*cb)(void* user, uint8_t verb), void* user) {
+    std::lock_guard<std::mutex> l(m); ctrlCb = cb; ctrlUser = user;
+  }
   double bufferedSeconds() override;      // how far ahead of real time the stream is (0..kLeadMs)
   void idle() override;                   // waits out the lead, then sends STOP; the connection stays open
   void stop() { idle(); }
@@ -106,6 +111,9 @@ class SocketSink : public AudioOutput {
   void (*hwCb)(void*, bool, uint16_t) = nullptr;
   void* hwUser = nullptr;
   void (*preemptCb)(void*, const char*) = nullptr;
+  void (*ctrlCb)(void*, uint8_t) = nullptr;
+  void* ctrlUser = nullptr;
+  uint8_t pendingCtrl = 0;  // B1.16: last CONTROL verb from audiod (0 = none pending)
   void* preemptUser = nullptr;
   std::string pendingPreempt;
   bool preemptPending = false;

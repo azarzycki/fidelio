@@ -1,6 +1,12 @@
 #import "NowPlayingViewController.h"
 #import <QuartzCore/QuartzCore.h>
 
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/un.h>
+#include <unistd.h>
+
 // Layout for a 320x480 portrait screen with the status bar hidden and a 49 px tab bar: 431 px usable.
 #define COVER_SIZE FIDELIO_COVER_PX  // FidelioStatus scales the cover to exactly this
 
@@ -37,6 +43,9 @@
   remainingLabel = nil;
   [stateLabel release];
   stateLabel = nil;
+  [prevBtn release]; prevBtn = nil;
+  [playBtn release]; playBtn = nil;
+  [nextBtn release]; nextBtn = nil;
 }
 
 - (void)dealloc {
@@ -87,14 +96,60 @@
   albumLabel = [self makeLabel:CGRectMake(12, 334, 296, 22) font:[UIFont systemFontOfSize:16] color:dim align:UITextAlignmentCenter];
 
   progress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
-  progress.frame = CGRectMake(20, 372, 280, 9);
+  progress.frame = CGRectMake(20, 360, 280, 9);
   [self.view addSubview:progress];
 
-  elapsedLabel = [self makeLabel:CGRectMake(20, 384, 100, 20) font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentLeft];
-  remainingLabel = [self makeLabel:CGRectMake(200, 384, 100, 20) font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentRight];
-  stateLabel = [self makeLabel:CGRectMake(20, 406, 280, 20) font:[UIFont systemFontOfSize:14] color:[UIColor colorWithRed:0.45f green:0.80f blue:0.55f alpha:1] align:UITextAlignmentCenter];
+  elapsedLabel = [self makeLabel:CGRectMake(20, 370, 100, 18) font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentLeft];
+  remainingLabel = [self makeLabel:CGRectMake(200, 370, 100, 18) font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentRight];
+  stateLabel = [self makeLabel:CGRectMake(20, 390, 280, 16) font:[UIFont systemFontOfSize:13] color:[UIColor colorWithRed:0.45f green:0.80f blue:0.55f alpha:1] align:UITextAlignmentCenter];
+
+  // B1.16: transport controls (previous / play-pause / next) driving the active source via audiod.
+  prevBtn = [self makeControl:@"\u25C0\u25C0" x:40 action:@selector(prevTapped)];   // |< prev
+  playBtn = [self makeControl:@"\u25B6" x:140 action:@selector(playTapped)];          // play/pause
+  nextBtn = [self makeControl:@"\u25B6\u25B6" x:240 action:@selector(nextTapped)];   // next >|
 
   [self update];
+}
+
+- (UIButton*)makeControl:(NSString*)glyph x:(CGFloat)cx action:(SEL)sel {
+  UIButton* b = [UIButton buttonWithType:UIButtonTypeCustom];
+  b.frame = CGRectMake(cx - 32, 408, 64, 40);
+  [b setTitle:glyph forState:UIControlStateNormal];
+  b.titleLabel.font = [UIFont systemFontOfSize:26];
+  [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+  [b setTitleColor:[UIColor colorWithWhite:0.30f alpha:1] forState:UIControlStateDisabled];
+  [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
+  [self.view addSubview:b];
+  return [b retain];  // ivar owns it; released in releaseSubviews
+}
+
+- (void)prevTapped { [self sendControl:5]; }   // PREV
+- (void)nextTapped { [self sendControl:4]; }   // NEXT
+- (void)playTapped { [self sendControl:3]; }   // TOGGLE
+
+// Send one transport verb to audiod over its Unix socket (HELLO as the non-producing "control"
+// source, then CONTROL). Short timeouts; never blocks the UI for long. Mirrors common/AudiodControl.
+- (void)sendControl:(uint8_t)verb {
+  NSString* sp = [FIDELIO_DIR stringByAppendingPathComponent:@"audiod.sock"];
+  int s = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (s < 0) return;
+  struct timeval to = { 0, 300 * 1000 };
+  setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &to, sizeof to);
+  setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof to);
+  struct sockaddr_un a; memset(&a, 0, sizeof a); a.sun_family = AF_UNIX;
+  strncpy(a.sun_path, [sp fileSystemRepresentation], sizeof a.sun_path - 1);
+  if (connect(s, (struct sockaddr*)&a, sizeof a) != 0) { close(s); return; }
+  // HELLO: header {type=1,len=40} + AudiodHello{ver=2,prio=0,ch=2,bits=16,rate=44100,name="control"}
+  unsigned char hello[48]; memset(hello, 0, sizeof hello);
+  unsigned int t = 1, len = 40; memcpy(hello, &t, 4); memcpy(hello + 4, &len, 4);
+  hello[8] = 2; hello[9] = 0; hello[10] = 2; hello[11] = 16;
+  unsigned int rate = 44100; memcpy(hello + 12, &rate, 4);
+  strncpy((char*)hello + 16, "control", 31);
+  unsigned char ctl[9]; unsigned int ct = 10, cl = 1; memcpy(ctl, &ct, 4); memcpy(ctl + 4, &cl, 4); ctl[8] = verb;
+  if (write(s, hello, 48) == 48) write(s, ctl, 9);
+  char buf[8]; recv(s, buf, sizeof buf, 0);  // let audiod read before close (returns on timeout/EOF)
+  close(s);
+  NSLog(@"sent transport control verb %d to audiod", (int)verb);
 }
 
 - (void)update {
@@ -144,6 +199,11 @@
   else line = @"Waiting for Spotify or AirPlay";
   if (notice && CFAbsoluteTimeGetCurrent() < noticeUntil) line = notice;
   stateLabel.text = line;
+
+  // B1.16: the transport controls are usable only while a source owns the output; the play/pause
+  // glyph follows the real state. (audiod still resolves "which source"; the app just sends a verb.)
+  prevBtn.enabled = active; nextBtn.enabled = active; playBtn.enabled = active;
+  [playBtn setTitle:(playing ? @"\u25AE\u25AE" : @"\u25B6") forState:UIControlStateNormal];
 }
 
 - (void)showNotice:(NSString*)text forSeconds:(NSTimeInterval)seconds {

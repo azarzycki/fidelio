@@ -9,6 +9,7 @@
 #include "CentralAudioBuffer.h"
 #include "Logger.h"
 #include "SpircHandler.h"
+#include "audiod/proto.h"
 #include "StreamInfo.h"
 #include "TrackPlayer.h"
 
@@ -47,6 +48,20 @@ CliPlayer::CliPlayer(std::unique_ptr<PlayerSink> sink, std::shared_ptr<cspot::Sp
     if (self->isPaused || self->pauseRequested) { CSPOT_LOG(info, "PREEMPTED by %s: already paused", by); return; }
     CSPOT_LOG(info, "PREEMPTED by %s: pausing Spotify (controller will show paused)", by);
     self->handler->setPause(true);  // Paused state + notify controller + PLAY_PAUSE -> our loop stops reading
+  };
+  // B1.16: a transport verb from audiod (the app, or the dock remote via the tweak) -> drive Spirc.
+  this->audioSink->onControlUser = this;
+  this->audioSink->onControl = [](void* user, uint8_t verb) {
+    CliPlayer* self = static_cast<CliPlayer*>(user);
+    bool paused = self->isPaused || self->pauseRequested;
+    switch (verb) {
+      case AUDIOD_CTRL_PLAY:   if (paused) { CSPOT_LOG(info, "control: play");  self->handler->setPause(false); } break;
+      case AUDIOD_CTRL_PAUSE:  if (!paused){ CSPOT_LOG(info, "control: pause"); self->handler->setPause(true);  } break;
+      case AUDIOD_CTRL_TOGGLE: CSPOT_LOG(info, "control: toggle (%s)", paused ? "resume" : "pause"); self->handler->setPause(!paused); break;
+      case AUDIOD_CTRL_NEXT:   CSPOT_LOG(info, "control: next"); self->handler->nextSong(); break;
+      case AUDIOD_CTRL_PREV:   CSPOT_LOG(info, "control: previous"); self->handler->previousSong(); break;
+      default: break;
+    }
   };
   this->audioSink->onHardwareVolumeUser = this;
   this->audioSink->onHardwareVolume = [](void* user, bool absolute, uint16_t slider) {

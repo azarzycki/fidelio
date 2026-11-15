@@ -81,6 +81,7 @@ int main(int argc, char** argv) {
              "  --lock-plugin NAME|off   (default off) while a source plays, enable the SpringBoard lock-screen bundle\n"
              "                           NAME.lockbundle (SBEnableLockScreenBundle, dlopen'ed; no-op if unavailable)\n"
              "  --keep-screen-on on|off  (default off) on the lock screen, keep the display lit while playing (B1.15)\n"
+             "  --dock-remote on|off     (default off) let the dock remote drive playback (read by the DockRemote tweak)\n"
              "  --preempt-pause on|off   (default on) tell a source that loses the output to pause (B1.12), so a\n"
              "                           background session cannot roll on and steal it back\n"
              "  --airplay-volume-mode absolute|software  (default absolute) the AirPlay sender's volume drives the device\n"
@@ -179,6 +180,7 @@ int main(int argc, char** argv) {
     else if (a == "--quiet-release-ms") t.quietReleaseMs = strtoull(next(a.c_str()), nullptr, 10);
     else if (a == "--lead-ms") so.leadMs = (unsigned)atoi(next(a.c_str()));
     else if (a == "--keep-screen-on") { std::string v = next("--keep-screen-on"); if (v == "on") so.keepScreenOn = true; else if (v == "off") so.keepScreenOn = false; else { fprintf(stderr, "--keep-screen-on must be on|off\n"); return 1; } }
+    else if (a == "--dock-remote") { std::string v = next("--dock-remote"); if (v == "on") so.dockRemote = true; else if (v == "off") so.dockRemote = false; else { fprintf(stderr, "--dock-remote must be on|off\n"); return 1; } }
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 1; }
   }
 

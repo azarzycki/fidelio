@@ -19,5 +19,8 @@ bool sendPause(const std::string& dacpId, const std::string& activeRemote, const
 // (GET /ctrl-int/1/setproperty?dmcp.device-volume=<db>, db in AirPlay's -30..0 range). Same
 // resolve/connect budget as sendPause; never throws.
 bool sendVolume(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp, float db);
+// B1.16: a transport command (cmd is the DACP verb: "playpause", "play", "pause", "nextitem",
+// "previtem"). Same resolve/connect budget; never throws.
+bool sendCommand(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp, const char* cmd);
 
 }  // namespace dacp

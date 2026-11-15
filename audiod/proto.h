@@ -32,7 +32,9 @@ enum AudiodMsgType {
   AUDIOD_MSG_VOLUME = 6,  // client -> server, this source's playback volume (AudiodVolume, 4 or 8 bytes)
   AUDIOD_MSG_WELCOME = 7, // server -> client (HELLO version >= 2 only), right after HELLO (AudiodWelcome)
   AUDIOD_MSG_HWVOLUME = 8,// server -> client (version >= 2 only), the hardware volume changed (AudiodHwVolume)
-  AUDIOD_MSG_PREEMPTED = 9 // server -> client (version >= 2 only): another source took the output (AudiodPreempted)
+  AUDIOD_MSG_PREEMPTED = 9,// server -> client (version >= 2 only): another source took the output (AudiodPreempted)
+  AUDIOD_MSG_CONTROL = 10  // B1.16: a transport command. controller -> server (route to the active source);
+                          // server -> active producer (act on it). Payload AudiodControl.
 };
 
 // B1.9: Spotify Connect's slider can drive the device's real output volume ("absolute" mode in
@@ -42,6 +44,13 @@ enum AudiodMsgType {
 #define AUDIOD_VOL_SLIDER   0x0001  // AudiodVolume: `slider` is valid (this source is slider-driven)
 #define AUDIOD_VOL_APPLY    0x0002  // AudiodVolume: set the hardware to it (a user slider move); without it: report-only (startup echo)
 #define AUDIOD_VOL_ABSOLUTE 0x0001  // AudiodWelcome / AudiodHwVolume: absolute mode is active, `slider` is the hardware level
+
+// B1.16: transport verbs for AUDIOD_MSG_CONTROL (AudiodControl.verb).
+#define AUDIOD_CTRL_PLAY   1   // resume (if the source is paused)
+#define AUDIOD_CTRL_PAUSE  2
+#define AUDIOD_CTRL_TOGGLE 3   // play/pause, as a single remote key does
+#define AUDIOD_CTRL_NEXT   4
+#define AUDIOD_CTRL_PREV   5
 
 #pragma pack(push, 1)
 
@@ -99,6 +108,13 @@ typedef struct {
 typedef struct {
   char by[AUDIOD_NAME_MAX];  // nul-padded name of the new active source
 } AudiodPreempted;
+
+// CONTROL payload (B1.16). A transport verb. Controller -> server: route it to the active source
+// (or, for PLAY with nothing active, the most-recently-active connected source if it is paused).
+// Server -> active producer: act on it (Spotify via Spirc, AirPlay via DACP).
+typedef struct {
+  uint8_t verb;            // AUDIOD_CTRL_*
+} AudiodControl;
 
 // META payload (v2). Nul-padded UTF-8; truncate on overflow.
 typedef struct {

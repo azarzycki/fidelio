@@ -64,14 +64,14 @@ static void buildRaopRegistry(fidelio::Registry& r, Options& o) {
 
   x = {}; x.key="airplay_volume"; x.flag="--airplay-volume"; x.type=O::ENUM;
   x.choices={{"auto","Auto"},{"honor","Honor (incl. mute)"},{"ignore","Ignore (always unity)"}};
-  x.def="auto"; x.title="Sender volume handling"; x.desc="Auto: honour -30..0 dB, treat -144 as 'no remote volume'. Honor: apply all incl. mute. Ignore: always unity."; x.group="AirPlay"; x.live=false;
+  x.def="auto"; x.title="Sender volume"; x.desc="Auto: honour -30..0 dB, treat -144 as 'no remote volume'. Honor: apply all incl. mute. Ignore: always unity."; x.group="AirPlay"; x.live=false;
   x.read=[&o]{ return o.volumeMode==RaopSession::VOL_HONOR ? std::string("honor") : o.volumeMode==RaopSession::VOL_IGNORE ? std::string("ignore") : std::string("auto"); };
   x.write=[&o](const std::string& v){ o.volumeMode = v=="honor" ? RaopSession::VOL_HONOR : v=="ignore" ? RaopSession::VOL_IGNORE : RaopSession::VOL_AUTO; return true; };
   r.add(x);
 
   x = {}; x.key="airplay_preempt"; x.flag="--airplay-preempt"; x.type=O::ENUM;
   x.choices={{"pause-then-disconnect","Pause, then disconnect"},{"pause-only","Pause only"},{"disconnect","Disconnect"},{"none","Keep draining"}};
-  x.def="pause-then-disconnect"; x.title="On losing the output"; x.desc="What to do with the AirPlay sender when another source takes over."; x.group="AirPlay"; x.live=false;
+  x.def="pause-then-disconnect"; x.title="On losing output"; x.desc="What to do with the AirPlay sender when another source takes over."; x.group="AirPlay"; x.live=false;
   x.read=[&o]{ return o.preemptPolicy==1 ? std::string("pause-only") : o.preemptPolicy==2 ? std::string("disconnect") : o.preemptPolicy==3 ? std::string("none") : std::string("pause-then-disconnect"); };
   x.write=[&o](const std::string& v){ o.preemptPolicy = v=="pause-only" ? 1 : v=="disconnect" ? 2 : v=="none" ? 3 : 0; return true; };
   r.add(x);
@@ -236,6 +236,7 @@ int main(int argc, char** argv) {
   server.setPreemptOptions(po);
   if (sink) {
     sink->setPreemptCallback(&RtspServer::preemptTrampoline, &server);
+    sink->setControlCallback(&RtspServer::controlTrampoline, &server);  // B1.16: audiod transport verbs -> DACP
     // B1.13: the server learns the AirPlay volume mode + hardware level from audiod's WELCOME/HWVOLUME
     // and drives the hardware from the sender's volume in absolute mode.
     server.setSink(sink);

@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(REPO ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(INC ${REPO} ${REPO}/common ${REPO}/airplay/src ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-add_library(audiod_common STATIC ${REPO}/common/AudiodFraming.cpp ${REPO}/common/SocketSink.cpp ${REPO}/common/Settings.cpp)
+add_library(audiod_common STATIC ${REPO}/common/AudiodFraming.cpp ${REPO}/common/SocketSink.cpp ${REPO}/common/Settings.cpp ${REPO}/common/AudiodControl.cpp)
 target_include_directories(audiod_common PUBLIC ${INC})
 target_compile_options(audiod_common PRIVATE -O2 -Wall)
 
@@ -67,6 +67,10 @@ target_link_libraries(settings_test PRIVATE audiod_common)
 add_executable(writeframe_test hosttest/writeframe_test.cpp)
 target_include_directories(writeframe_test PRIVATE ${INC})
 target_link_libraries(writeframe_test PRIVATE audiod_common pthread)
+
+add_executable(control_send hosttest/control_send.cpp)
+target_include_directories(control_send PRIVATE ${INC})
+target_link_libraries(control_send PRIVATE audiod_common)
 
 add_executable(socketsink_producer hosttest/socketsink_producer.cpp)
 target_include_directories(socketsink_producer PRIVATE ${INC})

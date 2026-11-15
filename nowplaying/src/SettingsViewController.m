@@ -3,6 +3,7 @@
 #import "FidelioStatus.h"  // FIDELIO_DIR
 #import "EnumPickerViewController.h"
 #import "StringEditorViewController.h"
+#import "NPEventProbe.h"
 
 #include <spawn.h>
 #include <sys/wait.h>
@@ -15,7 +16,7 @@ static NSString* ManifestPath(NSString* d) { return [FIDELIO_DIR stringByAppendi
 
 // Group order across daemons; groups not listed go last in first-seen order.
 static NSInteger GroupRank(NSString* g) {
-  NSArray* order = [NSArray arrayWithObjects:@"Volume", @"Source switching", @"AirPlay", @"Spotify", @"Display", @"Advanced", nil];
+  NSArray* order = [NSArray arrayWithObjects:@"Volume", @"Source switching", @"Controls", @"AirPlay", @"Spotify", @"Display", @"Advanced", nil];
   NSUInteger i = [order indexOfObject:g];
   return i == NSNotFound ? 100 : (NSInteger)i;
 }
@@ -81,7 +82,7 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
 - (NSInteger)numberOfSectionsInTableView:(UITableView*)t { return (NSInteger)[sections count] + 1; }  // +1: the Advanced toggle / status
 
 - (NSInteger)tableView:(UITableView*)t numberOfRowsInSection:(NSInteger)s {
-  if (s == (NSInteger)[sections count]) return 1 + (NSInteger)[missing count];  // Advanced switch + any "not running"
+  if (s == (NSInteger)[sections count]) return 2 + (NSInteger)[missing count];  // Advanced + probe switches + any "not running"
   return (NSInteger)[[[sections objectAtIndex:s] objectForKey:@"options"] count];
 }
 
@@ -108,58 +109,117 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
       sw.on = showAdvanced;
       [sw addTarget:self action:@selector(advancedChanged:) forControlEvents:UIControlEventValueChanged];
       c.accessoryView = sw;
+    } else if (ip.row == 1) {
+      c.textLabel.text = @"Log remote events";  // B1.16 probe -> /var/mobile/fidelio/remote-events.log
+      c.textLabel.font = [UIFont systemFontOfSize:15];
+      c.selectionStyle = UITableViewCellSelectionStyleNone;
+      UISwitch* sw = [[[UISwitch alloc] init] autorelease];
+      sw.on = NPEventProbeEnabled();
+      [sw addTarget:self action:@selector(probeChanged:) forControlEvents:UIControlEventValueChanged];
+      c.accessoryView = sw;
     } else {
-      NSString* d = [missing objectAtIndex:ip.row - 1];
+      NSString* d = [missing objectAtIndex:ip.row - 2];
       c.textLabel.text = [NSString stringWithFormat:@"%@ is not running", d];
       c.textLabel.textColor = [UIColor grayColor];
       c.selectionStyle = UITableViewCellSelectionStyleNone;
     }
     return c;
   }
+  // B1.16 B: every setting is ONE standard-height row (two lines for a slider): title on the left, the
+  // control or value on the right, no description text. A small info (?) button on the row shows the
+  // description + default on demand. The lock glyph stays for a command-line-locked option.
   NSDictionary* o = [self optAt:ip];
   NSString* type = [o objectForKey:@"type"];
   BOOL locked = [[o objectForKey:@"locked"] boolValue];
-  UITableViewCell* c = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
-  c.textLabel.text = [o objectForKey:@"title"];
-  c.detailTextLabel.text = [o objectForKey:@"desc"];
-  c.detailTextLabel.numberOfLines = 0;
-  c.detailTextLabel.font = [UIFont systemFontOfSize:12];
-  c.detailTextLabel.textColor = [UIColor grayColor];
   NSString* val = [o objectForKey:@"value"];
-  if ([type isEqualToString:@"bool"]) {
+  NSInteger tag = ip.section * 1000 + ip.row;
+  BOOL slider = ([type isEqualToString:@"int"] || [type isEqualToString:@"percent"]) && !locked;
+
+  if (slider) {
+    // Two-line cell: title + value on line 1 (with the ? button), slider across line 2.
+    UITableViewCell* c = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil] autorelease];
     c.selectionStyle = UITableViewCellSelectionStyleNone;
-    UISwitch* sw = [[[UISwitch alloc] init] autorelease];
-    sw.on = [val isEqualToString:@"on"] || [val isEqualToString:@"true"] || [val isEqualToString:@"1"];
-    sw.enabled = !locked;
-    sw.tag = ip.section * 1000 + ip.row;
-    [sw addTarget:self action:@selector(boolChanged:) forControlEvents:UIControlEventValueChanged];
-    c.accessoryView = locked ? (UIView*)[self lockGlyph] : sw;
-  } else if ([type isEqualToString:@"enum"]) {
-    NSString* label = val;
-    for (NSDictionary* ch in [o objectForKey:@"choices"]) if ([[ch objectForKey:@"value"] isEqualToString:val]) label = [ch objectForKey:@"label"];
-    c.textLabel.text = [NSString stringWithFormat:@"%@: %@", [o objectForKey:@"title"], label];
-    c.accessoryType = locked ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
-    if (locked) c.accessoryView = [self lockGlyph];
-  } else if ([type isEqualToString:@"string"]) {  // free-text (e.g. the device name) -> a pushed editor
-    c.textLabel.text = [NSString stringWithFormat:@"%@: %@", [o objectForKey:@"title"], val];
-    c.accessoryType = locked ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
-    if (locked) c.accessoryView = [self lockGlyph];
-  } else {  // int / percent -> a slider with a value label
-    c.selectionStyle = UITableViewCellSelectionStyleNone;
+    CGFloat w = t.bounds.size.width;
     long v = [val longLongValue], lo = [[o objectForKey:@"min"] longLongValue], hi = [[o objectForKey:@"max"] longLongValue];
     NSString* unit = [o objectForKey:@"unit"] ? [o objectForKey:@"unit"] : ([type isEqualToString:@"percent"] ? @"%" : @"");
-    c.textLabel.text = [NSString stringWithFormat:@"%@: %ld%@", [o objectForKey:@"title"], v, unit];
-    if (locked) { c.accessoryView = [self lockGlyph]; }
-    else {
-      UISlider* sl = [[[UISlider alloc] initWithFrame:CGRectMake(0, 0, 140, 24)] autorelease];
-      sl.minimumValue = lo; sl.maximumValue = hi; sl.value = v;
-      sl.tag = ip.section * 1000 + ip.row;
-      sl.continuous = NO;
-      [sl addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
-      c.accessoryView = sl;
-    }
+    UILabel* title = [[[UILabel alloc] initWithFrame:CGRectMake(14, 6, w - 160, 22)] autorelease];
+    title.text = [o objectForKey:@"title"]; title.font = [UIFont systemFontOfSize:16]; title.backgroundColor = [UIColor clearColor];
+    title.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [c.contentView addSubview:title];
+    UILabel* vlab = [[[UILabel alloc] initWithFrame:CGRectMake(w - 118, 6, 70, 22)] autorelease];
+    vlab.text = [NSString stringWithFormat:@"%ld%@", v, unit]; vlab.font = [UIFont systemFontOfSize:16]; vlab.textColor = [UIColor grayColor];
+    vlab.textAlignment = UITextAlignmentRight; vlab.backgroundColor = [UIColor clearColor]; vlab.tag = 7001;
+    vlab.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    [c.contentView addSubview:vlab];
+    UIButton* info = [self infoButton:tag];
+    info.frame = CGRectMake(w - 40, 10, 24, 24); info.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    [c.contentView addSubview:info];
+    UISlider* sl = [[[UISlider alloc] initWithFrame:CGRectMake(14, 34, w - 28, 24)] autorelease];
+    sl.minimumValue = lo; sl.maximumValue = hi; sl.value = v; sl.tag = tag; sl.continuous = NO;
+    sl.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [sl addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
+    [c.contentView addSubview:sl];
+    return c;
   }
+
+  // One-line cell (Value1: title left, value right), with the control + ? button as the accessory.
+  UITableViewCell* c = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil] autorelease];
+  c.textLabel.text = [o objectForKey:@"title"];
+  c.detailTextLabel.textColor = [UIColor grayColor];
+  c.selectionStyle = ([type isEqualToString:@"enum"] || [type isEqualToString:@"string"]) && !locked ? UITableViewCellSelectionStyleBlue : UITableViewCellSelectionStyleNone;
+
+  UIView* acc = [[[UIView alloc] initWithFrame:CGRectMake(0, 0, 0, 30)] autorelease];
+  UIButton* info = [self infoButton:tag];
+  CGFloat x = 0;
+  info.frame = CGRectMake(x, 3, 24, 24); [acc addSubview:info]; x += 30;
+
+  if ([type isEqualToString:@"bool"]) {
+    UISwitch* sw = [[[UISwitch alloc] init] autorelease];
+    sw.on = [val isEqualToString:@"on"] || [val isEqualToString:@"true"] || [val isEqualToString:@"1"];
+    sw.enabled = !locked; sw.tag = tag;
+    [sw addTarget:self action:@selector(boolChanged:) forControlEvents:UIControlEventValueChanged];
+    CGRect f = sw.frame; f.origin.x = x; f.origin.y = (30 - f.size.height) / 2; sw.frame = f;
+    [acc addSubview:sw]; x += f.size.width;
+  } else if ([type isEqualToString:@"enum"] || [type isEqualToString:@"string"]) {
+    NSString* label = val;
+    if ([type isEqualToString:@"enum"]) for (NSDictionary* ch in [o objectForKey:@"choices"]) if ([[ch objectForKey:@"value"] isEqualToString:val]) label = [ch objectForKey:@"label"];
+    c.detailTextLabel.text = label;  // Value1 shows this on the right, left of the accessory
+    if (locked) { UIView* g = [self lockGlyph]; g.frame = CGRectMake(x, 3, 24, 24); [acc addSubview:g]; x += 24; }
+    else { UILabel* ch = [[[UILabel alloc] initWithFrame:CGRectMake(x, 0, 14, 30)] autorelease]; ch.text = @"\u203A"; ch.font = [UIFont systemFontOfSize:22]; ch.textColor = [UIColor colorWithWhite:0.6f alpha:1]; ch.backgroundColor = [UIColor clearColor]; [acc addSubview:ch]; x += 16; }
+  }
+  acc.frame = CGRectMake(0, 0, x, 30);
+  c.accessoryView = acc;
   return c;
+}
+
+// A standard info (?) button bound to an option by tag (section*1000 + row).
+- (UIButton*)infoButton:(NSInteger)tag {
+  UIButton* b = [UIButton buttonWithType:UIButtonTypeInfoLight];
+  b.tag = tag;
+  [b addTarget:self action:@selector(infoTapped:) forControlEvents:UIControlEventTouchUpInside];
+  return b;
+}
+
+- (void)infoTapped:(UIButton*)b {
+  NSIndexPath* ip = [NSIndexPath indexPathForRow:b.tag % 1000 inSection:b.tag / 1000];
+  if (ip.section >= (NSInteger)[sections count]) return;
+  NSDictionary* o = [self optAt:ip];
+  NSMutableString* m = [NSMutableString stringWithString:[o objectForKey:@"desc"] ? [o objectForKey:@"desc"] : @""];
+  NSString* def = [o objectForKey:@"default"];
+  if ([def length]) { if ([m length]) [m appendString:@"\n\n"]; [m appendFormat:@"Default: %@", def]; }
+  if ([[o objectForKey:@"locked"] boolValue]) [m appendString:@"\n\nSet on the command line; shown here but not editable."];
+  else if (![[o objectForKey:@"live"] boolValue]) [m appendString:@"\n\nChanging this restarts the daemon."];
+  UIAlertView* a = [[[UIAlertView alloc] initWithTitle:[o objectForKey:@"title"] message:m delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] autorelease];
+  [a show];
+}
+
+// Row heights: sliders are two-line (66), everything else standard (44).
+- (CGFloat)tableView:(UITableView*)t heightForRowAtIndexPath:(NSIndexPath*)ip {
+  if (ip.section >= (NSInteger)[sections count]) return 44;
+  NSDictionary* o = [self optAt:ip];
+  NSString* ty = [o objectForKey:@"type"];
+  BOOL slider = ([ty isEqualToString:@"int"] || [ty isEqualToString:@"percent"]) && ![[o objectForKey:@"locked"] boolValue];
+  return slider ? 66 : 44;
 }
 
 - (UIView*)lockGlyph {
@@ -180,6 +240,7 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
 }
 
 - (void)advancedChanged:(UISwitch*)sw { showAdvanced = sw.on; [self reload]; }
+- (void)probeChanged:(UISwitch*)sw { NPEventProbeSetEnabled(sw.on); }
 
 - (void)boolChanged:(UISwitch*)sw {
   NSIndexPath* ip = [NSIndexPath indexPathForRow:sw.tag % 1000 inSection:sw.tag / 1000];
@@ -191,8 +252,11 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
   NSIndexPath* ip = [NSIndexPath indexPathForRow:sl.tag % 1000 inSection:sl.tag / 1000];
   NSDictionary* o = [self optAt:ip];
   long v = lroundf(sl.value);
+  NSString* unit = [o objectForKey:@"unit"] ? [o objectForKey:@"unit"] : ([[o objectForKey:@"type"] isEqualToString:@"percent"] ? @"%" : @"");
+  UITableViewCell* cell = [table cellForRowAtIndexPath:ip];
+  UILabel* vlab = (UILabel*)[cell.contentView viewWithTag:7001];
+  if (vlab) vlab.text = [NSString stringWithFormat:@"%ld%@", v, unit];
   [self setOption:o value:[NSString stringWithFormat:@"%ld", v]];
-  [table reloadRowsAtIndexPaths:[NSArray arrayWithObject:ip] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 // --- settings.conf write (atomic; preserve lines we do not understand) -----------------------------

@@ -34,6 +34,9 @@ class PlayerSink {
   // B1.12: audiod handed the output to another source; the CLI pauses playback for real.
   void (*onPreempted)(void* user, const char* by) = nullptr;
   void* onPreemptedUser = nullptr;
+  // B1.16: audiod routed a transport verb (AUDIOD_CTRL_*) to this (active) source.
+  void (*onControl)(void* user, uint8_t verb) = nullptr;
+  void* onControlUser = nullptr;
   virtual void flush() = 0;                                            // seek / track change
   virtual double bufferedSeconds() = 0;                                // for end-of-playlist detection
   virtual void audioEnded() {}                                         // playlist finished and drained
@@ -48,6 +51,7 @@ class AudiodSink : public PlayerSink {
     sink.enableSliderVolume();    // Spotify drives the hardware volume via the slider (B1.9)
     sink.setHardwareVolumeCallback(&AudiodSink::hwTrampoline, this);
     sink.setPreemptCallback(&AudiodSink::preemptTrampoline, this);
+    sink.setControlCallback(&AudiodSink::controlTrampoline, this);
     sink.poll();  // connect now so WELCOME (absolute? level?) is known before Spotify asks for our volume
   }
   void feedPCMFrames(const uint8_t* d, size_t bytes) override { sink.write(reinterpret_cast<const int16_t*>(d), bytes / 4); }
@@ -69,6 +73,10 @@ class AudiodSink : public PlayerSink {
   static void preemptTrampoline(void* user, const char* by) {
     AudiodSink* self = static_cast<AudiodSink*>(user);
     if (self->onPreempted) self->onPreempted(self->onPreemptedUser, by);
+  }
+  static void controlTrampoline(void* user, uint8_t verb) {
+    AudiodSink* self = static_cast<AudiodSink*>(user);
+    if (self->onControl) self->onControl(self->onControlUser, verb);
   }
   SocketSink sink;
   std::string path;

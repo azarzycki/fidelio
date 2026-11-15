@@ -111,6 +111,11 @@ void SocketSink::drainIncoming() {
       preemptPending = true;
       fprintf(stdout, "SocketSink[%s]: PREEMPTED by %s\n", name.c_str(), by);
       fflush(stdout);
+    } else if (msg.type == AUDIOD_MSG_CONTROL && msg.payload.size() >= sizeof(AudiodControl)) {
+      AudiodControl ctl; memcpy(&ctl, msg.payload.data(), sizeof ctl);
+      pendingCtrl = ctl.verb;  // fired without the mutex in fireReport()
+      fprintf(stdout, "SocketSink[%s]: CONTROL verb %u\n", name.c_str(), ctl.verb);
+      fflush(stdout);
     }
     // anything else from the server is ignored
   }
@@ -124,6 +129,9 @@ void SocketSink::fireReport() {
   void* puser;
   std::string pby;
   bool pfire;
+  void (*ccb)(void*, uint8_t);
+  void* cuser;
+  uint8_t cverb;
   {
     std::lock_guard<std::mutex> l(m);
     r = pendingReport;
@@ -135,9 +143,11 @@ void SocketSink::fireReport() {
     pfire = preemptPending;
     pby = pendingPreempt;
     preemptPending = false;
+    ccb = ctrlCb; cuser = ctrlUser; cverb = pendingCtrl; pendingCtrl = 0;
   }
   if (r.fire && cb) cb(user, r.absolute, r.slider);
   if (pfire && pcb) pcb(puser, pby.c_str());
+  if (cverb && ccb) ccb(cuser, cverb);
 }
 
 void SocketSink::poll() {

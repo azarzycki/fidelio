@@ -9,7 +9,7 @@ rm -rf "$APP" "$OUT"/*.o   # only our own products: never rm -rf a caller-suppli
 mkdir -p "$APP"
 
 CFLAGS="-O2 -Wall -Wno-unused -fno-objc-arc -fobjc-exceptions -x objective-c"
-for f in main FidelioAppDelegate FidelioStatus NowPlayingViewController TechnicalViewController SettingsViewController EnumPickerViewController StringEditorViewController; do
+for f in main FidelioAppDelegate FidelioStatus NowPlayingViewController TechnicalViewController SettingsViewController EnumPickerViewController StringEditorViewController NPEventProbe; do
   armv6-ios3-clang $CFLAGS -c "$f.m" -o "$OUT/$f.o"
 done
 armv6-ios3-clang "$OUT"/*.o -o "$APP/NowPlaying" \

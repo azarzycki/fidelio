@@ -54,6 +54,10 @@ struct ServerOptions {
   // B1.15e: keep the lock screen lit while playing (audiod owns this; it writes <statusDir>/lockplugin.plist,
   // which the lock bundle live-reloads). Not read by audiod itself.
   bool keepScreenOn = false;        // --keep-screen-on on|off
+  // B1.16: whether the dock infrared/accessory remote drives playback. audiod only carries this
+  // (manifest + settings.conf); the DockRemote tweak inside iapd reads it to decide whether to
+  // forward play/next/prev to audiod instead of the iPod app. audiod itself does not act on it.
+  bool dockRemote = false;          // --dock-remote on|off
 };
 
 class Server {
@@ -88,6 +92,7 @@ class Server {
     bool sliderDriven = false;  // sent a VOLUME with AUDIOD_VOL_SLIDER: in absolute mode its gain is unity and the slider drives the hardware
     uint16_t slider = 0;
     bool sendFailedLogged = false;
+    bool controller = false;    // B1.16: a non-producing "control" client (sends CONTROL, never AUDIO)
     uint64_t preemptDueMs = 0;      // B1.12: send PREEMPTED to this client at/after this time (0 = none pending)
     std::string preemptBy;          // ... naming the source that took over
   };
@@ -124,6 +129,9 @@ class Server {
   void maybeWake(const Event& e);
   // B1.14: re-read settings.conf when it changes and apply the live options (and rewrite the manifest).
   void maybeReloadSettings(uint64_t now);
+  // B1.16: a controller sent a transport verb -> route it to the active source (or, for PLAY with
+  // nothing active, the most-recently-active connected source so a paused Spotify resumes).
+  void handleControl(Client& c, const Message& m);
   // B1.12: a source lost the output -> after a flap-filtering delay, tell it (PREEMPTED) if it is
   // still not active. Scheduled on the TAKEOVER, fired from the run loop.
   void schedulePreempt(const Event& e);
@@ -143,6 +151,7 @@ class Server {
   float hwLevel = -1;            // last level we know (-1 = unknown)
   uint64_t lastHwPollMs = 0;
   uint64_t lastWakeMs = 0;
+  std::string lastActiveName;  // B1.16: the last source that held the output (for PLAY-resumes-paused)
   bool lockEnabled = false;  // B1.11: the lock bundle is currently enabled
   // B1.14 live settings
   fidelio::Registry* settings = nullptr;

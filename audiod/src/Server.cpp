@@ -314,6 +314,11 @@ void Server::handle(Client& c, const Message& m) {
     c.hello = true;
     c.name = helloName(h);
     c.version = h.version;
+    if (c.name == "control") {  // B1.16: a transport controller, not a producer -> not an arbiter source
+      c.controller = true;
+      IOS3_TRACE("client #%d is a transport controller (protocol v%u)", c.id, h.version);
+      return;
+    }
     bool back = arbiter.addSource(c.id, c.name, h.priority, now);
     IOS3_TRACE("client #%d is source '%s' (priority %u, protocol v%u)%s", c.id, c.name.c_str(), h.priority, h.version, back ? ", reconnected: same stream" : "");
     sendWelcome(c);  // v2 producers learn whether the slider drives the hardware, and the current level
@@ -365,6 +370,9 @@ void Server::handle(Client& c, const Message& m) {
       arbiter.onStop(c.id, now);
       afterTick();
       break;
+    case AUDIOD_MSG_CONTROL:
+      handleControl(c, m);
+      break;
     case AUDIOD_MSG_META:
       break;  // v2: unified now-playing status
     case AUDIOD_MSG_HELLO:
@@ -404,6 +412,31 @@ void Server::writeActiveSourceFile(const std::string& name) {
   lastActiveWritten = name;
 }
 
+static const char* ctrlName(uint8_t v) {
+  switch (v) { case AUDIOD_CTRL_PLAY: return "play"; case AUDIOD_CTRL_PAUSE: return "pause";
+    case AUDIOD_CTRL_TOGGLE: return "toggle"; case AUDIOD_CTRL_NEXT: return "next"; case AUDIOD_CTRL_PREV: return "prev"; }
+  return "?";
+}
+
+void Server::handleControl(Client& c, const Message& m) {
+  if (m.payload.size() < sizeof(AudiodControl)) { IOS3_TRACE("control: short payload from #%d, ignored", c.id); return; }
+  AudiodControl ctl; memcpy(&ctl, m.payload.data(), sizeof ctl);
+  Client* target = clientById(arbiter.activeId());  // the active source acts on the verb
+  bool resume = false;
+  if (!target && (ctl.verb == AUDIOD_CTRL_PLAY || ctl.verb == AUDIOD_CTRL_TOGGLE)) {
+    // Nothing is playing: PLAY/TOGGLE resumes the most-recently-active source if it is still connected
+    // (e.g. a Spotify that B1.12 paused on preemption). Send it PLAY.
+    target = lastActiveName.empty() ? nullptr : clientByName(lastActiveName);
+    resume = target != nullptr;
+    if (resume) ctl.verb = AUDIOD_CTRL_PLAY;
+  }
+  if (!target) { IOS3_TRACE("control: %s -> no active source%s, ignored", ctrlName(ctl.verb),
+                            lastActiveName.empty() ? "" : (" (last '" + lastActiveName + "' gone)").c_str()); return; }
+  if (target->version < AUDIOD_PROTO_VERSION_2) { IOS3_TRACE("control: %s -> '%s' ignored (v1 source cannot be controlled)", ctrlName(ctl.verb), target->name.c_str()); return; }
+  sendToClient(*target, AUDIOD_MSG_CONTROL, &ctl, sizeof ctl);
+  IOS3_TRACE("control: %s -> '%s'%s", ctrlName(ctl.verb), target->name.c_str(), resume ? " (resume)" : "");
+}
+
 void Server::afterTick() {
   for (const Event& e : arbiter.drainEvents()) {
     logEvent(e);
@@ -430,6 +463,7 @@ void Server::afterTick() {
     if (e.kind == Event::IDLE_STOP) { out->flush(); out->idle(); }
   }
   std::string a = arbiter.activeName();
+  if (!a.empty()) lastActiveName = a;  // B1.16: remember it for a later PLAY with nothing active
   if (a.empty()) disableLockPlugin();  // B1.11: nothing active -> turn the lock bundle off
   writeActiveSourceFile(a.empty() ? "none" : a);
   pump();

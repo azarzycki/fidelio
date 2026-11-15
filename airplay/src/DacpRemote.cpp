@@ -97,6 +97,11 @@ bool sendPause(const std::string& dacpId, const std::string& activeRemote, const
   return get("/ctrl-int/1/pause", dacpId, activeRemote, senderIp);
 }
 
+bool sendCommand(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp, const char* cmd) {
+  std::string path = std::string("/ctrl-int/1/") + cmd;
+  return get(path, dacpId, activeRemote, senderIp);
+}
+
 bool sendVolume(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp, float db) {
   char path[96];
   snprintf(path, sizeof path, "/ctrl-int/1/setproperty?dmcp.device-volume=%.6f", db);

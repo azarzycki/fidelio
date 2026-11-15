@@ -16,6 +16,7 @@
 #include <thread>
 
 #include "DacpRemote.h"
+#include "audiod/proto.h"
 #include "Dmap.h"
 #include "RaopSession.h"
 #include "SocketSink.h"
@@ -230,6 +231,18 @@ void RtspServer::onPreempted(const std::string& by) {
   bool expected = false;
   if (!preemptBusy.compare_exchange_strong(expected, true)) return;  // one policy run at a time
   std::thread([this, by] { runPreemptPolicy(by); preemptBusy = false; }).detach();
+}
+
+void RtspServer::onControl(uint8_t verb) {
+  const char* cmd = verb == AUDIOD_CTRL_PLAY ? "play" : verb == AUDIOD_CTRL_PAUSE ? "pause"
+                  : verb == AUDIOD_CTRL_TOGGLE ? "playpause" : verb == AUDIOD_CTRL_NEXT ? "nextitem"
+                  : verb == AUDIOD_CTRL_PREV ? "previtem" : nullptr;
+  if (!cmd) return;
+  std::string dId, dAr, ip;
+  { std::scoped_lock l(sessionMutex); dId = dacpId; dAr = dacpActiveRemote; ip = sessionPeerIp; }
+  if (dId.empty() || dAr.empty()) { IOS3_TRACE("control: %s -> AirPlay sender offered no DACP (no remote control)", cmd); return; }
+  std::string di = dId, da = dAr, pi = ip; std::string c = cmd;
+  std::thread([di, da, pi, c] { bool ok = dacp::sendCommand(di, da, pi, c.c_str()); IOS3_TRACE("control: DACP %s -> %s", c.c_str(), ok ? "sent" : "FAILED"); }).detach();
 }
 
 void RtspServer::forceDisconnect(const char* why) {

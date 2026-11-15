@@ -71,7 +71,7 @@ inline void buildRegistry(fidelio::Registry& r, ServerOptions& so, Tunables& t, 
   r.add(o);
 
   o = {}; o.key="preempt_pause"; o.flag="--preempt-pause"; o.type=O::BOOL;
-  o.def="on"; o.title="Pause the losing source"; o.desc="Tell a source that loses the output to pause, so it cannot roll on and steal it back."; o.group="Source switching";
+  o.def="on"; o.title="Pause losing source"; o.desc="Tell a source that loses the output to pause, so it cannot roll on and steal it back."; o.group="Source switching";
   o.read=[&so]{ return b2s(so.preemptPause); };
   o.write=[&so](const std::string& v){ so.preemptPause = (v=="on"); return true; };
   r.add(o);
@@ -99,6 +99,13 @@ inline void buildRegistry(fidelio::Registry& r, ServerOptions& so, Tunables& t, 
   o.def="off"; o.title="Keep screen on"; o.desc="On the lock screen, keep the display lit while something is playing (iPad lock plugin)."; o.group="Display";
   o.read=[&so]{ return b2s(so.keepScreenOn); };
   o.write=[&so,statusDir](const std::string& v){ so.keepScreenOn = (v=="on"); writeLockPluginPlist(statusDir, so.keepScreenOn); return true; };
+  r.add(o);
+
+  // B1.16: the dock remote switch. audiod carries it; the DockRemote tweak reads it from settings.conf.
+  o = {}; o.key="dock_remote"; o.flag="--dock-remote"; o.type=O::BOOL;
+  o.def="off"; o.title="Dock remote controls"; o.desc="Let the dock's infrared/accessory remote (play/next/previous) drive the active source instead of the built-in music app. Needs the DockRemote tweak installed (iPhone)."; o.group="Controls";
+  o.read=[&so]{ return b2s(so.dockRemote); };
+  o.write=[&so](const std::string& v){ so.dockRemote = (v=="on"); return true; };
   r.add(o);
 
   // Advanced: arbiter timing (bound to Tunables)
