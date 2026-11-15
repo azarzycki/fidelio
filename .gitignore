@@ -7,3 +7,7 @@ airplay/build-host/
 airplay/build-ios/
 airplay/hosttest/airport_express_pub.pem
 nowplaying/build-ios/
+audiod/build-arm/
+spotify/build-arm/
+airplay/build-arm/
+nowplaying/build/
