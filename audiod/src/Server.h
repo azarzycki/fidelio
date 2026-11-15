@@ -51,6 +51,9 @@ struct ServerOptions {
   // steal the output). Sent only to v2 clients; raop reacts via DACP (its own policy).
   bool preemptPause = true;         // --preempt-pause on|off
   unsigned preemptDelayMs = 500;    // wait this long before telling the loser, so a flap never pauses the active source
+  // B1.15e: keep the lock screen lit while playing (audiod owns this; it writes <statusDir>/lockplugin.plist,
+  // which the lock bundle live-reloads). Not read by audiod itself.
+  bool keepScreenOn = false;        // --keep-screen-on on|off
 };
 
 class Server {
@@ -61,6 +64,12 @@ class Server {
   void run();  // until requestStop()
   // B1.14: live settings. reg stays owned by the caller; conf is settings.conf, dir holds the manifest.
   void enableLiveSettings(fidelio::Registry* reg, const std::string& conf, const std::string& dir) { settings = reg; settingsConf = conf; settingsDir = dir; }
+  // B1.15: the registry binds to these so the manifest reflects what the daemon actually uses and a
+  // settings.conf value is applied to the live config. applyLiveConfig() pushes tunables into the
+  // arbiter and recomputes derived values (call after a startup load or a live reload).
+  ServerOptions& mutableOptions() { return opts; }
+  Tunables& mutableTunables() { return t; }
+  void applyLiveConfig();
   static uint64_t nowMs();
   static void requestStop(int signo);  // signal-handler safe
 
@@ -125,6 +134,7 @@ class Server {
   void disableLockPlugin();
 
   ServerOptions opts;
+  Tunables t;        // B1.15: the live tunables the registry binds to; mirrored into the arbiter via applyLiveConfig()
   Arbiter arbiter;
   AudioOutput* out;
   HardwareVolume* hw;

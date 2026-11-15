@@ -21,6 +21,27 @@ if(APPLE)
   add_executable(fidelio-lockctl src/lockctl.cpp)
   target_include_directories(fidelio-lockctl PRIVATE ${INC})
   target_compile_options(fidelio-lockctl PRIVATE -O2 -Wall)
+
+  # B1.15 A: SpringBoard checks com.apple.springboard.launchapplications (for
+  # SBSLaunchApplicationWithIdentifier, wake-on-play) and .activateawayviewplugins (for
+  # SBEnableLockScreenBundle, the lock plugin). Without them the launch returns 1 even unlocked/root
+  # and the away-view enable is ignored. Sign fidelio-audiod and fidelio-lockctl at build time with the
+  # entitlements plist using the patched armv6-ios3-ldid (keeps the LDID_CD_VERSION CodeDirectory that
+  # loads on iPhone OS 3.1.3). Strip first so the signature is over the final bytes.
+  set(ENTS ${REPO}/common/fidelio-springboard.entitlements.plist)
+  find_program(IOS3_STRIP armv6-ios3-strip)
+  find_program(IOS3_LDID armv6-ios3-ldid)
+  if(IOS3_STRIP AND IOS3_LDID)
+    foreach(tgt fidelio-audiod fidelio-lockctl)
+      add_custom_command(TARGET ${tgt} POST_BUILD
+        COMMAND ${IOS3_STRIP} -x $<TARGET_FILE:${tgt}>
+        COMMAND ${IOS3_LDID} -S${ENTS} $<TARGET_FILE:${tgt}>
+        COMMENT "Signing ${tgt} with the SpringBoard entitlements (B1.15 A)"
+        VERBATIM)
+    endforeach()
+  else()
+    message(WARNING "armv6-ios3-strip/ldid not found: fidelio-audiod/lockctl will NOT be entitlement-signed")
+  endif()
 endif()
 
 if(APPLE)

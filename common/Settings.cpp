@@ -14,9 +14,12 @@ static std::string trim(const std::string& s) {
   return a == std::string::npos ? "" : s.substr(a, b - a + 1);
 }
 
+std::string Registry::normBool(const std::string& v) { return (v == "on" || v == "true" || v == "1") ? "on" : "off"; }
+
 Option& Registry::add(const Option& o) {
   opts_.push_back(o);
   Option& r = opts_.back();
+  if (r.flags.empty() && !r.flag.empty()) r.flags.push_back(r.flag);
   r.value = r.def;
   r.origin = "default";
   return r;
@@ -31,9 +34,19 @@ const Option* Registry::find(const std::string& key) const {
   return nullptr;
 }
 
+bool Registry::flagMatches(const Option& o, const std::string& arg) const {
+  for (const std::string& f : o.flags) if (!f.empty() && f == arg) return true;
+  return false;
+}
+
 bool Registry::validate(const Option& o, const std::string& v) const {
   if (o.type == Option::BOOL) return v == "on" || v == "off" || v == "true" || v == "false" || v == "0" || v == "1";
   if (o.type == Option::ENUM) { for (auto& c : o.choices) if (c.value == v) return true; return false; }
+  if (o.type == Option::STRING) {
+    if (v.empty() || (long)v.size() > o.maxlen) return false;
+    for (unsigned char c : v) if (c < 0x20 || c == 0x7f) return false;  // no control chars; Bonjour allows UTF-8 printable
+    return true;
+  }
   // INT / PERCENT
   char* end = nullptr;
   long n = strtol(v.c_str(), &end, 10);
@@ -41,23 +54,17 @@ bool Registry::validate(const Option& o, const std::string& v) const {
   return n >= o.imin && n <= o.imax;
 }
 
-static std::string normBool(const std::string& v) { return (v == "on" || v == "true" || v == "1") ? "on" : "off"; }
-
-void Registry::parseArgv(int argc, char** argv) {
+void Registry::markCommandLine(int argc, char** argv) {
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     for (auto& o : opts_) {
-      if (o.flag.empty() || a != o.flag) continue;
-      std::string v;
-      if (o.type == Option::BOOL) {
-        // a bool flag may take on|off as the next token, or be a bare presence = on
-        if (i + 1 < argc && (std::string(argv[i + 1]) == "on" || std::string(argv[i + 1]) == "off")) v = argv[++i];
-        else v = "on";
-        v = normBool(v);
-      } else if (i + 1 < argc) {
-        v = argv[++i];
-      }
-      if (validate(o, v)) { o.value = o.type == Option::BOOL ? normBool(v) : v; o.origin = "command line"; o.locked = true; }
+      if (!flagMatches(o, a)) continue;
+      o.origin = "command line";
+      o.locked = true;
+      // Skip the value token so a value that looks like another flag is not re-matched. A BOOL flag
+      // only consumes a following on|off; a bare presence is "on".
+      if (flagTakesValue(o)) { if (i + 1 < argc) i++; }
+      else if (i + 1 < argc) { std::string n = argv[i + 1]; if (n == "on" || n == "off") i++; }
       break;
     }
   }
@@ -82,12 +89,11 @@ bool Registry::loadFile(const std::string& path) {
     if (o->locked) continue;  // command line wins
     if (!validate(*o, val)) { fprintf(stderr, "settings.conf: invalid value '%s' for %s.%s ignored\n", val.c_str(), daemon_.c_str(), key.c_str()); continue; }
     std::string nv = o->type == Option::BOOL ? normBool(val) : val;
+    // Apply to the LIVE struct (single source of truth), not just the registry's copy.
+    if (o->write && !o->write(nv)) { fprintf(stderr, "settings.conf: %s.%s='%s' rejected by the daemon\n", daemon_.c_str(), key.c_str(), nv.c_str()); continue; }
     if (o->value != nv || o->origin != "file") { o->value = nv; o->origin = "file"; changed = true; }
   }
   fclose(f);
-  // A key no longer in the file reverts to its default (unless locked).
-  // (Re-scan: anything still "file" but absent above keeps its last value; simplest is to leave it.
-  //  For determinism we leave file values sticky until explicitly changed.)
   return changed;
 }
 
@@ -98,6 +104,37 @@ bool Registry::reloadIfChanged(const std::string& path) {
   if (m == lastMtime_) return false;
   lastMtime_ = m;
   return loadFile(path);
+}
+
+void Registry::refreshValues() {
+  for (auto& o : opts_) if (o.read) o.value = o.read();
+}
+
+bool Registry::selfCheck() const {
+  bool ok = true;
+  for (const Option& o : opts_) {
+    if (!o.read) continue;
+    std::string eff = o.read();
+    if (o.type == Option::BOOL) eff = normBool(eff);
+    if (o.origin == "default") {
+      std::string def = o.type == Option::BOOL ? normBool(o.def) : o.def;
+      if (eff != def) {
+        fprintf(stderr, "settings: SELF-CHECK FAIL %s.%s: registry default '%s' but the program uses '%s' — fix the registry default to match the program\n",
+                daemon_.c_str(), o.key.c_str(), o.def.c_str(), eff.c_str());
+        ok = false;
+      }
+    } else if (o.origin == "file") {
+      std::string want = o.type == Option::BOOL ? normBool(o.value) : o.value;
+      if (eff != want) {
+        fprintf(stderr, "settings: SELF-CHECK FAIL %s.%s: settings.conf value '%s' was not applied (the program uses '%s')\n",
+                daemon_.c_str(), o.key.c_str(), want.c_str(), eff.c_str());
+        ok = false;
+      }
+    }
+    // "command line": the hand parser owns the value; nothing to assert (manifest shows read()).
+  }
+  if (ok) fprintf(stderr, "settings: self-check ok (%zu options consistent with the live config)\n", opts_.size());
+  return ok;
 }
 
 static void plistStr(std::string& out, const char* key, const std::string& v) {
@@ -124,7 +161,8 @@ bool Registry::writeManifest(const std::string& dir) const {
   out += "\t<key>options</key>\n\t<array>\n";
   for (const Option& o : opts_) {
     out += "\t<dict>\n";
-    const char* ty = o.type == Option::BOOL ? "bool" : o.type == Option::ENUM ? "enum" : o.type == Option::PERCENT ? "percent" : "int";
+    const char* ty = o.type == Option::BOOL ? "bool" : o.type == Option::ENUM ? "enum"
+                   : o.type == Option::PERCENT ? "percent" : o.type == Option::STRING ? "string" : "int";
     plistStr(out, "key", o.key);
     plistStr(out, "flag", o.flag);
     plistStr(out, "type", ty);
@@ -141,6 +179,7 @@ bool Registry::writeManifest(const std::string& dir) const {
       plistInt(out, "min", o.imin); plistInt(out, "max", o.imax); plistInt(out, "step", o.istep);
       if (!o.unit.empty()) plistStr(out, "unit", o.unit);
     }
+    if (o.type == Option::STRING) plistInt(out, "maxlen", o.maxlen);
     if (o.type == Option::ENUM) {
       out += "\t\t<key>choices</key>\n\t\t<array>\n";
       for (auto& c : o.choices) { out += "\t\t<dict>"; std::string s; plistStr(s, "value", c.value); plistStr(s, "label", c.label); out += "\n" + s + "\t\t</dict>\n"; }

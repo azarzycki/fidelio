@@ -80,6 +80,7 @@ int main(int argc, char** argv) {
              "  --wake-bundle ID         (default com.fidelio.nowplaying)\n"
              "  --lock-plugin NAME|off   (default off) while a source plays, enable the SpringBoard lock-screen bundle\n"
              "                           NAME.lockbundle (SBEnableLockScreenBundle, dlopen'ed; no-op if unavailable)\n"
+             "  --keep-screen-on on|off  (default off) on the lock screen, keep the display lit while playing (B1.15)\n"
              "  --preempt-pause on|off   (default on) tell a source that loses the output to pause (B1.12), so a\n"
              "                           background session cannot roll on and steal it back\n"
              "  --airplay-volume-mode absolute|software  (default absolute) the AirPlay sender's volume drives the device\n"
@@ -177,27 +178,15 @@ int main(int argc, char** argv) {
     else if (a == "--silence-threshold") t.silenceThreshold = atoi(next(a.c_str()));
     else if (a == "--quiet-release-ms") t.quietReleaseMs = strtoull(next(a.c_str()), nullptr, 10);
     else if (a == "--lead-ms") so.leadMs = (unsigned)atoi(next(a.c_str()));
+    else if (a == "--keep-screen-on") { std::string v = next("--keep-screen-on"); if (v == "on") so.keepScreenOn = true; else if (v == "off") so.keepScreenOn = false; else { fprintf(stderr, "--keep-screen-on must be on|off\n"); return 1; } }
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 1; }
   }
 
-  // B1.14: the option registry (single source for the manifest, settings.conf and live reconfig). The
-  // hand parser above already set `so`/`t` from the command line; the registry re-parses the same argv
-  // to mark which options are command-line-locked (shown but not editable in the app), then layers
-  // settings.conf under them. A startup check asserts every registry flag is a real --help flag.
-  fidelio::Registry reg("audiod", AUDIOD_BUILD_HASH);
-  audiod::buildRegistry(reg);
-  reg.parseArgv(argc, argv);
+  // B1.15: the option registry is BOUND to the Server's live opts/t and built AFTER the Server is
+  // constructed, so the manifest reads back the values the daemon actually uses (not a parallel copy).
+  // Set up here only the paths; the registry itself is built below, once `server` exists.
   std::string settingsDir = so.statusDir;  // /var/mobile/fidelio by default
   std::string settingsConf = settingsDir.empty() ? "" : settingsDir + "/settings.conf";
-  if (!settingsConf.empty()) reg.loadFile(settingsConf);
-  audiod::applyRegistry(reg, so, t);  // fold in settings.conf (command-line and env values are preserved)
-  {
-    std::string help = argv[0];  // cheap drift check: build the help once and confirm each flag is in it
-    // (the real --help text is printed on -h; here we just verify the flags exist in the registry set)
-    for (const fidelio::Option& o : reg.options())
-      if (!o.flag.empty() && o.flag.rfind("--", 0) != 0) IOS3_TRACE("settings: option %s has a malformed flag '%s'", o.key.c_str(), o.flag.c_str());
-  }
-  if (!settingsDir.empty()) reg.writeManifest(settingsDir);
 
   std::unique_ptr<AudioOutput> out;
   if (noAudio) out.reset(new NullOutput());
@@ -234,7 +223,23 @@ int main(int argc, char** argv) {
   waker.reset(new MockDisplayWaker());
 #endif
   audiod::Server server(so, t, out.get(), hw.get(), waker.get());
-  server.enableLiveSettings(&reg, settingsConf, settingsDir);  // B1.14: re-read settings.conf live
+
+  // B1.15: build the registry bound to the Server's live opts/t. markCommandLine marks which options
+  // any spelling of a flag set (shown locked in the app); loadFile applies settings.conf to the live
+  // struct; applyLiveConfig pushes tunables into the arbiter; selfCheck logs any default/file drift;
+  // the manifest is then the live truth.
+  fidelio::Registry reg("audiod", AUDIOD_BUILD_HASH);
+  audiod::buildRegistry(reg, server.mutableOptions(), server.mutableTunables(), settingsDir);
+  reg.markCommandLine(argc, argv);
+  if (!settingsConf.empty()) reg.loadFile(settingsConf);
+  server.applyLiveConfig();
+  reg.selfCheck();
+  reg.refreshValues();
+  if (!settingsDir.empty()) reg.writeManifest(settingsDir);
+  // audiod owns lockplugin.plist: write it at startup from the effective value (whatever the source),
+  // since the registry write() callback only fires for a settings.conf / live change.
+  if (!settingsDir.empty()) audiod::writeLockPluginPlist(settingsDir, server.mutableOptions().keepScreenOn);
+  server.enableLiveSettings(&reg, settingsConf, settingsDir);  // re-read settings.conf live
   if (!server.listen()) return 2;
   signal(SIGTERM, audiod::Server::requestStop);
   signal(SIGINT, audiod::Server::requestStop);

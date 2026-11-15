@@ -26,6 +26,7 @@ typedef int (*LaunchFn)(CFStringRef, Boolean);
 typedef kern_return_t (*DimFn)(mach_port_t, Boolean);
 typedef void (*ResetIdleFn)(void);
 typedef kern_return_t (*EnableLockFn)(mach_port_t, unsigned char, const char*);  // SBEnableLockScreenBundle (B1.11)
+typedef CFStringRef (*LaunchErrStrFn)(int);  // B1.15 A: SBSApplicationLaunchingErrorString(code) -> message
 
 class SpringBoardWaker : public DisplayWaker {
  public:
@@ -37,6 +38,7 @@ class SpringBoardWaker : public DisplayWaker {
       launch = (LaunchFn)dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
       dim = (DimFn)dlsym(sbs, "SBDimScreen");
       enableLock = (EnableLockFn)dlsym(sbs, "SBEnableLockScreenBundle");
+      launchErrStr = (LaunchErrStrFn)dlsym(sbs, "SBSApplicationLaunchingErrorString");
     }
     if (gs) resetIdle = (ResetIdleFn)dlsym(gs, "GSEventResetIdleTimer");
     if (!sbs) why = "dlopen SpringBoardServices failed";
@@ -55,8 +57,19 @@ class SpringBoardWaker : public DisplayWaker {
     CFStringRef id = CFStringCreateWithCString(nullptr, bundleId.c_str(), kCFStringEncodingUTF8);
     int rc = launch(id, 0);
     CFRelease(id);
+    // B1.15 A: decode the launch result. SBSApplicationLaunchingErrorString (if present) names the
+    // code (0 ok, 1 "SpringBoard is not running" in the table but in practice the unentitled-caller
+    // code, 3 device locked, 7 app not found, ...). On a non-zero result print the resolved string or
+    // the number; on code 1 add the real cause we proved on the device: a missing entitlement.
+    char err[160] = "";
+    if (rc != 0) {
+      char name[96] = "";
+      if (launchErrStr) { CFStringRef m = launchErrStr(rc); if (m) { CFStringGetCString(m, name, sizeof name, kCFStringEncodingUTF8); } }
+      snprintf(err, sizeof err, " (error %d%s%s%s)", rc, name[0] ? ": " : "", name,
+               rc == 1 ? "; binary probably lacks com.apple.springboard.launchapplications" : "");
+    }
     IOS3_TRACE("wake-on-play: SBDimScreen(false) -> %d, GSEventResetIdleTimer %s, SBSLaunchApplicationWithIdentifier(%s) -> %d%s", (int)kr,
-               resetIdle ? "called" : "missing", bundleId.c_str(), rc, rc == 0 ? "" : " (refused: locked device or unknown app?)");
+               resetIdle ? "called" : "missing", bundleId.c_str(), rc, err);
     return rc == 0;
   }
   bool enableLockBundle(const std::string& name) override { return setLock(name, true); }
@@ -83,6 +96,7 @@ class SpringBoardWaker : public DisplayWaker {
   DimFn dim = nullptr;
   ResetIdleFn resetIdle = nullptr;
   EnableLockFn enableLock = nullptr;
+  LaunchErrStrFn launchErrStr = nullptr;
   std::string why;
   bool unavailableLogged = false;
   bool lockUnavailableLogged = false;

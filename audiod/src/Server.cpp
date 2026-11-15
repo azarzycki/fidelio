@@ -2,7 +2,6 @@
 
 #include <math.h>
 
-#include "AudiodSettings.h"
 
 #include <errno.h>
 #include <poll.h>
@@ -46,8 +45,8 @@ static bool peakExceeds(const int16_t* s, size_t n, int thr) {
   return false;
 }
 
-Server::Server(const ServerOptions& o, const Tunables& t, AudioOutput* output, HardwareVolume* hwv, DisplayWaker* w)
-    : opts(o), arbiter(t), out(output), hw(hwv), waker(w) {
+Server::Server(const ServerOptions& o, const Tunables& tn, AudioOutput* output, HardwareVolume* hwv, DisplayWaker* w)
+    : opts(o), t(tn), arbiter(tn), out(output), hw(hwv), waker(w) {
   startMs = nowMs();
   leadFrames = (size_t)opts.leadMs * 44100 / 1000;
   if (leadFrames > kRingFrames) leadFrames = kRingFrames;
@@ -201,14 +200,21 @@ void Server::disableLockPlugin() {
 
 // B1.14: once a second, if settings.conf changed, apply the live options to the running config and
 // rewrite the manifest so the app shows the new effective values.
+void Server::applyLiveConfig() {
+  // B1.15: the registry's write() callbacks have set opts/t directly. Mirror the tunables into the
+  // arbiter and recompute values derived from an option (leadFrames from leadMs).
+  arbiter.setTunables(t);
+  leadFrames = (size_t)opts.leadMs * 44100 / 1000;
+  if (leadFrames > kRingFrames) leadFrames = kRingFrames;
+}
+
 void Server::maybeReloadSettings(uint64_t now) {
   if (!settings || settingsConf.empty()) return;
   if (now - lastSettingsCheckMs < 1000) return;
   lastSettingsCheckMs = now;
-  if (!settings->reloadIfChanged(settingsConf)) return;
-  Tunables t = arbiter.tunables();
-  applyRegistry(*settings, opts, t);
-  arbiter.setTunables(t);
+  if (!settings->reloadIfChanged(settingsConf)) return;  // write() already applied file values to opts/t
+  applyLiveConfig();                                      // push tunables into the arbiter, recompute derived
+  settings->refreshValues();                             // manifest reflects the live config
   if (!settingsDir.empty()) settings->writeManifest(settingsDir);
   IOS3_TRACE("settings.conf changed: applied live (max_volume=%d crossfade=%u wake=%d preempt=%d spotify_abs=%d airplay_abs=%d)",
              opts.maxVolumePct, opts.crossfadeMs, (int)opts.wakeOnPlay, (int)opts.preemptPause, (int)opts.absoluteVolume, (int)opts.airplayAbsolute);

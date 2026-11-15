@@ -20,7 +20,6 @@
 #include "SocketSink.h"
 #include "audiod/proto.h"
 #include "Mdns.h"
-#include "RaopSettings.h"
 #include "RtspServer.h"
 #include "Settings.h"
 
@@ -47,6 +46,54 @@ struct Options {
   int preemptVerifyMs = 3000;   // --preempt-verify-ms
   int preemptCooldownMs = 10000;  // --preempt-cooldown-ms
 };
+
+
+// B1.15: fidelio-raop's option registry, declared ONCE and BOUND to the live Options. read()/write()
+// are the single source of truth: the manifest reads back what the daemon uses, and a settings.conf
+// value is applied by calling write() on `o`. Every flag spelling (incl. -n) marks the option locked.
+static void buildRaopRegistry(fidelio::Registry& r, Options& o) {
+  using O = fidelio::Option;
+  auto i2s = [](long v){ char b[32]; snprintf(b, sizeof b, "%ld", v); return std::string(b); };
+  O x;
+
+  x = {}; x.key="name"; x.flag="--name"; x.flags={"--name","-n"}; x.type=O::STRING; x.maxlen=63;
+  x.def="Fidelio (AirPlay)"; x.title="AirPlay name"; x.desc="The name shown in the AirPlay picker (restart to change)."; x.group="AirPlay"; x.live=false;
+  x.read=[&o]{ return o.name; };
+  x.write=[&o](const std::string& v){ o.name = v; return true; };
+  r.add(x);
+
+  x = {}; x.key="airplay_volume"; x.flag="--airplay-volume"; x.type=O::ENUM;
+  x.choices={{"auto","Auto"},{"honor","Honor (incl. mute)"},{"ignore","Ignore (always unity)"}};
+  x.def="auto"; x.title="Sender volume handling"; x.desc="Auto: honour -30..0 dB, treat -144 as 'no remote volume'. Honor: apply all incl. mute. Ignore: always unity."; x.group="AirPlay"; x.live=false;
+  x.read=[&o]{ return o.volumeMode==RaopSession::VOL_HONOR ? std::string("honor") : o.volumeMode==RaopSession::VOL_IGNORE ? std::string("ignore") : std::string("auto"); };
+  x.write=[&o](const std::string& v){ o.volumeMode = v=="honor" ? RaopSession::VOL_HONOR : v=="ignore" ? RaopSession::VOL_IGNORE : RaopSession::VOL_AUTO; return true; };
+  r.add(x);
+
+  x = {}; x.key="airplay_preempt"; x.flag="--airplay-preempt"; x.type=O::ENUM;
+  x.choices={{"pause-then-disconnect","Pause, then disconnect"},{"pause-only","Pause only"},{"disconnect","Disconnect"},{"none","Keep draining"}};
+  x.def="pause-then-disconnect"; x.title="On losing the output"; x.desc="What to do with the AirPlay sender when another source takes over."; x.group="AirPlay"; x.live=false;
+  x.read=[&o]{ return o.preemptPolicy==1 ? std::string("pause-only") : o.preemptPolicy==2 ? std::string("disconnect") : o.preemptPolicy==3 ? std::string("none") : std::string("pause-then-disconnect"); };
+  x.write=[&o](const std::string& v){ o.preemptPolicy = v=="pause-only" ? 1 : v=="disconnect" ? 2 : v=="none" ? 3 : 0; return true; };
+  r.add(x);
+
+  x = {}; x.key="preempt_verify_ms"; x.flag="--preempt-verify-ms"; x.type=O::INT; x.imin=500; x.imax=10000; x.unit="ms";
+  x.def="3000"; x.title="Preempt verify window"; x.desc="How long to watch the stream for the sender to pause before disconnecting it."; x.group="AirPlay"; x.advanced=true; x.live=false;
+  x.read=[&o,i2s]{ return i2s(o.preemptVerifyMs); };
+  x.write=[&o](const std::string& v){ o.preemptVerifyMs = atoi(v.c_str()); return true; };
+  r.add(x);
+
+  x = {}; x.key="preempt_cooldown_ms"; x.flag="--preempt-cooldown-ms"; x.type=O::INT; x.imin=0; x.imax=60000; x.unit="ms";
+  x.def="10000"; x.title="Preempt cool-down"; x.desc="After a forced disconnect, refuse the same sender for this long."; x.group="AirPlay"; x.advanced=true; x.live=false;
+  x.read=[&o,i2s]{ return i2s(o.preemptCooldownMs); };
+  x.write=[&o](const std::string& v){ o.preemptCooldownMs = atoi(v.c_str()); return true; };
+  r.add(x);
+
+  x = {}; x.key="latency_ms"; x.flag="--latency-ms"; x.type=O::INT; x.imin=200; x.imax=3800; x.unit="ms";
+  x.def="1200"; x.title="Jitter buffer"; x.desc="Buffer depth before playback starts (restart to change)."; x.group="Advanced"; x.advanced=true; x.live=false;
+  x.read=[&o,i2s]{ return i2s(o.latencyMs); };
+  x.write=[&o](const std::string& v){ o.latencyMs = atoi(v.c_str()); return true; };
+  r.add(x);
+}
 
 static Options parse(int argc, char** argv) {
   Options o;
@@ -108,22 +155,16 @@ int main(int argc, char** argv) {
   signal(SIGPIPE, SIG_IGN);
   Options o = parse(argc, argv);
 
-  // B1.14: option registry -> manifest + settings.conf (startup; raop's options are restart-oriented).
+  // B1.15: the option registry, bound to the live Options. markCommandLine marks locked flags (any
+  // spelling), loadFile applies settings.conf to `o` via write(), selfCheck logs any default/file
+  // drift. The manifest (written below, after the name is final) is then the live truth.
   fidelio::Registry sreg("raop", RAOP_BUILD_HASH);
-  raop::buildRegistry(sreg);
-  sreg.parseArgv(argc, argv);
+  buildRaopRegistry(sreg, o);
+  sreg.markCommandLine(argc, argv);
   if (!o.statusDir.empty()) {
     sreg.loadFile(o.statusDir + "/settings.conf");
-    for (const fidelio::Option& so : sreg.options()) {
-      if (so.origin != "file") continue;
-      const std::string& k = so.key; const std::string& v = so.value;
-      if (k == "name") o.name = v;
-      else if (k == "airplay_volume") o.volumeMode = v == "honor" ? RaopSession::VOL_HONOR : v == "ignore" ? RaopSession::VOL_IGNORE : RaopSession::VOL_AUTO;
-      else if (k == "airplay_preempt") o.preemptPolicy = v == "pause-only" ? 1 : v == "disconnect" ? 2 : v == "none" ? 3 : 0;
-      else if (k == "preempt_verify_ms") o.preemptVerifyMs = atoi(v.c_str());
-      else if (k == "preempt_cooldown_ms") o.preemptCooldownMs = atoi(v.c_str());
-      else if (k == "latency_ms") o.latencyMs = atoi(v.c_str());
-    }
+    sreg.selfCheck();
+    sreg.refreshValues();
   }
   RaopSession::volumeMode = o.volumeMode;
   if (o.help) {

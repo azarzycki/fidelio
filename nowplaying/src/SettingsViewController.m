@@ -2,6 +2,7 @@
 
 #import "FidelioStatus.h"  // FIDELIO_DIR
 #import "EnumPickerViewController.h"
+#import "StringEditorViewController.h"
 
 #include <spawn.h>
 #include <sys/wait.h>
@@ -139,6 +140,10 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
     c.textLabel.text = [NSString stringWithFormat:@"%@: %@", [o objectForKey:@"title"], label];
     c.accessoryType = locked ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
     if (locked) c.accessoryView = [self lockGlyph];
+  } else if ([type isEqualToString:@"string"]) {  // free-text (e.g. the device name) -> a pushed editor
+    c.textLabel.text = [NSString stringWithFormat:@"%@: %@", [o objectForKey:@"title"], val];
+    c.accessoryType = locked ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
+    if (locked) c.accessoryView = [self lockGlyph];
   } else {  // int / percent -> a slider with a value label
     c.selectionStyle = UITableViewCellSelectionStyleNone;
     long v = [val longLongValue], lo = [[o objectForKey:@"min"] longLongValue], hi = [[o objectForKey:@"max"] longLongValue];
@@ -168,8 +173,10 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
   [t deselectRowAtIndexPath:ip animated:YES];
   if (ip.section >= (NSInteger)[sections count]) return;
   NSDictionary* o = [self optAt:ip];
-  if (![[o objectForKey:@"type"] isEqualToString:@"enum"] || [[o objectForKey:@"locked"] boolValue]) return;
-  [self pushEnumPickerFor:o];
+  if ([[o objectForKey:@"locked"] boolValue]) return;
+  NSString* ty = [o objectForKey:@"type"];
+  if ([ty isEqualToString:@"enum"]) [self pushEnumPickerFor:o];
+  else if ([ty isEqualToString:@"string"]) [self pushStringEditorFor:o];
 }
 
 - (void)advancedChanged:(UISwitch*)sw { showAdvanced = sw.on; [self reload]; }
@@ -240,6 +247,11 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
 
 - (void)pushEnumPickerFor:(NSDictionary*)o {
   EnumPickerViewController* vc = [[[EnumPickerViewController alloc] initWithOption:o settings:self] autorelease];
+  [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)pushStringEditorFor:(NSDictionary*)o {
+  StringEditorViewController* vc = [[[StringEditorViewController alloc] initWithOption:o settings:self] autorelease];
   [self.navigationController pushViewController:vc animated:YES];
 }
 

@@ -27,7 +27,6 @@
 #include "BellUtils.h"  // for BELL_SLEEP_MS
 #include "CSpotContext.h"
 #include "CliPlayer.h"
-#include "CspotSettings.h"
 #include "PlayerSink.h"
 #include "Settings.h"
 
@@ -112,6 +111,42 @@ struct Options {
 #endif
   std::string statusDir = "/var/mobile/fidelio";  // "" disables the status files
 };
+
+// B1.15: cspot-ios3's option registry, declared ONCE and BOUND to the live Options. read()/write()
+// are the single source of truth: the manifest reads back what the daemon uses, and a settings.conf
+// value is applied by calling write() on `o`. Every flag spelling (incl. -n/-b) marks the option
+// locked. Defaults MUST match parseArgs' own (name "iPhone Fidelio", bitrate 96, volume 50, curve log).
+static void buildCspotRegistry(fidelio::Registry& r, Options& o) {
+  using O = fidelio::Option;
+  auto i2s = [](long v){ char b[32]; snprintf(b, sizeof b, "%ld", v); return std::string(b); };
+  O x;
+
+  x = {}; x.key="name"; x.flag="--name"; x.flags={"--name","-n"}; x.type=O::STRING; x.maxlen=63;
+  x.def="iPhone Fidelio"; x.title="Spotify name"; x.desc="The device name shown in Spotify Connect (restart to change)."; x.group="Spotify"; x.live=false;
+  x.read=[&o]{ return o.name; };
+  x.write=[&o](const std::string& v){ o.name = v; return true; };
+  r.add(x);
+
+  x = {}; x.key="bitrate"; x.flag="--bitrate"; x.flags={"--bitrate","-b"}; x.type=O::ENUM;
+  x.choices={{"96","96 kbps"},{"160","160 kbps"},{"320","320 kbps"}};
+  x.def="96"; x.title="Bitrate"; x.desc="Ogg Vorbis bitrate (restart to change)."; x.group="Spotify"; x.live=false;
+  x.read=[&o,i2s]{ return i2s(o.bitrate); };
+  x.write=[&o](const std::string& v){ o.bitrate = atoi(v.c_str()); return true; };
+  r.add(x);
+
+  x = {}; x.key="initial_volume"; x.flag="--initial-volume"; x.type=O::PERCENT; x.imin=0; x.imax=100;
+  x.def="50"; x.title="Initial volume"; x.desc="Volume reported and played at startup until the first slider move."; x.group="Spotify"; x.live=false;
+  x.read=[&o,i2s]{ return i2s(o.initialVolumePct); };
+  x.write=[&o](const std::string& v){ o.initialVolumePct = atoi(v.c_str()); return true; };
+  r.add(x);
+
+  x = {}; x.key="volume_curve"; x.flag="--volume-curve"; x.type=O::ENUM;
+  x.choices={{"log","Logarithmic"},{"cubic","Cubic"},{"linear","Linear"}};
+  x.def="log"; x.title="Volume curve"; x.desc="How the Connect slider maps to the gain (software mode)."; x.group="Spotify"; x.live=false;
+  x.read=[&o]{ return o.volumeCurve==VOLUME_CUBIC ? std::string("cubic") : o.volumeCurve==VOLUME_LINEAR ? std::string("linear") : std::string("log"); };
+  x.write=[&o](const std::string& v){ o.volumeCurve = v=="cubic" ? VOLUME_CUBIC : v=="linear" ? VOLUME_LINEAR : VOLUME_LOG; return true; };
+  r.add(x);
+}
 
 static Options parseArgs(int argc, char** argv) {
   Options o;
@@ -333,24 +368,22 @@ int main(int argc, char** argv) {
                  "                           (default /var/mobile/fidelio); --no-status disables\n";
     return 0;
   }
-  IOS3_TRACE("cspot-ios3 rev8 start (no-audio=%d, bitrate=%d, port=%d)", (int)args.noAudio, args.bitrate, args.port);
-
-  // B1.14: option registry -> manifest + settings.conf (startup; cspot's options are restart-oriented).
+  // B1.15: the option registry, bound to the live Options (args). markCommandLine marks locked flags
+  // (any spelling), loadFile applies settings.conf to `args` via write(), selfCheck logs any default/
+  // file drift. This runs BEFORE the "start" log line below and before the player is built, so a file
+  // bitrate really reaches ctx->config.audioFormat (B1.15 defect 3).
   if (!args.statusDir.empty()) {
     fidelio::Registry sreg("cspot", CSPOT_BUILD_HASH);
-    cspotcli::buildRegistry(sreg);
-    sreg.parseArgv(argc, argv);
+    buildCspotRegistry(sreg, args);
+    sreg.markCommandLine(argc, argv);
     sreg.loadFile(args.statusDir + "/settings.conf");
-    for (const fidelio::Option& o : sreg.options()) {
-      if (o.origin != "file") continue;
-      const std::string& k = o.key; const std::string& v = o.value;
-      if (k == "name") args.name = v;
-      else if (k == "bitrate") args.bitrate = atoi(v.c_str());
-      else if (k == "initial_volume") args.initialVolumePct = atoi(v.c_str());
-      else if (k == "volume_curve") args.volumeCurve = v == "cubic" ? VOLUME_CUBIC : v == "linear" ? VOLUME_LINEAR : VOLUME_LOG;
-    }
+    sreg.selfCheck();
+    sreg.refreshValues();
     sreg.writeManifest(args.statusDir);
   }
+
+  // Logged AFTER settings.conf is applied, so it shows the effective values (not the pre-file defaults).
+  IOS3_TRACE("cspot-ios3 rev8 start (no-audio=%d, bitrate=%d, port=%d, name='%s')", (int)args.noAudio, args.bitrate, args.port, args.name.c_str());
 
   std::unique_ptr<StatusWriter> status;
   if (!args.statusDir.empty()) {
