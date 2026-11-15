@@ -83,7 +83,7 @@
   NSString* ph = [[NSBundle mainBundle] pathForResource:@"placeholder" ofType:@"png"];
   placeholder = [[UIImage alloc] initWithContentsOfFile:ph];
 
-  coverView = [[UIImageView alloc] initWithFrame:CGRectMake((320 - COVER_SIZE) / 2, 12, COVER_SIZE, COVER_SIZE)];
+  coverView = [[UIImageView alloc] initWithFrame:CGRectZero];
   coverView.contentMode = UIViewContentModeScaleAspectFill;
   coverView.layer.cornerRadius = 10.0f;
   coverView.layer.masksToBounds = YES;
@@ -91,36 +91,102 @@
   [self.view addSubview:coverView];
 
   UIColor* dim = [UIColor colorWithWhite:0.62f alpha:1.0f];
-  titleLabel = [self makeLabel:CGRectMake(12, 276, 296, 32) font:[UIFont boldSystemFontOfSize:26] color:[UIColor whiteColor] align:UITextAlignmentCenter];
-  artistLabel = [self makeLabel:CGRectMake(12, 308, 296, 26) font:[UIFont systemFontOfSize:20] color:[UIColor colorWithWhite:0.85f alpha:1] align:UITextAlignmentCenter];
-  albumLabel = [self makeLabel:CGRectMake(12, 334, 296, 22) font:[UIFont systemFontOfSize:16] color:dim align:UITextAlignmentCenter];
+  titleLabel = [self makeLabel:CGRectZero font:[UIFont boldSystemFontOfSize:26] color:[UIColor whiteColor] align:UITextAlignmentCenter];
+  artistLabel = [self makeLabel:CGRectZero font:[UIFont systemFontOfSize:20] color:[UIColor colorWithWhite:0.85f alpha:1] align:UITextAlignmentCenter];
+  albumLabel = [self makeLabel:CGRectZero font:[UIFont systemFontOfSize:16] color:dim align:UITextAlignmentCenter];
 
   progress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
-  progress.frame = CGRectMake(20, 360, 280, 9);
   [self.view addSubview:progress];
 
-  elapsedLabel = [self makeLabel:CGRectMake(20, 370, 100, 18) font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentLeft];
-  remainingLabel = [self makeLabel:CGRectMake(200, 370, 100, 18) font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentRight];
-  stateLabel = [self makeLabel:CGRectMake(20, 390, 280, 16) font:[UIFont systemFontOfSize:13] color:[UIColor colorWithRed:0.45f green:0.80f blue:0.55f alpha:1] align:UITextAlignmentCenter];
+  elapsedLabel = [self makeLabel:CGRectZero font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentLeft];
+  remainingLabel = [self makeLabel:CGRectZero font:[UIFont boldSystemFontOfSize:15] color:dim align:UITextAlignmentRight];
+  stateLabel = [self makeLabel:CGRectZero font:[UIFont systemFontOfSize:13] color:[UIColor colorWithRed:0.45f green:0.80f blue:0.55f alpha:1] align:UITextAlignmentCenter];
 
-  // B1.16: transport controls (previous / play-pause / next) driving the active source via audiod.
-  prevBtn = [self makeControl:@"\u25C0\u25C0" x:40 action:@selector(prevTapped)];   // |< prev
-  playBtn = [self makeControl:@"\u25B6" x:140 action:@selector(playTapped)];          // play/pause
-  nextBtn = [self makeControl:@"\u25B6\u25B6" x:240 action:@selector(nextTapped)];   // next >|
+  // B1.16/B1.16.1: transport controls (previous / play-pause / next), drawn as custom glyphs so iOS 5
+  // does not render U+25B6 as a blue emoji box; the active source is driven via audiod.
+  prevBtn = [self makeControl:0 action:@selector(prevTapped)];
+  playBtn = [self makeControl:1 action:@selector(playTapped)];  // 1 = play glyph by default; update: swaps to pause
+  nextBtn = [self makeControl:3 action:@selector(nextTapped)];
+  [self layoutContent];
 
   [self update];
 }
 
-- (UIButton*)makeControl:(NSString*)glyph x:(CGFloat)cx action:(SEL)sel {
+// B1.16.1: draw a transport glyph (0=prev |<<, 1=play >, 2=pause ||, 3=next >>|) ourselves, so both
+// iOS 3.1.3 (plain) and iOS 5.1.1 (which turns U+25B6 into a blue emoji) render the same, and the
+// disabled state is a visible dim. 36x30 white-on-clear.
++ (UIImage*)transportGlyph:(int)kind dim:(BOOL)dim {
+  CGSize sz = CGSizeMake(36, 30);
+  UIGraphicsBeginImageContext(sz);
+  CGContextRef c = UIGraphicsGetCurrentContext();
+  CGFloat g = dim ? 0.32f : 1.0f;
+  CGContextSetRGBFillColor(c, g, g, g, 1);
+  CGFloat midY = 15, h = 18, half = h / 2;         // shapes ~18 px tall, vertically centered
+  CGFloat tw = 11;                                  // triangle width
+  if (kind == 1) {  // play: one right triangle
+    CGContextMoveToPoint(c, 13, midY - half); CGContextAddLineToPoint(c, 13 + tw + 2, midY); CGContextAddLineToPoint(c, 13, midY + half); CGContextClosePath(c); CGContextFillPath(c);
+  } else if (kind == 2) {  // pause: two bars
+    CGContextFillRect(c, CGRectMake(12, midY - half, 4, h));
+    CGContextFillRect(c, CGRectMake(20, midY - half, 4, h));
+  } else {  // prev (0) / next (3): two triangles + a bar on the trailing side
+    BOOL left = (kind == 0);
+    CGFloat x0 = 6;  // left edge of the first triangle
+    for (int i = 0; i < 2; i++) {
+      CGFloat x = x0 + i * (tw + 1);
+      if (left) { CGContextMoveToPoint(c, x + tw, midY - half); CGContextAddLineToPoint(c, x, midY); CGContextAddLineToPoint(c, x + tw, midY + half); }
+      else      { CGContextMoveToPoint(c, x, midY - half); CGContextAddLineToPoint(c, x + tw, midY); CGContextAddLineToPoint(c, x, midY + half); }
+      CGContextClosePath(c); CGContextFillPath(c);
+    }
+    CGFloat barX = left ? 4 : (x0 + 2 * (tw + 1));  // the little bar on the leading(prev)/trailing(next) edge
+    CGContextFillRect(c, CGRectMake(barX, midY - half, 3, h));
+  }
+  UIImage* img = UIGraphicsGetImageFromCurrentImageContext();
+  UIGraphicsEndImageContext();
+  return img;
+}
+
+- (UIButton*)makeControl:(int)kind action:(SEL)sel {
   UIButton* b = [UIButton buttonWithType:UIButtonTypeCustom];
-  b.frame = CGRectMake(cx - 32, 408, 64, 40);
-  [b setTitle:glyph forState:UIControlStateNormal];
-  b.titleLabel.font = [UIFont systemFontOfSize:26];
-  [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-  [b setTitleColor:[UIColor colorWithWhite:0.30f alpha:1] forState:UIControlStateDisabled];
+  [b setImage:[[self class] transportGlyph:kind dim:NO] forState:UIControlStateNormal];
+  [b setImage:[[self class] transportGlyph:kind dim:YES] forState:UIControlStateDisabled];
   [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:b];
   return [b retain];  // ivar owns it; released in releaseSubviews
+}
+
+// Set the play/pause button's glyph (1=play, 2=pause) for both the normal and disabled states.
+- (void)setPlayGlyph:(int)kind {
+  [playBtn setImage:[[self class] transportGlyph:kind dim:NO] forState:UIControlStateNormal];
+  [playBtn setImage:[[self class] transportGlyph:kind dim:YES] forState:UIControlStateDisabled];
+}
+
+// B1.16.1: lay out every subview from the view's REAL height (431 usable on the 320x480 iPhone frame
+// with the 49 px tab bar), anchoring the bottom cluster to the height so the controls can never fall
+// under the tab bar. Called from loadView and on every appearance / frame change.
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self layoutContent]; }
+
+- (void)layoutContent {
+  CGFloat W = self.view.bounds.size.width, H = self.view.bounds.size.height;
+  if (W < 1 || H < 1) return;
+  coverView.frame = CGRectMake((W - COVER_SIZE) / 2, 4, COVER_SIZE, COVER_SIZE);
+  CGFloat y = 4 + COVER_SIZE + 4;                    // just below the cover
+  titleLabel.frame  = CGRectMake(12, y, W - 24, 30); y += 30;
+  artistLabel.frame = CGRectMake(12, y, W - 24, 24); y += 24;
+  albumLabel.frame  = CGRectMake(12, y, W - 24, 20);
+  CGFloat btnH = 40, btnY = H - btnH - 5;            // the control row sits just above the tab bar
+  CGFloat stateY = btnY - 18, timesY = stateY - 18, progY = timesY - 12;
+  progress.frame       = CGRectMake(20, progY, W - 40, 9);
+  elapsedLabel.frame   = CGRectMake(20, timesY, 110, 16);
+  remainingLabel.frame = CGRectMake(W - 130, timesY, 110, 16);
+  stateLabel.frame     = CGRectMake(14, stateY, W - 28, 16);
+  CGFloat cx[3] = { W * 0.25f, W * 0.5f, W * 0.75f };
+  prevBtn.frame = CGRectMake(cx[0] - 30, btnY, 60, btnH);
+  playBtn.frame = CGRectMake(cx[1] - 30, btnY, 60, btnH);
+  nextBtn.frame = CGRectMake(cx[2] - 30, btnY, 60, btnH);
+  // Regression guard: nothing may extend past the usable height.
+  CGFloat maxB = 0; UIView* worst = nil;
+  for (UIView* v in self.view.subviews) { CGFloat b = CGRectGetMaxY(v.frame); if (b > maxB) { maxB = b; worst = v; } }
+  if (maxB > H + 0.5f) NSLog(@"NowPlaying LAYOUT WARNING: a subview bottom (%.0f) exceeds the usable height (%.0f): %@", maxB, H, worst);
 }
 
 - (void)prevTapped { [self sendControl:5]; }   // PREV
@@ -203,7 +269,7 @@
   // B1.16: the transport controls are usable only while a source owns the output; the play/pause
   // glyph follows the real state. (audiod still resolves "which source"; the app just sends a verb.)
   prevBtn.enabled = active; nextBtn.enabled = active; playBtn.enabled = active;
-  [playBtn setTitle:(playing ? @"\u25AE\u25AE" : @"\u25B6") forState:UIControlStateNormal];
+  [self setPlayGlyph:(playing ? 2 : 1)];  // pause glyph while playing, play glyph otherwise
 }
 
 - (void)showNotice:(NSString*)text forSeconds:(NSTimeInterval)seconds {

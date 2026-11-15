@@ -34,7 +34,7 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
 - (id)init {
   if ((self = [super init])) {
     self.title = @"Settings";
-    self.tabBarItem = [[[UITabBarItem alloc] initWithTitle:@"Settings" image:nil tag:2] autorelease];
+    // The tab item shown is the navigation controller's (set in the app delegate with tab_settings.png).
     sections = [[NSMutableArray alloc] init];
     missing = [[NSMutableArray alloc] init];
   }

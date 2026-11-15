@@ -20,7 +20,9 @@ extern char** environ;
   settingsVC = [[SettingsViewController alloc] init];
   settingsNav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
   settingsNav.title = @"Settings";
-  settingsNav.tabBarItem = [[[UITabBarItem alloc] initWithTitle:@"Settings" image:nil tag:2] autorelease];
+  UIImage* settingsIcon = [[UIImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"tab_settings" ofType:@"png"]];
+  settingsNav.tabBarItem = [[[UITabBarItem alloc] initWithTitle:@"Settings" image:settingsIcon tag:2] autorelease];
+  [settingsIcon release];
 
   tabs = [[UITabBarController alloc] init];
   tabs.viewControllers = [NSArray arrayWithObjects:nowPlaying, technical, settingsNav, nil];

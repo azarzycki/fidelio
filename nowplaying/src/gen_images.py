@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate Icon.png (57x57), placeholder.png (256x256), Default.png (320x480) and the two
-30x30 tab bar glyphs (tab_nowplaying.png, tab_technical.png) for NowPlaying.app: a dark
+30x30 tab bar glyphs (tab_nowplaying.png, tab_technical.png, tab_settings.png) for NowPlaying.app: a dark
 gradient tile with rounded corners and a drawn eighth-note glyph.
 Pure Python (zlib + struct), no PIL, deterministic output."""
 import struct
@@ -96,10 +96,21 @@ def list_glyph_hit(x, y):
     return False
 
 
+def sliders_glyph_hit(x, y):
+    # three horizontal slider tracks, each with a knob at a different position: the Settings tab
+    for ty, kx in ((7.0, 20.0), (15.0, 9.0), (23.0, 22.0)):
+        if abs(y - ty) < 1.3 and 4.0 <= x <= 26.0:
+            return True
+        if (x - kx) ** 2 + (y - ty) ** 2 <= 3.2 ** 2:
+            return True
+    return False
+
+
 out = sys.argv[1] if len(sys.argv) > 1 else "."
 tile(f"{out}/Icon.png", 57, 10, (72, 204, 142))
 tile(f"{out}/placeholder.png", 256, 22, (112, 118, 128))
 png(f"{out}/Default.png", 320, 480, [[0, 0, 0, 255] * 320 for _ in range(480)])
 glyph(f"{out}/tab_nowplaying.png", 30, note_glyph_hit)
 glyph(f"{out}/tab_technical.png", 30, list_glyph_hit)
+glyph(f"{out}/tab_settings.png", 30, sliders_glyph_hit)
 print("images ok")

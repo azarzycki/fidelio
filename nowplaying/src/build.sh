@@ -21,4 +21,8 @@ armv6-ios3-check "$APP/NowPlaying"
 cp Info.plist "$APP/"
 printf 'APPL????' > "$APP/PkgInfo"
 python3 gen_images.py "$APP"
+# B1.16.1: every tab needs its glyph in the bundle, or the tab shows blank. Fail the build if one is missing.
+for g in tab_nowplaying tab_technical tab_settings; do
+  [ -f "$APP/$g.png" ] || { echo "BUILD ERROR: $APP/$g.png missing (gen_images.py must produce it)"; exit 1; }
+done
 ls -l "$APP"
