@@ -1,9 +1,9 @@
 #pragma once
-// B1.16 part C3: the symbol-INDEPENDENT core of the DockRemote MobileSubstrate tweak for iphone OS
-// 3.1.3's iapd. The hook (DockRemoteHook.mm, finished once the iapd Simple-Remote symbol is known)
-// calls shouldForward() on each Simple Remote context key; if it returns true the hook forwards the
-// mapped transport verb to audiod and SWALLOWS the key (so the iPod app does not start), otherwise it
-// lets the key fall through to the original handler untouched.
+// B1.16 part C3: the hook-INDEPENDENT core of the DockRemote MobileSubstrate tweak for iPhone OS
+// 3.1.3's iapd. The hook (DockRemoteHook.mm; since B1.16.8 on GraphicsServices' GSSendEvent, where every
+// accessory key passes as a type-4001 event) calls shouldForward() on each Simple Remote key; if it
+// returns true the hook forwards the mapped transport verb to audiod and SWALLOWS the key (so the iPod
+// app does not start), otherwise it lets the key fall through untouched.
 //
 // Safety: this runs inside iapd, and a crash there breaks the dock until a physical reseat. Everything
 // here is non-blocking, allocation-light, pointer-checked, and reads at most two small files. The whole
