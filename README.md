@@ -1,7 +1,11 @@
-# Fidelio
+# Docked-iPhone audio receiver
 
-Turning a jailbroken 2007 iPhone (iPhone1,1 · ARMv6/ARM11 · iOS 3.1.3), permanently
-docked in a Philips Fidelio DS9000, into a headless audio-receiver appliance.
+An audio-receiver stack for a jailbroken 2007 iPhone (iPhone1,1 · ARMv6/ARM11 · iOS 3.1.3),
+permanently docked in and built for use with a Philips Fidelio DS9000 speaker dock, turning it
+into a headless audio-receiver appliance.
+
+> Independent hobby project, not affiliated with or endorsed by Philips. "Fidelio" is a trademark
+> of its owner and is used here only to describe the speaker dock this software drives.
 
 ## Components
 
