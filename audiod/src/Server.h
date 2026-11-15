@@ -44,6 +44,11 @@ struct ServerOptions {
   bool wakeOnPlay = true;      // --wake-on-play on|off
   std::string wakeBundle = "com.fidelio.nowplaying";
   unsigned wakeMinIntervalMs = 5000;  // debounce: at most one wake per this interval
+  // B1.16.10: what the wake does (registry wake_mode, set per device from the NowPlaying Settings tab).
+  // true = "launch": wake the screen and bring NowPlaying forward (a locked iPad is unlocked first when
+  // unlockOnPlay; iPhone OS 3 opens the app over the lock screen). false = "screen": light the screen
+  // only, so a locked device shows its lock screen with the lock plugin (the backstop); no unlock.
+  bool wakeLaunch = true;             // --wake-mode launch|screen
   // B1.16.4: when that launch is refused because the device is locked (3), ask SpringBoard to unlock
   // and open unlockUrl (SBSOpenSensitiveURLAndUnlock; works only without a passcode). B1.16.6: the
   // accepted request is the result (device-verified: it unlocks and opens the app; a launch probe keeps

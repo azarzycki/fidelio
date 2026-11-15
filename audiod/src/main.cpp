@@ -78,6 +78,8 @@ int main(int argc, char** argv) {
              "  --wake-on-play on|off    (default on) when playback starts from nothing, wake the screen and bring the\n"
              "                           NowPlaying app to the front (SpringBoardServices, dlopen'ed; no-op if unavailable)\n"
              "  --wake-bundle ID         (default com.fidelio.nowplaying)\n"
+             "  --wake-mode launch|screen  (default launch) launch: wake and open the app (as above); screen: only light\n"
+             "                           the screen, so a locked device shows the lock-screen plugin; no unlock (B1.16.10)\n"
              "  --unlock-on-play on|off  (default on) when that launch is refused because the device is locked, unlock it\n"
              "                           (SBSOpenSensitiveURLAndUnlock, dlopen'ed; only without a passcode) and show the app;\n"
              "                           off: stay on the lock screen (B1.16.4)\n"
@@ -142,7 +144,12 @@ int main(int argc, char** argv) {
       else if (v == "off") so.wakeOnPlay = false;
       else { fprintf(stderr, "--wake-on-play must be on|off\n"); return 1; }
     } else if (a == "--wake-bundle") so.wakeBundle = next("--wake-bundle");
-    else if (a == "--unlock-on-play") {
+    else if (a == "--wake-mode") {
+      std::string v = next("--wake-mode");
+      if (v == "launch") so.wakeLaunch = true;
+      else if (v == "screen") so.wakeLaunch = false;
+      else { fprintf(stderr, "--wake-mode must be launch|screen\n"); return 1; }
+    } else if (a == "--unlock-on-play") {
       std::string v = next("--unlock-on-play");
       if (v == "on") so.unlockOnPlay = true;
       else if (v == "off") so.unlockOnPlay = false;

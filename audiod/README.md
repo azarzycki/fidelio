@@ -317,6 +317,8 @@ steal and a 2 s gap that may.
   semantics of `SBDimScreen(false)` are assumed (the symbol takes one byte argument). Locked device:
   expected = the screen wakes, the launch is refused or lands behind the lock (the return code is
   logged); unlock is not attempted (B1.16.4 adds it, see below). Unavailable framework/symbol = logged once, no-op.
+- B1.16.10: `--wake-mode launch|screen` (registry `wake_mode`) chooses between this (`launch`, the
+  default) and lighting the screen only (`screen`); see the B1.16.10 section.
 - Tests: `hosttest/test_wake.py` (8 checks: one wake per none -> source, none on a switch, debounced
   inside 5 s, wakes again after, none on a reconnect) with the host's mock waker;
   `test_producers.py` section 3 (8 checks, mock hardware via `AUDIOD_MOCK_HW_VOLUME` /
@@ -438,3 +440,27 @@ The plugin (B1.16.3) draws on the phone as well, but two things were wrong there
     `keepLit=held|held:arg-float|held:arg-double|dimmed|off|unavailable`.
   - `preventIdleSleepForNumberOfSeconds:` is not used: it governs system sleep rather than the dim, and its
     argument type is unknown.
+
+## B1.16.10 (what the wake shows: `wake_mode`, with the lock plugin as the backstop)
+
+The user's decision: the lock plugin stays as the backstop, and what the wake does is chosen per device,
+from the NowPlaying Settings tab. The iPhone keeps launching NowPlaying.
+
+- **`wake_mode`** (registry, Display group, "Wake shows"; `--wake-mode launch|screen`; live):
+  - **`launch`** (default, "Open NowPlaying"): the B1.9 wake.
+    - It undims the screen, resets the idle timer and launches NowPlaying.
+    - A locked iPad refuses the launch, so with `unlock_on_play` it is unlocked into the app (B1.16.4/6).
+    - iPhone OS 3 opens the app over the lock screen.
+    - The lock plugin is enabled as before, so it is there whenever the app is not in front.
+  - **`screen`** ("Screen only"): only undim and reset the idle timer (`DisplayWaker::wakeScreen()`).
+    Nothing is launched or unlocked.
+    - The lock plugin is enabled *before* the wake (the B1.11 order), so a locked device lights up on its
+      lock screen with the track. With `keep_screen_on`, the screen stays lit while playing (B1.16.6/7).
+    - Event: `wake (screen only)`.
+- **Defaults:** `lock_plugin` and `keep_screen_on` stay off by default (set them per device; both are on
+  for the two test devices). The B1.16.6/7 install notes wrongly called `keep_screen_on` default-on.
+- **Tests:**
+  - `test_unlock.py` G (+3): on a locked device in screen mode there is one screen-only wake, nothing
+    launched, no unlock call, and the plugin is enabled before the wake.
+  - `test_settings.py` +2: `wake_mode` is in the manifest (an enum, default `launch`) and changes live
+    to `screen`.

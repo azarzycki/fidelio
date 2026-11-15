@@ -88,23 +88,34 @@ inline void buildRegistry(fidelio::Registry& r, ServerOptions& so, Tunables& t, 
   o.write=[&so](const std::string& v){ so.wakeOnPlay = (v=="on"); return true; };
   r.add(o);
 
+  // B1.16.10: what the wake does, chosen per device in the NowPlaying Settings tab. The lock plugin
+  // stays the backstop either way.
+  o = {}; o.key="wake_mode"; o.flag="--wake-mode"; o.type=O::ENUM;
+  o.choices={{"launch","Open NowPlaying"},{"screen","Screen only"}};
+  o.def="launch"; o.title="Wake shows";
+  o.desc="What Wake on play does when playback starts. Open NowPlaying: bring the app forward (a locked iPad unlocks first when Unlock on play is on; the iPhone opens it over the lock screen). Screen only: just light the screen, so a locked device shows the lock-screen plugin, nothing is opened or unlocked.";
+  o.group="Display";
+  o.read=[&so]{ return so.wakeLaunch ? std::string("launch") : std::string("screen"); };
+  o.write=[&so](const std::string& v){ so.wakeLaunch = (v != "screen"); return true; };
+  r.add(o);
+
   // B1.16.4: unlock a locked device when playback starts (needs wake on play).
   o = {}; o.key="unlock_on_play"; o.flag="--unlock-on-play"; o.type=O::BOOL;
-  o.def="on"; o.title="Unlock on play"; o.desc="When playback starts and the device is locked, unlock it and show NowPlaying (works only without a passcode; needs Wake on play). Off: the device stays on the lock screen.";
+  o.def="on"; o.title="Unlock on play"; o.desc="When playback starts and the device is locked, unlock it and show NowPlaying (works only without a passcode; needs Wake on play with Wake shows = Open NowPlaying; the iPhone opens the app over the lock screen without it). Off: the device stays on the lock screen.";
   o.group="Display";
   o.read=[&so]{ return b2s(so.unlockOnPlay); };
   o.write=[&so](const std::string& v){ so.unlockOnPlay = (v=="on"); return true; };
   r.add(o);
 
   o = {}; o.key="lock_plugin"; o.flag="--lock-plugin"; o.type=O::BOOL;
-  o.def="off"; o.title="Lock-screen plugin"; o.desc="Show the track on the lock screen (iPad; needs Fidelio.lockbundle installed)."; o.group="Display";
+  o.def="off"; o.title="Lock-screen plugin"; o.desc="Show the track on the lock screen, the backstop whenever NowPlaying is not in front (needs Fidelio.lockbundle on the iPad, Fidelio.bundle on the iPhone)."; o.group="Display";
   o.read=[&so]{ return so.lockPlugin.empty() ? std::string("off") : std::string("on"); };
   o.write=[&so](const std::string& v){ so.lockPlugin = (v=="on") ? std::string("Fidelio") : std::string(); return true; };
   r.add(o);
 
   // B1.15e: KeepScreenOn for the lock bundle, owned here (audiod writes lockplugin.plist).
   o = {}; o.key="keep_screen_on"; o.flag="--keep-screen-on"; o.type=O::BOOL;
-  o.def="off"; o.title="Keep screen on"; o.desc="On the lock screen, keep the display lit while something is playing (iPad lock plugin)."; o.group="Display";
+  o.def="off"; o.title="Keep screen on"; o.desc="On the lock screen, keep the display lit while something is playing (done by the lock-screen plugin, both devices)."; o.group="Display";
   o.read=[&so]{ return b2s(so.keepScreenOn); };
   o.write=[&so,statusDir](const std::string& v){ so.keepScreenOn = (v=="on"); writeLockPluginPlist(statusDir, so.keepScreenOn); return true; };
   r.add(o);

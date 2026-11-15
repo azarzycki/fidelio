@@ -70,7 +70,7 @@ Server::Server(const ServerOptions& o, const Tunables& tn, AudioOutput* output, 
   IOS3_TRACE("airplay volume: %s (B1.13)%s", opts.airplayAbsolute ? "absolute" : "software",
              opts.airplayAbsolute && !hwReady() ? " requested but hardware unavailable -> software fallback" : "");
   IOS3_TRACE("wake-on-play: %s%s%s", opts.wakeOnPlay && waker ? "on (" : "off", opts.wakeOnPlay && waker ? waker->describe().c_str() : "",
-             opts.wakeOnPlay && waker ? (", app " + opts.wakeBundle + ")").c_str() : "");
+             opts.wakeOnPlay && waker ? (", mode " + std::string(opts.wakeLaunch ? "launch, app " + opts.wakeBundle : "screen only") + ")").c_str() : "");
   IOS3_TRACE("unlock-on-play: %s (url %s; %s)", opts.unlockOnPlay ? "on" : "off", opts.unlockUrl.c_str(),
              waker && waker->canUnlock() ? "SBSOpenSensitiveURLAndUnlock available" : "SBSOpenSensitiveURLAndUnlock NOT available: a locked device stays locked");
 }
@@ -216,19 +216,19 @@ void Server::maybeReloadSettings(uint64_t now) {
   applyLiveConfig();                                      // push tunables into the arbiter, recompute derived
   settings->refreshValues();                             // manifest reflects the live config
   if (!settingsDir.empty()) settings->writeManifest(settingsDir);
-  IOS3_TRACE("settings.conf changed: applied live (max_volume=%d crossfade=%u wake=%d unlock=%d preempt=%d spotify_abs=%d airplay_abs=%d)",
-             opts.maxVolumePct, opts.crossfadeMs, (int)opts.wakeOnPlay, (int)opts.unlockOnPlay, (int)opts.preemptPause, (int)opts.absoluteVolume,
-             (int)opts.airplayAbsolute);
+  IOS3_TRACE("settings.conf changed: applied live (max_volume=%d crossfade=%u wake=%d wake_mode=%s unlock=%d preempt=%d spotify_abs=%d airplay_abs=%d)",
+             opts.maxVolumePct, opts.crossfadeMs, (int)opts.wakeOnPlay, opts.wakeLaunch ? "launch" : "screen", (int)opts.unlockOnPlay,
+             (int)opts.preemptPause, (int)opts.absoluteVolume, (int)opts.airplayAbsolute);
 }
 
 // B1.9 B + B1.16.4 + B1.11, for a playback start from nothing (not a switch, not a reconnect).
 // Order: when an unlock may be attempted, the wake (and unlock) comes first and the lock plugin is
 // enabled only if audiod does not unlock the device: never enabled and then immediately unlocked
 // past. When no unlock can happen, the B1.11 order stays: plugin first, so a lock screen that lights
-// up already shows the track.
+// up already shows the track. B1.16.10: wake_mode=screen never unlocks, so it always takes that order.
 void Server::onStartFromNone(const Event& e) {
   if (e.kind != Event::TAKEOVER || !e.from.empty() || e.reason == "reconnect") return;
-  bool unlockPossible = opts.wakeOnPlay && waker && opts.unlockOnPlay && waker->canUnlock();
+  bool unlockPossible = opts.wakeOnPlay && opts.wakeLaunch && waker && opts.unlockOnPlay && waker->canUnlock();
   if (!unlockPossible) enableLockPlugin(e.to, e.atMs);
   WakeResult w = maybeWake(e);
   if (unlockPossible && w != WAKE_UNLOCKED) enableLockPlugin(e.to, e.atMs);  // not unlocked by us: plugin as before
@@ -241,6 +241,13 @@ Server::WakeResult Server::maybeWake(const Event& e) {
     return WAKE_NOT_RUN;
   }
   lastWakeMs = e.atMs;
+  if (!opts.wakeLaunch) {
+    // B1.16.10 wake_mode=screen: light the screen only. On a locked device the lock screen (with the
+    // lock plugin, enabled before this by onStartFromNone) shows the track; nothing is launched or unlocked.
+    waker->wakeScreen();
+    logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake (screen only)"});
+    return WAKE_DONE;
+  }
   int rc = waker->wake(opts.wakeBundle);
   if (rc == DisplayWaker::kLaunchOk) {
     logEvent(Event{Event::WAKE, e.atMs, "none", e.to, "wake+launch " + opts.wakeBundle});

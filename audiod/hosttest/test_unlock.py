@@ -177,5 +177,16 @@ check(not has(w, "lock-plugin enabled"), "accepted: the lock plugin stays off fo
 check(count(log, r"note: --unlock-timeout-ms is ignored since B1\.16\.6") == 1 and len(w) >= 1,
       "--unlock-timeout-ms (B1.16.4) is still accepted: audiod starts, notes that it is ignored")
 
+# G. B1.16.10 wake_mode=screen on a LOCKED device: only the screen is lit. Nothing is launched or
+#    unlocked, and the lock plugin (the backstop) is enabled before the wake, so the lit lock screen
+#    already shows the track.
+w, allev, log = scenario("screen-only", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "ok"}, ["--wake-mode", "screen"],
+                         [(0, "spotify", 1500)], 3000)
+check(len(has(w, "wake (screen only)")) == 1 and count(log, r"mock waker: wakeScreen\(\)") == 1, "screen mode: one screen-only wake")
+check(count(log, WAKE_CALL) == 0 and count(log, UNLOCK_CALL) == 0 and not [ev for ev in w if "unlock" in ev[4]],
+      "screen mode: nothing launched and no unlock attempted, although the device is locked")
+order = [ev[4] for ev in allev if ev[1] == "wake" and (ev[4].startswith("lock-plugin enabled") or ev[4] == "wake (screen only)")]
+check(order[:2] == ["lock-plugin enabled fidelio", "wake (screen only)"], f"screen mode: the lock plugin is enabled before the screen wakes ({order[:2]})")
+
 print("\n" + (f"{len(fails)} FAILURES" if fails else "all unlock-on-play checks passed"))
 sys.exit(1 if fails else 0)

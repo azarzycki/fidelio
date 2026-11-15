@@ -28,6 +28,9 @@ class DisplayWaker {
   // Undim the screen, reset the idle timer and launch the app. Returns the launch result (kLaunchOk,
   // kLaunchLocked, another SpringBoard error code, or kUnavailable).
   virtual int wake(const std::string& bundleId) = 0;
+  // B1.16.10: wake the screen only (undim + reset the idle timer), without launching anything, for
+  // wake_mode=screen: a locked device then shows its lit lock screen (with the lock plugin, if enabled).
+  virtual void wakeScreen() {}
   // B1.16.4: whether SBSOpenSensitiveURLAndUnlock resolved (decided at startup, cheap to call).
   virtual bool canUnlock() { return false; }
   // B1.16.4: SBSOpenSensitiveURLAndUnlock(url, unlock = true). 1 = SpringBoard accepted the request
@@ -67,6 +70,7 @@ class MockDisplayWaker : public DisplayWaker {
     IOS3_TRACE("mock waker: wake(%s) -> %d%s", bundleId.c_str(), rc, locked ? " (device locked)" : "");
     return rc;
   }
+  void wakeScreen() override { screenWakes++; IOS3_TRACE("mock waker: wakeScreen()"); }
   bool canUnlock() override { return mode != "missing"; }
   int openURLAndUnlock(const std::string& url) override {
     unlockCalls++;
@@ -78,7 +82,7 @@ class MockDisplayWaker : public DisplayWaker {
   bool enableLockBundle(const std::string& name) override { lockName = name; lockEnables++; return true; }
   bool disableLockBundle(const std::string& name) override { lockName = name; lockDisables++; return true; }
   std::string describe() override { return std::string("mock display waker (") + (locked ? "locked" : "unlocked") + ", unlock " + mode + ")"; }
-  int calls = 0, unlockCalls = 0, lockEnables = 0, lockDisables = 0;
+  int calls = 0, screenWakes = 0, unlockCalls = 0, lockEnables = 0, lockDisables = 0;
   std::string last, lockName;
 
  private:

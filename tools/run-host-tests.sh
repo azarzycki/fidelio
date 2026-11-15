@@ -41,14 +41,14 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 327 ok, 0 FAIL, at B1.16.7)
+# name | baseline ok count | command (baseline: 332 ok, 0 FAIL, at B1.16.10)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
 aqsink_bare  23 $HOST/audiod/aqsink_bare_test
 writeframe    2 $HOST/audiod/writeframe_test
 settings     23 $HOST/audiod/settings_test
-settings_dmn 27 $PYTHON $T/test_settings.py $AUDIOD $RAOP $CSPOT
+settings_dmn 29 $PYTHON $T/test_settings.py $AUDIOD $RAOP $CSPOT
 control       8 $PYTHON $T/test_control.py $AUDIOD $HOST/audiod/control_send
 arbiter      13 $PYTHON $T/test_arbiter.py $AUDIOD
 silence      22 $PYTHON $T/test_silence.py $AUDIOD
@@ -56,7 +56,7 @@ crossfade     5 $PYTHON $T/test_crossfade.py $AUDIOD
 producers    21 $PYTHON $T/test_producers.py $AUDIOD $RAOP $CSPOT
 pacing        8 $PYTHON $T/test_pacing.py $AUDIOD $RAOP
 wake         11 $PYTHON $T/test_wake.py $AUDIOD
-unlock       20 $PYTHON $T/test_unlock.py $AUDIOD
+unlock       23 $PYTHON $T/test_unlock.py $AUDIOD
 preempt      11 $PYTHON $T/test_preempt.py $AUDIOD
 ap_preempt   11 $PYTHON $T/test_airplay_preempt.py $AUDIOD $RAOP
 ap_volume    11 $PYTHON $T/test_airplay_volume.py $AUDIOD $RAOP

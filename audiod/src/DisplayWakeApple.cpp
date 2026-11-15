@@ -68,15 +68,19 @@ class SpringBoardWaker : public DisplayWaker {
       return kUnavailable;
     }
     // 1. undim / wake the screen (best effort), 2. reset the idle timer, 3. foreground the app
-    kern_return_t kr = KERN_SUCCESS;
-    if (dim && serverPort) { mach_port_t p = serverPort(); if (p) kr = dim(p, 0); }
-    if (resetIdle) resetIdle();
+    kern_return_t kr = undimAndResetIdle();
     char err[200];
     uint64_t ms = 0;
     int rc = launchDecoded(bundleId, err, sizeof err, &ms);
     IOS3_TRACE("wake-on-play: SBDimScreen(false) -> %d, GSEventResetIdleTimer %s, SBSLaunchApplicationWithIdentifier(%s) -> %d%s (%llu ms)", (int)kr,
                resetIdle ? "called" : "missing", bundleId.c_str(), rc, err, (unsigned long long)ms);
     return rc;
+  }
+  // B1.16.10: wake_mode=screen: steps 1 and 2 of wake(), no launch.
+  void wakeScreen() override {
+    ObjcAutoreleasePool pool;
+    kern_return_t kr = undimAndResetIdle();
+    IOS3_TRACE("wake-on-play (screen only): SBDimScreen(false) -> %d, GSEventResetIdleTimer %s", (int)kr, resetIdle ? "called" : "missing");
   }
   bool canUnlock() override { return openUnlock != nullptr; }
   int openURLAndUnlock(const std::string& url) override {
@@ -101,6 +105,13 @@ class SpringBoardWaker : public DisplayWaker {
   }
 
  private:
+  // Undim the screen (best effort) and reset the idle timer: the part of the wake both modes share.
+  kern_return_t undimAndResetIdle() {
+    kern_return_t kr = KERN_SUCCESS;
+    if (dim && serverPort) { mach_port_t p = serverPort(); if (p) kr = dim(p, 0); }
+    if (resetIdle) resetIdle();
+    return kr;
+  }
   // SBSLaunchApplicationWithIdentifier + the B1.15 A decode of a non-zero result into err (" (error ...)").
   int launchDecoded(const std::string& bundleId, char* err, size_t errLen, uint64_t* ms) {
     CFStringRef id = CFStringCreateWithCString(nullptr, bundleId.c_str(), kCFStringEncodingUTF8);
