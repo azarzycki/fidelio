@@ -54,6 +54,36 @@ The same ARMv6 binary runs natively on both: `UIDeviceFamily` is 1 and 2, set by
 - **Status bar:** hidden on both devices (an appliance display); launch images `Default-Portrait~ipad.png` 768×1024 and `Default-Landscape~ipad.png` 1024×768 are full-screen for that reason. Icons: `Icon.png` 57 and `Icon-72.png` 72.
 - After installing 1.4.0 run `uicache` as for 1.3.1: the device family, icons and launch images are read when the app list is rebuilt.
 
+## The iPad's dock remote: NowPlaying as a media controller (1.4.1, B1.16.9, a staged prototype)
+
+On the 5.1.1 iPad, iapd decodes the dock's Simple Remote keys and sends them with `MRMediaRemoteSendCommand`
+to the **now-playing app**. UIKit delivers them there as remote-control events. A tweak can't intercept
+them, unlike on the phone (DockRemote, B1.16.8), so NowPlaying has to receive them itself. The open
+question is what it takes to be the now-playing app while the audio comes from the daemons. Hence a staged
+prototype, chosen with a flag file read at launch: `/var/mobile/fidelio/remote-control.stage` holding 1, 2
+or 3 (absent = 1). Kill and relaunch the app after changing it.
+
+1. `beginReceivingRemoteControlEvents` (iOS 4+), with the window (`NPWindow`) kept as first responder. It
+   claims first responder at launch, on activation and when each tab appears.
+   - Every remote-control event is caught in `NPApplication`, in `-sendEvent:` and at the end of the
+     responder chain, and handled once.
+   - It is logged to `/var/mobile/fidelio/remote-control.log` with its subtype.
+   - Play, pause, stop, toggle, next and previous are forwarded to audiod's CONTROL channel, the same
+     code the on-screen buttons use (`NPSendControl`). Seek events are logged only.
+2. Stage 1 plus `MRMediaRemoteSetCanBeNowPlayingApplication(true)`: MediaRemote via `dlopen`/`dlsym`,
+   present on 5.1.1.
+3. Stage 2 plus silence (an in-memory WAV, looped by `AVAudioPlayer`) in a **mixable** MediaPlayback
+   session. It is mixable on purpose: audiod's own session is a non-mixable MediaPlayback session, which a
+   non-mixable one here would interrupt. Below stage 3 the app does not touch audio at all.
+
+The log's first line per launch names the stage and what each step did. On iPhone OS 3.1 none of this
+runs: the remote-control API does not exist there, and the window never claims first responder. The
+phone's NowPlaying behaves as before, apart from the version, now 1.4.1.
+
+Test on the iPad: Spotify playing through audiod, NowPlaying in front, dock keys pressed. Does
+`remote-control.log` fill, and with which subtypes? Try stage 1, then 2, then 3. Also check who gets the
+keys when the iPod app was the last to play.
+
 ## Install
 ```sh
 scp -r NowPlaying.app root@phone:/Applications/

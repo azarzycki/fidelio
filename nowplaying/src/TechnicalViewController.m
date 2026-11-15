@@ -1,4 +1,5 @@
 #import "TechnicalViewController.h"
+#import "NPRemoteControl.h"
 
 @implementation TechnicalViewController
 
@@ -51,6 +52,8 @@
 }
 
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self update]; }
+// B1.16.9: keep the window first responder, so the iPad's dock remote events have a responder.
+- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; NPRemoteControlClaimFirstResponder(self.view); }
 
 // B1.18: the tablet rotates; the phone stays portrait as before.
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }

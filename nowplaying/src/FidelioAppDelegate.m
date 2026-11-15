@@ -1,4 +1,5 @@
 #import "FidelioAppDelegate.h"
+#import "NPRemoteControl.h"
 
 #include <spawn.h>
 #include <sys/wait.h>
@@ -27,13 +28,16 @@ extern char** environ;
   tabs = [[UITabBarController alloc] init];
   tabs.viewControllers = [NSArray arrayWithObjects:nowPlaying, technical, settingsNav, nil];
 
-  window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+  window = [[NPWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];  // B1.16.9: can be first responder
   window.backgroundColor = [UIColor blackColor];
   // B1.18: iOS 4+ routes rotation through the window's root view controller (the tablet rotates);
   // iPhone OS 3.1 has no rootViewController, so the tab bar's view is added directly as before.
   if ([window respondsToSelector:@selector(setRootViewController:)]) [window performSelector:@selector(setRootViewController:) withObject:tabs];
   else [window addSubview:tabs.view];
   [window makeKeyAndVisible];
+  // B1.16.9: the iPad's dock remote (iOS 4+ remote-control events; a no-op on iPhone OS 3.1).
+  NPRemoteControlSetup(application);
+  NPRemoteControlClaimFirstResponder(window);
 
   [self startTimer];
 }
@@ -99,6 +103,7 @@ extern char** environ;
 - (void)applicationDidBecomeActive:(UIApplication*)application {
   [self tick:nil];  // catch up at once instead of showing the frame from before the lock
   [self startTimer];
+  NPRemoteControlClaimFirstResponder(window);  // B1.16.9
 }
 
 - (void)applicationWillTerminate:(UIApplication*)application {

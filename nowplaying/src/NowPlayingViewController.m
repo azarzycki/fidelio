@@ -1,4 +1,5 @@
 #import "NowPlayingViewController.h"
+#import "NPRemoteControl.h"
 #import <QuartzCore/QuartzCore.h>
 
 #include "NPLayout.h"
@@ -232,30 +233,12 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
 - (void)nextTapped { [self sendControl:4]; }   // NEXT
 - (void)playTapped { [self sendControl:3]; }   // TOGGLE
 
-// Send one transport verb to audiod over its Unix socket (HELLO as the non-producing "control"
-// source, then CONTROL). Short timeouts; never blocks the UI for long. Mirrors common/AudiodControl.
-- (void)sendControl:(uint8_t)verb {
-  NSString* sp = [FIDELIO_DIR stringByAppendingPathComponent:@"audiod.sock"];
-  int s = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (s < 0) return;
-  struct timeval to = { 0, 300 * 1000 };
-  setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &to, sizeof to);
-  setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof to);
-  struct sockaddr_un a; memset(&a, 0, sizeof a); a.sun_family = AF_UNIX;
-  strncpy(a.sun_path, [sp fileSystemRepresentation], sizeof a.sun_path - 1);
-  if (connect(s, (struct sockaddr*)&a, sizeof a) != 0) { close(s); return; }
-  // HELLO: header {type=1,len=40} + AudiodHello{ver=2,prio=0,ch=2,bits=16,rate=44100,name="control"}
-  unsigned char hello[48]; memset(hello, 0, sizeof hello);
-  unsigned int t = 1, len = 40; memcpy(hello, &t, 4); memcpy(hello + 4, &len, 4);
-  hello[8] = 2; hello[9] = 0; hello[10] = 2; hello[11] = 16;
-  unsigned int rate = 44100; memcpy(hello + 12, &rate, 4);
-  strncpy((char*)hello + 16, "control", 31);
-  unsigned char ctl[9]; unsigned int ct = 10, cl = 1; memcpy(ctl, &ct, 4); memcpy(ctl + 4, &cl, 4); ctl[8] = verb;
-  if (write(s, hello, 48) == 48) write(s, ctl, 9);
-  char buf[8]; recv(s, buf, sizeof buf, 0);  // let audiod read before close (returns on timeout/EOF)
-  close(s);
-  NSLog(@"sent transport control verb %d to audiod", (int)verb);
-}
+// Send one transport verb to audiod (B1.16.9: the socket code moved to NPRemoteControl.m, shared with
+// the iPad's dock remote).
+- (void)sendControl:(uint8_t)verb { NPSendControl(verb); }
+
+// B1.16.9: keep the window first responder, so the iPad's dock remote events have a responder.
+- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; NPRemoteControlClaimFirstResponder(self.view); }
 
 - (void)update {
   NSString* st = [status state];

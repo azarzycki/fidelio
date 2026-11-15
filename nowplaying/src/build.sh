@@ -9,12 +9,13 @@ rm -rf "$APP" "$OUT"/*.o   # only our own products: never rm -rf a caller-suppli
 mkdir -p "$APP"
 
 CFLAGS="-O2 -Wall -Wno-unused -fno-objc-arc -fobjc-exceptions -x objective-c"
-for f in main FidelioAppDelegate FidelioStatus NowPlayingViewController TechnicalViewController SettingsViewController EnumPickerViewController StringEditorViewController NPEventProbe; do
+for f in main FidelioAppDelegate FidelioStatus NowPlayingViewController TechnicalViewController SettingsViewController EnumPickerViewController StringEditorViewController NPEventProbe NPRemoteControl; do
   armv6-ios3-clang $CFLAGS -c "$f.m" -o "$OUT/$f.o"
 done
 armv6-ios3-clang -O2 -Wall -c NPLayout.c -o "$OUT/NPLayout.o"   # B1.18: the layout core (plain C, also host-tested)
 armv6-ios3-clang "$OUT"/*.o -o "$APP/NowPlaying" \
-  -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore
+  -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore \
+  -framework AVFoundation -framework AudioToolbox   # B1.16.9: stage 3's silent mixable player
 armv6-ios3-strip -x "$APP/NowPlaying"
 armv6-ios3-ldid -S "$APP/NowPlaying"
 armv6-ios3-check "$APP/NowPlaying"

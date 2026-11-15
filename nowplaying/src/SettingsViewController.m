@@ -4,6 +4,7 @@
 #import "EnumPickerViewController.h"
 #import "StringEditorViewController.h"
 #import "NPEventProbe.h"
+#import "NPRemoteControl.h"
 
 #include <spawn.h>
 #include <sys/wait.h>
@@ -54,6 +55,9 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
 
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reload]; }
+// B1.16.9: take first responder back for the window (e.g. after the string editor's text field had it),
+// so the iPad's dock remote events have a responder.
+- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; NPRemoteControlClaimFirstResponder(self.view); }
 
 - (void)update { [self reload]; }
 

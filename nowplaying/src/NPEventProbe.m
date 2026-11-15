@@ -1,5 +1,6 @@
 #import "NPEventProbe.h"
 #import "FidelioStatus.h"  // FIDELIO_DIR
+#import "NPRemoteControl.h"
 
 static NSString* ProbeFlagPath(void) { return [FIDELIO_DIR stringByAppendingPathComponent:@"remote-probe.on"]; }
 static NSString* ProbeLogPath(void)  { return [FIDELIO_DIR stringByAppendingPathComponent:@"remote-events.log"]; }
@@ -22,7 +23,11 @@ static void appendLine(NSString* s) {
 
 @implementation NPApplication
 
+// B1.16.9: remote-control events (the iPad's dock keys, iOS 4+) are handled here before UIKit dispatches
+// them, so they reach audiod whichever tab or responder is in front. They are also caught at the end of
+// the responder chain below. NPRemoteControlHandle handles each event once and ignores everything else.
 - (void)sendEvent:(UIEvent*)event {
+  NPRemoteControlHandle(event, @"sendEvent");
   [super sendEvent:event];
   @try {
     static CFAbsoluteTime lastCheck = 0; static BOOL on = NO;
@@ -42,6 +47,11 @@ static void appendLine(NSString* s) {
     }
     appendLine([NSString stringWithFormat:@"%.3f %@\n", now, kind]);
   } @catch (NSException* e) {}
+}
+
+// B1.16.9: the end of the responder chain (UIApplication follows the window).
+- (void)remoteControlReceivedWithEvent:(UIEvent*)event {
+  NPRemoteControlHandle(event, @"responder chain");
 }
 
 @end
