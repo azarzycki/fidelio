@@ -75,21 +75,32 @@ static bool connectHost(const std::string& host, uint16_t port, const std::strin
   return false;
 }
 
-bool sendPause(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp) {
+static bool get(const std::string& path, const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp) {
   if (dacpId.empty() || activeRemote.empty()) return false;
   std::string host; uint16_t port = 0;
   if (!resolve(dacpId, host, port)) { IOS3_TRACE("DACP: could not resolve iTunes_Ctrl_%s._dacp._tcp", dacpId.c_str()); return false; }
   int fd = -1;
   if (!connectHost(host, port, senderIp, fd)) { IOS3_TRACE("DACP: cannot connect to %s:%u", host.c_str(), port); return false; }
-  char req[256];
+  char req[320];
   int n = snprintf(req, sizeof req,
-                   "GET /ctrl-int/1/pause HTTP/1.1\r\nActive-Remote: %s\r\nHost: %s:%u\r\nConnection: close\r\n\r\n",
-                   activeRemote.c_str(), host.c_str(), port);
+                   "GET %s HTTP/1.1\r\nActive-Remote: %s\r\nHost: %s:%u\r\nConnection: close\r\n\r\n",
+                   path.c_str(), activeRemote.c_str(), host.c_str(), port);
   bool ok = write(fd, req, n) == n;
-  if (ok) { char resp[256]; read(fd, resp, sizeof resp); }  // drain one response; any reply = received
+  int status = 0;
+  if (ok) { char resp[256] = {0}; ssize_t r = read(fd, resp, sizeof resp - 1); if (r > 0) sscanf(resp, "HTTP/1.%*d %d", &status); }
   close(fd);
-  IOS3_TRACE("DACP: GET /ctrl-int/1/pause to %s:%u (Active-Remote %s) -> %s", host.c_str(), port, activeRemote.c_str(), ok ? "sent" : "write failed");
+  IOS3_TRACE("DACP: GET %s to %s:%u (Active-Remote %s) -> %s (HTTP %d)", path.c_str(), host.c_str(), port, activeRemote.c_str(), ok ? "sent" : "write failed", status);
   return ok;
+}
+
+bool sendPause(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp) {
+  return get("/ctrl-int/1/pause", dacpId, activeRemote, senderIp);
+}
+
+bool sendVolume(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp, float db) {
+  char path[96];
+  snprintf(path, sizeof path, "/ctrl-int/1/setproperty?dmcp.device-volume=%.6f", db);
+  return get(path, dacpId, activeRemote, senderIp);
 }
 
 }  // namespace dacp

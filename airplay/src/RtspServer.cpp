@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <math.h>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -17,8 +18,15 @@
 #include "DacpRemote.h"
 #include "Dmap.h"
 #include "RaopSession.h"
+#include "SocketSink.h"
 #include "StatusFile.h"
 #include "ios3_trace.h"
+
+// B1.13: AirPlay's slider shows -30..0 dB linearly; map that range straight onto the 0..1 device
+// level and back. audiod's --hw-volume-curve (default linear) then maps the slider to the level.
+static float airDbToLevel(float db) { float l = db / 30.0f + 1.0f; return l < 0 ? 0 : l > 1 ? 1 : l; }
+static float airLevelToDb(float level) { if (level < 0) level = 0; if (level > 1) level = 1; return (level - 1.0f) * 30.0f; }
+static uint16_t airDbToSlider(float db) { return (uint16_t)(airDbToLevel(db) * 65535.0f + 0.5f); }
 
 static uint64_t rtspNowMs() { struct timeval tv; gettimeofday(&tv, nullptr); return (uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000; }
 
@@ -160,6 +168,61 @@ void RtspServer::handleConnection(Conn* c) {
   close(c->fd);
   IOS3_TRACE("RTSP connection from %s ended", inet_ntoa(c->peer.sin_addr));
   delete c;
+}
+
+// B1.13: audiod reported the device output level (WELCOME on connect, HWVOLUME on a change). Remember
+// the mode and the level; if AirPlay is the active source (audiod only tells the active one) and the
+// sender offers DACP, push the new level to the sender so its slider tracks the speaker.
+void RtspServer::onHardwareVolume(bool absolute, uint16_t slider) {
+  bool wasKnown = hwKnown;
+  airplayAbsolute = absolute;
+  hwLevel = slider / 65535.0f;
+  hwKnown = true;
+  IOS3_TRACE("audiod reports hardware volume %s: level %.2f (%.1f dB)", absolute ? "absolute" : "software", hwLevel, airLevelToDb(hwLevel));
+  if (absolute && wasKnown) pushDeviceVolumeToSender();  // a change (not the first WELCOME); echo it to the sender
+}
+
+void RtspServer::pushDeviceVolumeToSender() {
+  std::string di, ar, ip;
+  { std::scoped_lock l(sessionMutex); di = dacpId; ar = dacpActiveRemote; ip = sessionPeerIp; }
+  if (di.empty() || ar.empty()) return;  // no remote control: the sender's slider stays out of step until moved
+  float db = airLevelToDb(hwLevel);
+  // The DACP request blocks (resolve + HTTP); never run it on the audio/RTSP thread.
+  std::thread([di, ar, ip, db] { dacp::sendVolume(di, ar, ip, db); }).detach();
+}
+
+// Route a SET_PARAMETER volume. Software mode = today's dB->gain. Absolute mode = the sender's volume
+// drives the device level, AirPlay audio plays at unity: a real -30..0 value sets the hardware (unless
+// it is the session-opening value, which is remembered but NOT applied so an iPhone at full volume does
+// not slam the speaker on connect); -144 dB ("no remote volume" sentinel, B1.4) never touches the
+// hardware and plays at unity.
+void RtspServer::applyAirplayVolume(float db) {
+  if (!airplayAbsolute || !sink) {  // software mode (or no audiod sink): the B1.4 path
+    std::scoped_lock l(sessionMutex);
+    if (session) session->setVolumeDb(db);
+    IOS3_TRACE("volume %.2f dB (software gain)", db);
+    return;
+  }
+  if (db <= -144.0f) {  // the sentinel: sender has no volume control -> unity, leave the hardware alone
+    sink->setVolume(1.0f);
+    IOS3_TRACE("volume %.1f dB: sentinel (no remote volume) -> unity gain, hardware left alone (absolute)", db);
+    return;
+  }
+  if (!haveOpeningVol) {  // the first real volume of the session: remember, do not apply
+    haveOpeningVol = true;
+    openingDb = db;
+    sink->setVolume(1.0f);  // play at unity; the hardware keeps its current level
+    IOS3_TRACE("volume %.1f dB: session-opening value, NOT applied (no surprise jump); hardware stays at %.2f", db, hwKnown ? hwLevel : -1.0f);
+    pushDeviceVolumeToSender();  // tell the sender the true level so its slider is correct from the start
+    return;
+  }
+  if (fabsf(db - openingDb) < 0.01f) {  // unchanged from the opening value: still not a user move
+    IOS3_TRACE("volume %.1f dB: unchanged from the opening value, not applied (absolute)", db);
+    return;
+  }
+  openingDb = db;  // from now on, track the latest as the reference
+  sink->setVolumeSlider(1.0f, airDbToSlider(db), /*apply=*/true);  // a user move: set the hardware
+  IOS3_TRACE("volume %.1f dB -> set hardware level %.2f (slider %u), AirPlay at unity (absolute)", db, airDbToLevel(db), airDbToSlider(db));
 }
 
 void RtspServer::onPreempted(const std::string& by) {
@@ -343,6 +406,7 @@ void RtspServer::onAnnounce(Conn* c, const RtspRequest& req, int& code, std::map
   sessionOwner = c;
   c->ownsSession = true;
   c->sessionUri = req.uri;
+  haveOpeningVol = false;  // B1.13: a new session -> the next volume is the opening one (not applied in absolute mode)
   session->setVolumeDb(lastVolumeDb);
   status->clearTrack();
   status->setCodec(session->codecName());
@@ -369,7 +433,7 @@ void RtspServer::onSetup(Conn* c, const RtspRequest& req, int& code, std::map<st
 }
 
 void RtspServer::onRecord(Conn* c, const RtspRequest& req, int& code, std::map<std::string, std::string>& h) {
-  std::scoped_lock l(sessionMutex);
+  std::unique_lock<std::mutex> lock(sessionMutex);
   if (!session || sessionOwner != c) { code = 400; return; }
   std::string info = req.header("RTP-Info");
   uint16_t seq = 0; uint32_t rtptime = 0;
@@ -381,6 +445,9 @@ void RtspServer::onRecord(Conn* c, const RtspRequest& req, int& code, std::map<s
   h["Audio-Latency"] = "11025";
   status->setPlaying(true);
   status->setState("playing");
+  // B1.13: at session start, in absolute mode tell the sender the device's current level so its slider
+  // shows the truth (without this, the sender shows its own opening value until the user moves it).
+  if (airplayAbsolute && hwKnown) { lock.unlock(); pushDeviceVolumeToSender(); }
 }
 
 void RtspServer::onFlush(Conn* c, const RtspRequest& req, int& code, std::map<std::string, std::string>& h) {
@@ -411,9 +478,9 @@ void RtspServer::onSetParameter(Conn* c, const RtspRequest& req, int& code) {
       if (line.compare(0, 7, "volume:") == 0) {
         float db = (float)atof(line.c_str() + 7);
         lastVolumeDb = db;
-        std::scoped_lock l(sessionMutex);
-        if (session && sessionOwner == c) session->setVolumeDb(db);
-        IOS3_TRACE("volume %.2f dB", db);
+        bool mine;
+        { std::scoped_lock l(sessionMutex); mine = session && sessionOwner == c; }
+        if (mine) applyAirplayVolume(db);  // B1.13: absolute (hardware) vs software (gain)
       } else if (line.compare(0, 9, "progress:") == 0) {
         unsigned long start = 0, cur = 0, end = 0;
         if (sscanf(line.c_str() + 9, " %lu/%lu/%lu", &start, &cur, &end) == 3) {

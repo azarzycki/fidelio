@@ -168,7 +168,18 @@ int main(int argc, char** argv) {
   po.verifyMs = (unsigned)o.preemptVerifyMs;
   po.cooldownMs = (unsigned)o.preemptCooldownMs;
   server.setPreemptOptions(po);
-  if (sink) sink->setPreemptCallback(&RtspServer::preemptTrampoline, &server);
+  if (sink) {
+    sink->setPreemptCallback(&RtspServer::preemptTrampoline, &server);
+    // B1.13: the server learns the AirPlay volume mode + hardware level from audiod's WELCOME/HWVOLUME
+    // and drives the hardware from the sender's volume in absolute mode.
+    server.setSink(sink);
+    sink->setHardwareVolumeCallback(&RtspServer::hwVolumeTrampoline, &server);
+    // Give audiod's WELCOME a moment (mode + current level) so the first SET_PARAMETER volume is
+    // handled in the right mode. The RtspServer keeps learning from HWVOLUME as audio flows.
+    for (int i = 0; i < 40 && !sink->hardwareVolumeKnown(); i++) { sink->poll(); usleep(20000); }
+    IOS3_TRACE("audiod volume mode: %s%s", sink->hardwareVolumeAbsolute() ? "absolute (AirPlay drives the hardware)" : "software",
+               sink->hardwareVolumeKnown() ? "" : " (WELCOME not yet received; will learn as audio flows)");
+  }
   uint16_t port = server.listen();
   if (!port) { IOS3_TRACE("cannot listen on RTSP port %d", o.port); return 2; }
   IOS3_TRACE("RTSP listening on port %u", port);

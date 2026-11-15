@@ -66,6 +66,8 @@ Server::Server(const ServerOptions& o, const Tunables& t, AudioOutput* output, H
   } else {
     IOS3_TRACE("spotify volume: software gain (B1.7 curve applied by the producer)");
   }
+  IOS3_TRACE("airplay volume: %s (B1.13)%s", opts.airplayAbsolute ? "absolute" : "software",
+             opts.airplayAbsolute && !hwReady() ? " requested but hardware unavailable -> software fallback" : "");
   IOS3_TRACE("wake-on-play: %s%s%s", opts.wakeOnPlay && waker ? "on (" : "off", opts.wakeOnPlay && waker ? waker->describe().c_str() : "",
              opts.wakeOnPlay && waker ? (", app " + opts.wakeBundle + ")").c_str() : "");
 }
@@ -113,7 +115,7 @@ void Server::sendWelcome(Client& c) {
   AudiodWelcome w;
   memset(&w, 0, sizeof w);
   w.version = AUDIOD_PROTO_VERSION_2;
-  bool abs = absoluteActive();
+  bool abs = absoluteActiveFor(c.name);
   w.flags = abs ? AUDIOD_VOL_ABSOLUTE : 0;
   w.slider = abs ? levelToSlider(hwLevel) : 0;
   sendToClient(c, AUDIOD_MSG_WELCOME, &w, sizeof w);
@@ -125,7 +127,7 @@ void Server::sendWelcome(Client& c) {
 // Spotify steal the output (its controller replied to our volume notify with a track reload -> FLUSH),
 // so a non-active source is told only when it next becomes active. The report arms the arbiter grace.
 void Server::sendHwVolumeTo(Client& c) {
-  if (c.version < AUDIOD_PROTO_VERSION_2 || !absoluteActive()) return;
+  if (c.version < AUDIOD_PROTO_VERSION_2 || !absoluteActiveFor(c.name)) return;
   AudiodHwVolume v = { levelToSlider(hwLevel), AUDIOD_VOL_ABSOLUTE };
   sendToClient(c, AUDIOD_MSG_HWVOLUME, &v, sizeof v);
   arbiter.noteVolumeReport(c.id, nowMs());
@@ -157,7 +159,7 @@ void Server::applySlider(Client& c, uint16_t slider) {
 // Every pollIntervalMs: pick up a change made elsewhere (the phone's buttons, another client) and
 // report it to the v2 producers so their controllers show the true level.
 void Server::pollHardwareVolume(uint64_t now) {
-  if (!absoluteActive()) return;
+  if (!hwReady()) return;
   if (now - lastHwPollMs < hw->pollIntervalMs()) return;
   lastHwPollMs = now;
   float l = -1;
@@ -316,7 +318,7 @@ void Server::handle(Client& c, const Message& m) {
         // (or no hardware API): the producer's curved gain, exactly B1.7.
         c.sliderDriven = true;
         c.slider = slider;
-        if (absoluteActive()) {
+        if (absoluteActiveFor(c.name)) {
           c.volume = 1.0f;
           if (flags & AUDIOD_VOL_APPLY) applySlider(c, slider);
         } else {

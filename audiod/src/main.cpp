@@ -76,6 +76,8 @@ int main(int argc, char** argv) {
              "                           NAME.lockbundle (SBEnableLockScreenBundle, dlopen'ed; no-op if unavailable)\n"
              "  --preempt-pause on|off   (default on) tell a source that loses the output to pause (B1.12), so a\n"
              "                           background session cannot roll on and steal it back\n"
+             "  --airplay-volume-mode absolute|software  (default absolute) the AirPlay sender's volume drives the device\n"
+             "                           hardware level (B1.13); software = a gain under the current level; same hw backend / --max-volume\n"
              "                           and the new source's start from zero instead of a hard cut (0 = hard flush)\n"
              "  --audio-route auto|speaker|lineout   (AudioQueue) follow the system route / force the speaker\n"
              "  --on-route-change recreate|restart|none  (AudioQueue) what to do when the route changes\n"
@@ -130,6 +132,7 @@ int main(int argc, char** argv) {
     else if (a == "--lock-plugin") { std::string v = next("--lock-plugin"); so.lockPlugin = (v == "off") ? "" : v; }
     else if (a == "--preempt-pause") { std::string v = next("--preempt-pause"); if (v == "on") so.preemptPause = true; else if (v == "off") so.preemptPause = false; else { fprintf(stderr, "--preempt-pause must be on|off\n"); return 1; } }
     else if (a == "--preempt-delay-ms") so.preemptDelayMs = (unsigned)atoi(next("--preempt-delay-ms"));
+    else if (a == "--airplay-volume-mode") { std::string v = next("--airplay-volume-mode"); if (v == "absolute") so.airplayAbsolute = true; else if (v == "software") so.airplayAbsolute = false; else { fprintf(stderr, "--airplay-volume-mode must be absolute|software\n"); return 1; } }
     else if (a == "--crossfade-ms") so.crossfadeMs = (unsigned)atoi(next(a.c_str()));
     else if (a == "--status-dir") so.statusDir = next("--status-dir");
     else if (a == "--no-status") so.statusDir.clear();

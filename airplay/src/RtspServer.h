@@ -16,6 +16,7 @@
 
 class AudioOutput;
 class StatusFile;
+class SocketSink;
 
 struct RtspRequest {
   std::string method, uri, version;
@@ -36,6 +37,11 @@ class RtspServer {
   // on its own thread so the takeover and the new source are never delayed.
   void onPreempted(const std::string& by);
   static void preemptTrampoline(void* self, const char* by) { static_cast<RtspServer*>(self)->onPreempted(by ? by : ""); }
+  // B1.13: the audiod sink, so AirPlay volume can drive the hardware (absolute mode). The server
+  // learns the mode and the current hardware level from the sink's WELCOME/HWVOLUME callback.
+  void setSink(::SocketSink* s) { sink = s; }
+  void onHardwareVolume(bool absolute, uint16_t slider);  // from the sink (audiod reported the hardware level)
+  static void hwVolumeTrampoline(void* self, bool absolute, uint16_t slider) { static_cast<RtspServer*>(self)->onHardwareVolume(absolute, slider); }
   // Binds the listening socket; returns the port actually bound (0 on failure).
   uint16_t listen();
   // Runs the accept loop forever.
@@ -64,6 +70,8 @@ class RtspServer {
   void endSession(Conn* c, const char* why);
   void runPreemptPolicy(std::string by);   // B1.12, background thread
   void forceDisconnect(const char* why);   // tear down the session and shut the owner socket; start the cool-down
+  void applyAirplayVolume(float db);       // B1.13: route a SET_PARAMETER volume (absolute vs software)
+  void pushDeviceVolumeToSender();         // B1.13: DACP setproperty device-volume = current hardware level
 
   uint16_t port;
   std::string name;
@@ -84,4 +92,12 @@ class RtspServer {
   std::string dacpId, dacpActiveRemote, sessionPeerIp;
   std::map<std::string, uint64_t> cooldownUntil;  // peer IP -> monotonic ms until which a new session is refused
   std::atomic<bool> preemptBusy{false};
+  // B1.13: AirPlay absolute volume. The mode and the current hardware level come from the audiod
+  // sink's WELCOME/HWVOLUME; the opening volume of a session is remembered but not applied.
+  ::SocketSink* sink = nullptr;
+  bool airplayAbsolute = false;   // audiod runs AirPlay in absolute mode (from WELCOME)
+  bool hwKnown = false;
+  float hwLevel = 0.0f;           // 0..1, the device output level audiod reported
+  bool haveOpeningVol = false;    // the first volume of the current session has been seen
+  float openingDb = 0.0f;
 };

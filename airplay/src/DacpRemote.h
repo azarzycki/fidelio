@@ -15,4 +15,9 @@ namespace dacp {
 // ~1.5 s total. Never throws.
 bool sendPause(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp);
 
+// B1.13: push the device's current output level to the sender so its slider shows the truth
+// (GET /ctrl-int/1/setproperty?dmcp.device-volume=<db>, db in AirPlay's -30..0 range). Same
+// resolve/connect budget as sendPause; never throws.
+bool sendVolume(const std::string& dacpId, const std::string& activeRemote, const std::string& senderIp, float db);
+
 }  // namespace dacp

@@ -40,6 +40,11 @@ ap.add_argument("--jitter", action="store_true", help="model a jittery WiFi: hol
 ap.add_argument("--preempt-test", choices=["honor", "ignore", "none"], help="honor/ignore: advertise DACP + run a mock DACP server that honours/ignores pause; none: advertise no remote control")
 ap.add_argument("--dacp-listen", type=int, default=0, help="port for the mock DACP server (honor/ignore)")
 ap.add_argument("--stream-secs", type=float, default=8.0, help="how long to stream in --preempt-test mode")
+# B1.13 volume test: stream and send a sequence of SET_PARAMETER volumes; a mock DACP server records
+# both pause and setproperty (device-volume).
+ap.add_argument("--volume-test", action="store_true")
+ap.add_argument("--volume-seq", default="", help="comma dB values sent one per second during the stream")
+ap.add_argument("--no-dacp", action="store_true", help="omit DACP-ID/Active-Remote (a sender with no remote control)")
 args = ap.parse_args()
 
 sock = socket.create_connection((args.host, args.port), timeout=5)
@@ -55,7 +60,7 @@ def request(method, uri, headers=None, body=b"", ctype=None):
     global cseq
     cseq += 1
     h = {"CSeq": str(cseq), "User-Agent": "raop_sender/1.0", "Client-Instance": "ABCDEF0123456789"}
-    if args.preempt_test != "none":  # "none" = a sender with no remote control (no DACP headers)
+    if args.preempt_test != "none" and not args.no_dacp:  # a sender with no remote control sends no DACP headers
         h.update({"DACP-ID": "ABCDEF0123456789", "Active-Remote": "1234567890"})
     if headers: h.update(headers)
     if body:
@@ -220,6 +225,43 @@ def service_timing():
 resent, timing_answered = [], []
 sync_sent = 0
 t0 = time.time()
+
+# --- B1.13 volume test: a mock DACP server (pause + setproperty) + a scheduled volume sequence -----
+if args.volume_test:
+    import http.server, threading, urllib.parse
+    rec = {"devvols": [], "pauses": 0}
+    if args.dacp_listen:
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path.startswith("/ctrl-int/1/pause"): rec["pauses"] += 1
+                elif "/setproperty" in self.path and "device-volume" in self.path:
+                    q = urllib.parse.urlparse(self.path).query
+                    v = urllib.parse.parse_qs(q).get("dmcp.device-volume", [""])[0]
+                    try: rec["devvols"].append(round(float(v), 2))
+                    except ValueError: pass
+                self.send_response(200); self.send_header("Content-Length", "0"); self.end_headers()
+            def log_message(self, *a): pass
+        threading.Thread(target=http.server.HTTPServer(("127.0.0.1", args.dacp_listen), H).serve_forever, daemon=True).start()
+    seq = [float(x) for x in args.volume_seq.split(",") if x.strip()] if args.volume_seq else []
+    nextvol = 0
+    i = 0
+    end = time.time() + args.stream_secs
+    while time.time() < end:
+        send_packet(i); i += 1
+        if i % 125 == 0:
+            now = time.time() + 2208988800
+            rtp_now = (rtp_base + i * FRAMES) & 0xFFFFFFFF
+            ctrl_s.sendto(struct.pack(">BBHI", 0x80, 0xD4, 7, (rtp_now - 11025) & 0xFFFFFFFF) + struct.pack(">II", int(now), int((now % 1) * 2**32)) + struct.pack(">I", rtp_now), (args.host, control_port))
+        service_control(); service_timing()
+        # send the next volume ~1 s apart (after a 1 s warm-up so it is clearly post-session-start)
+        if nextvol < len(seq) and time.time() - t0 > 1.0 + nextvol * 1.0:
+            request("SET_PARAMETER", uri, {"Session": "1"}, f"volume: {seq[nextvol]:.6f}\r\n".encode())
+            nextvol += 1
+        d = t0 + (i + 1) * FRAMES / 44100.0 - time.time()
+        if d > 0: time.sleep(d)
+    print(f"VOLTEST devvols={';'.join(str(x) for x in rec['devvols'])} pauses={rec['pauses']} streamed={i}")
+    if expect: expect.close()
+    sock.close(); sys.exit(0)
 
 # --- B1.12 preempt test: a mock DACP server + a continuous stream that reacts to pause ------------
 if args.preempt_test:

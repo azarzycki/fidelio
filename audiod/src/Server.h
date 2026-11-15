@@ -36,6 +36,7 @@ struct ServerOptions {
   unsigned crossfadeMs = 30;   // source switch / release: ramp the tail about to play and the new source's start (0 = hard flush)
   // B1.9 A: a slider-driven source (Spotify) sets the device's real output volume instead of a software gain
   bool absoluteVolume = true;  // --spotify-volume absolute|software (falls back to software when the hardware API is unavailable)
+  bool airplayAbsolute = true; // --airplay-volume-mode absolute|software (B1.13): the AirPlay sender's volume drives the hardware
   int maxVolumePct = 100;      // --max-volume: ceiling for what absolute mode will ever set the hardware to
   int hwCurve = 0;             // --hw-volume-curve: 0 linear (default: the hardware has its own taper), 1 log (60 dB), 2 cubic
   // B1.9 B: wake the display and foreground the NowPlaying app when playback starts from nothing
@@ -94,7 +95,11 @@ class Server {
   void writeActiveSourceFile(const std::string& name);
   void logEvent(const Event& e);
   // B1.9 A
-  bool absoluteActive() const { return opts.absoluteVolume && hw && hwAvailable; }
+  bool hwReady() const { return hw && hwAvailable; }
+  // B1.13: absolute mode can differ per source. A slider-driven source sets the hardware only when
+  // its source is in absolute mode and the backend is available.
+  bool absoluteActiveFor(const std::string& name) const { return (name == "airplay" ? opts.airplayAbsolute : opts.absoluteVolume) && hwReady(); }
+  bool absoluteActive() const { return opts.absoluteVolume && hwReady(); }  // Spotify (kept for the startup log)
   float sliderToLevel(uint16_t slider) const;   // raw slider -> hardware level through opts.hwCurve
   uint16_t levelToSlider(float level) const;    // inverse, for reporting
   void applySlider(Client& c, uint16_t slider); // a user slider move: clamp, set the hardware, log, report a clamp
