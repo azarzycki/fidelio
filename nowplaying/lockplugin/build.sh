@@ -20,7 +20,9 @@ SUP2='_OBJC_METACLASS_$_SBAwayViewPluginController'
 
 CFLAGS="-O2 -Wall -Wno-unused -fno-objc-arc -fobjc-exceptions -x objective-c"
 armv6-ios3-clang $CFLAGS -c FidelioLockPluginController.m -o "$OUT/FidelioLockPluginController.o"
-armv6-ios3-clang -bundle -Wl,-U,"$SUP1" -Wl,-U,"$SUP2" "$OUT/FidelioLockPluginController.o" -o "$BND/Fidelio" \
+# B1.16.7: the layout core is plain C, shared with the host test (nowplaying/hosttest/lock_layout_test.c).
+armv6-ios3-clang -O2 -Wall -std=c99 -c LPLayout.c -o "$OUT/LPLayout.o"
+armv6-ios3-clang -bundle -Wl,-U,"$SUP1" -Wl,-U,"$SUP2" "$OUT/FidelioLockPluginController.o" "$OUT/LPLayout.o" -o "$BND/Fidelio" \
   -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore
 armv6-ios3-strip -x "$BND/Fidelio"
 armv6-ios3-ldid -S "$BND/Fidelio"

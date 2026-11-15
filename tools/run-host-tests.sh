@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/run-host-tests.sh [REPO]   (REPO defaults to the repo this script lives in)
 #
-# Builds the host targets the 20 host suites need (18 audiod + the NowPlaying layout + cspot's cover URL) (only what is missing / out of date), runs
+# Builds the host targets the 21 host suites need (18 audiod + the NowPlaying and lock-plugin layouts + cspot's cover URL) (only what is missing / out of date), runs
 # the suites one after another (they share fixed /tmp/audiod-* dirs and TCP ports: never in
 # parallel), and prints a per-suite table plus a TOTAL line.
 #
@@ -41,7 +41,7 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 317 ok, 0 FAIL, at B1.16.6)
+# name | baseline ok count | command (baseline: 327 ok, 0 FAIL, at B1.16.7)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -62,6 +62,7 @@ ap_preempt   11 $PYTHON $T/test_airplay_preempt.py $AUDIOD $RAOP
 ap_volume    11 $PYTHON $T/test_airplay_volume.py $AUDIOD $RAOP
 volume       11 $PYTHON $T/test_volume.py $AUDIOD
 layout       30 $HOST/nowplaying/layout_test
+lock_layout  10 $HOST/nowplaying/lock_layout_test
 cover_url     6 $HOST/cspot/cover_url_test
 "
 
@@ -117,6 +118,9 @@ build_host() {
   mkdir -p "$HOST/nowplaying"
   logged "$LOGS/host-layout-build.log" cc -O2 -Wall -Wextra -std=c99 -I"$REPO/nowplaying/src" -o "$HOST/nowplaying/layout_test" \
     "$REPO/nowplaying/src/NPLayout.c" "$REPO/nowplaying/hosttest/layout_test.c"
+  # B1.16.7: the lock plugin's layout core (the same C the plugin compiles).
+  logged "$LOGS/host-lock-layout-build.log" cc -O2 -Wall -Wextra -std=c99 -I"$REPO/nowplaying/lockplugin" -o "$HOST/nowplaying/lock_layout_test" \
+    "$REPO/nowplaying/lockplugin/LPLayout.c" "$REPO/nowplaying/hosttest/lock_layout_test.c" -lm
   logged "$LOGS/host-cover-url-build.log" c++ -O2 -Wall -std=c++17 -I"$REPO/spotify/cli-src" -o "$HOST/cspot/cover_url_test" \
     "$REPO/spotify/hosttest/cover_url_test.cpp"
 }
@@ -127,7 +131,7 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
   note "host build done after ${SECONDS}s"
 fi
 BUILD_SECS=$SECONDS
-for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/cspot/cover_url_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
+for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/nowplaying/lock_layout_test" "$HOST/cspot/cover_url_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
          "$HOST/audiod/aqsink_bare_test" "$HOST/audiod/writeframe_test" "$HOST/audiod/settings_test"; do
   [ -x "$f" ] || die "missing host binary $f (run without SKIP_BUILD=1)"
 done

@@ -1,6 +1,10 @@
 #import "FidelioLockPluginController.h"
 
+#import <objc/message.h>
 #import <objc/runtime.h>
+#include <stdlib.h>
+
+#include "LPLayout.h"
 
 #define FIDELIO_DIR @"/var/mobile/fidelio"
 #define COVER_PX 256.0f
@@ -126,27 +130,37 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
   return content;
 }
 
-// Lay the content out centred in the lower third of the lock screen, so the system clock/date stay
-// at the top and slide-to-unlock stays at the bottom (we are not fullscreen).
+static CGRect CR(LPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
+
+// Lay the content out between the system clock/date (top) and slide-to-unlock (bottom): we are not
+// fullscreen. B1.16.7: the frames come from LPLayout.c. The tablet is unchanged from B1.16.3; the
+// 320x480 phone gets its own metrics (B1.16.3 put the text under the unlock bar there).
 - (void)layout {
   GUARD(
     if (!content) return;
     CGRect b = content.bounds;
-    CGFloat W = b.size.width, H = b.size.height;
-    CGFloat cover = W < H ? 220 : 180;          // smaller in landscape (less height)
-    CGFloat cx = W / 2;
-    CGFloat top = H * 0.42f;                     // below the clock
-    coverView.frame = CGRectMake(cx - cover / 2, top, cover, cover);
-    CGFloat y = top + cover + 14;
-    sourceLabel.frame = CGRectMake(0, y, W, 18); y += 20;
-    titleLabel.frame = CGRectMake(20, y, W - 40, 32); y += 34;
-    artistLabel.frame = CGRectMake(20, y, W - 40, 26); y += 26;
-    albumLabel.frame = CGRectMake(20, y, W - 40, 22); y += 32;
-    CGFloat tw = W * 0.6f;
-    track.frame = CGRectMake(cx - tw / 2, y, tw, 3);
-    elapsedLabel.frame = CGRectMake(cx - tw / 2, y + 6, 80, 16);
-    remainingLabel.frame = CGRectMake(cx + tw / 2 - 80, y + 6, 80, 16);
-    idleLabel.frame = CGRectMake(0, top + cover / 2 - 12, W, 24);
+    CGRect s = [UIScreen mainScreen].bounds;
+    LPLayout L;
+    LPLayoutCompute(b.size.width, b.size.height, LPIsTablet(s.size.width, s.size.height), &L);
+    coverView.frame = CR(L.cover);
+    sourceLabel.frame = CR(L.source);
+    titleLabel.frame = CR(L.title);
+    artistLabel.frame = CR(L.artist);
+    albumLabel.frame = CR(L.album);
+    track.frame = CR(L.track);
+    elapsedLabel.frame = CR(L.elapsed);
+    remainingLabel.frame = CR(L.remaining);
+    idleLabel.frame = CR(L.idle);
+    sourceLabel.font = [UIFont systemFontOfSize:L.sourceFont];
+    titleLabel.font = [UIFont boldSystemFontOfSize:L.titleFont];
+    artistLabel.font = [UIFont systemFontOfSize:L.artistFont];
+    albumLabel.font = [UIFont systemFontOfSize:L.albumFont];
+    elapsedLabel.font = [UIFont systemFontOfSize:L.timeFont];
+    remainingLabel.font = [UIFont systemFontOfSize:L.timeFont];
+    idleLabel.font = [UIFont systemFontOfSize:L.idleFont];
+    LPTrace([NSString stringWithFormat:@"layout: view %.0fx%.0f, screen %.0fx%.0f, %@: cover %.0f at y %.0f, text to y %.0f",
+             b.size.width, b.size.height, s.size.width, s.size.height, L.tablet ? @"tablet" : @"phone", L.cover.w, L.cover.y,
+             L.elapsed.y + L.elapsed.h]);
   )
 }
 
@@ -284,21 +298,55 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
 }
 
 // B1.16.6: KeepScreenOn for real. While KeepScreenOn is set and something plays, every refresh (1 Hz,
-// and only while this plugin is on screen) restarts SpringBoard's lock-screen dim countdown,
-// -[SBAwayController restartDimTimer]. Nothing needs undoing. When the music stops, KeepScreenOn is
-// turned off, or the plugin leaves the screen, the calls stop and the countdown runs out as usual. A
-// lock screen that is already dimming or off (-isDimmed, e.g. after the sleep button) is left alone,
-// so the sleep button still wins. Returns what it did, for the debug trace: off / held / dimmed /
-// unavailable.
+// and only while this plugin is on screen) restarts SpringBoard's lock-screen dim countdown. Nothing
+// needs undoing. When the music stops, KeepScreenOn is turned off, or the plugin leaves the screen, the
+// calls stop and the countdown runs out as usual. A lock screen that is already dimming or off
+// (-isDimmed, e.g. after the sleep button) is left alone, so the sleep button still wins.
+// B1.16.7: the 5.1.1 iPad has -restartDimTimer. The 3.1.3 SpringBoard has -restartDimTimer: (the no-arg
+// form is unconfirmed there), so that is the fallback. It is used only when the runtime says its
+// argument is a float or a double (method_copyArgumentType: never called with a guessed type), with
+// 10 s, i.e. the screen dims at most ~10 s after the music stops. Resolved once; the trace logs what
+// was found, including the type encoding. Returns what it did, for the debug trace: off,
+// held / held:arg-float / held:arg-double, dimmed, unavailable.
+enum { KL_UNRESOLVED, KL_NOARG, KL_ARG_FLOAT, KL_ARG_DOUBLE, KL_NONE };
+static int keepLitPath = KL_UNRESOLVED;
+
+static void ResolveKeepLit(id away) {
+  Method m;
+  if ([away respondsToSelector:@selector(restartDimTimer)]) {
+    keepLitPath = KL_NOARG;
+    LPTrace(@"keep-lit: using -[SBAwayController restartDimTimer]");
+    return;
+  }
+  m = class_getInstanceMethod(object_getClass(away), @selector(restartDimTimer:));
+  if (m) {
+    char* arg = method_copyArgumentType(m, 2);  // 0 = self, 1 = _cmd, 2 = the argument
+    const char* enc = method_getTypeEncoding(m);
+    keepLitPath = (arg && arg[0] == 'f') ? KL_ARG_FLOAT : (arg && arg[0] == 'd') ? KL_ARG_DOUBLE : KL_NONE;
+    LPTrace([NSString stringWithFormat:@"keep-lit: -[SBAwayController restartDimTimer:] has types '%s' (argument '%s'): %@",
+             enc ? enc : "?", arg ? arg : "?", keepLitPath == KL_NONE ? @"not a float/double, NOT used" : @"used with 10 s"]);
+    if (arg) free(arg);
+    return;
+  }
+  keepLitPath = KL_NONE;
+  LPTrace(@"keep-lit: SBAwayController has neither -restartDimTimer nor -restartDimTimer: (the lock screen dims as usual)");
+}
+
 - (NSString*)holdScreenLit {
   if (!(keepScreenOn && haveContent)) return @"off";
   Class cls = objc_getClass("SBAwayController");
   id<FidelioSBAwayController> away = nil;
   if (cls && [(id)cls respondsToSelector:@selector(sharedAwayController)]) away = [(id)cls sharedAwayController];
-  if (!away || ![away respondsToSelector:@selector(restartDimTimer)]) return @"unavailable";
+  if (!away) return @"unavailable";
+  if (keepLitPath == KL_UNRESOLVED) ResolveKeepLit(away);
+  if (keepLitPath == KL_NONE) return @"unavailable";
   if ([away respondsToSelector:@selector(isDimmed)] && [away isDimmed]) return @"dimmed";
-  [away restartDimTimer];
-  return @"held";
+  switch (keepLitPath) {
+    case KL_NOARG: [away restartDimTimer]; return @"held";
+    case KL_ARG_FLOAT: ((void (*)(id, SEL, float))objc_msgSend)(away, @selector(restartDimTimer:), 10.0f); return @"held:arg-float";
+    case KL_ARG_DOUBLE: ((void (*)(id, SEL, double))objc_msgSend)(away, @selector(restartDimTimer:), 10.0); return @"held:arg-double";
+  }
+  return @"unavailable";
 }
 - (BOOL)showDateView { return YES; }                 // keep the system clock/date
 - (BOOL)showAwayItems { return YES; }                // keep slide-to-unlock etc.

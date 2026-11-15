@@ -409,3 +409,32 @@ From the device tests on the locked 5.1.1 iPad (cspot-build-local):
   - `-canScreenDim` still votes, for a SpringBoard that honours it.
   - Not done: a full-screen plugin (it would hide the clock and the unlock slider), and a backlight hold
     from audiod (it would keep running while the plugin is hidden).
+
+## B1.16.7 (the lock plugin on the 3.1.3 phone: layout and keep-lit)
+
+The plugin (B1.16.3) draws on the phone as well, but two things were wrong there:
+
+- **Layout.** `-layout` used the iPad numbers on the phone too: a 220 pt cover starting at 42 % of the
+  height, plus iPad font sizes. On the 320×480 lock screen that put the title at y≈456 and the artist below
+  the screen, under "slide to unlock".
+  - The frames now come from `nowplaying/lockplugin/LPLayout.c`, plain C that the plugin and the host test
+    share.
+  - The tablet (the screen's shorter side > 600 pt) keeps exactly the B1.16.3 layout, which was right on
+    the device.
+  - The phone gets a cover of at most 140 pt and smaller fonts. Cover, text and progress are centred in the
+    band between the clock/date area (to y≈116) and the slide-to-unlock bar (from 96 pt above the bottom),
+    as measured from a device photo.
+  - `nowplaying/hosttest/lock_layout_test.c` (10 checks): the tablet is pinned to B1.16.3 in both
+    orientations; on the phone everything stays inside the band, nothing overlaps, the cover is square
+    and ≤ 140, and the fonts are the phone sizes.
+  - The debug trace logs the view and screen size at each layout.
+- **Keep-lit.** The 3.1.3 SpringBoard has `-[SBAwayController restartDimTimer:]` (with an argument); the
+  no-argument form B1.16.6 uses was not found there.
+  - The plugin resolves its path once. The no-argument form is used where it exists (the iPad). Otherwise
+    `restartDimTimer:` is used, but only when the runtime says the argument is a float or a double
+    (`method_copyArgumentType`, so it is never called with a guessed type); it gets 10 s each second.
+    Otherwise the path is "unavailable".
+  - The trace records the type encoding it found, and each refresh line names the path:
+    `keepLit=held|held:arg-float|held:arg-double|dimmed|off|unavailable`.
+  - `preventIdleSleepForNumberOfSeconds:` is not used: it governs system sleep rather than the dim, and its
+    argument type is unknown.
