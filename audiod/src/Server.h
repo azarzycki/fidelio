@@ -151,9 +151,13 @@ class Server {
   void schedulePreempt(const Event& e);
   void firePreempts(uint64_t now);
   Client* clientByName(const std::string& name);
-  // B1.11: enable the lock-screen bundle for a none -> source start, disable it on the return to none
-  void enableLockPlugin(const std::string& source, uint64_t atMs);
-  void disableLockPlugin();
+  // B1.11: enable the lock-screen bundle for a none -> source start, disable it on the return to none.
+  // B1.16.11: `why` is appended to the event's reason ("turned on while playing", ...).
+  void enableLockPlugin(const std::string& source, uint64_t atMs, const char* why = nullptr);
+  void disableLockPlugin(const char* why = nullptr);
+  // B1.16.11: while a source plays, keep the plugin in line with the live setting and with SpringBoard
+  // (re-enable after a SpringBoard restart, which forgets an enabled bundle). Called every run-loop pass.
+  void syncLockPlugin(uint64_t now);
 
   ServerOptions opts;
   Tunables t;        // B1.15: the live tunables the registry binds to; mirrored into the arbiter via applyLiveConfig()
@@ -167,6 +171,16 @@ class Server {
   uint64_t lastWakeMs = 0;
   std::string lastActiveName;  // B1.16: the last source that held the output (for PLAY-resumes-paused)
   bool lockEnabled = false;  // B1.11: the lock bundle is currently enabled
+  // B1.16.11: the name it was enabled under (a live setting change must not disable a different name),
+  // whether audiod unlocked the device for the current start (the agreed rule keeps the plugin off then),
+  // the last lock_plugin setting seen (-1 = not yet), and SpringBoard-restart detection.
+  std::string lockEnabledName;
+  bool unlockedThisStart = false;
+  int lockSettingSeen = -1;
+  int sbPidAtEnable = 0;
+  uint64_t lastSbCheckMs = 0, sbNewSeenMs = 0;
+  static const uint64_t kSbCheckMs = 2000;   // poll SpringBoard's pid this often while the plugin is enabled
+  static const uint64_t kSbSettleMs = 4000;  // and re-enable once a new SpringBoard has been up this long
   bool unlockUnavailableLogged = false;  // B1.16.4: "SBSOpenSensitiveURLAndUnlock not available", once per process
   // B1.14 live settings
   fidelio::Registry* settings = nullptr;

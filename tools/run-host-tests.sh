@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/run-host-tests.sh [REPO]   (REPO defaults to the repo this script lives in)
 #
-# Builds the host targets the 21 host suites need (18 audiod + the NowPlaying and lock-plugin layouts + cspot's cover URL) (only what is missing / out of date), runs
+# Builds the host targets the 22 host suites need (19 audiod + the NowPlaying and lock-plugin layouts + cspot's cover URL) (only what is missing / out of date), runs
 # the suites one after another (they share fixed /tmp/audiod-* dirs and TCP ports: never in
 # parallel), and prints a per-suite table plus a TOTAL line.
 #
@@ -41,7 +41,7 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 332 ok, 0 FAIL, at B1.16.10)
+# name | baseline ok count | command (baseline: 340 ok, 0 FAIL, at B1.16.11)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -57,6 +57,7 @@ producers    21 $PYTHON $T/test_producers.py $AUDIOD $RAOP $CSPOT
 pacing        8 $PYTHON $T/test_pacing.py $AUDIOD $RAOP
 wake         11 $PYTHON $T/test_wake.py $AUDIOD
 unlock       23 $PYTHON $T/test_unlock.py $AUDIOD
+lockplugin    8 $PYTHON $T/test_lockplugin.py $AUDIOD
 preempt      11 $PYTHON $T/test_preempt.py $AUDIOD
 ap_preempt   11 $PYTHON $T/test_airplay_preempt.py $AUDIOD $RAOP
 ap_volume    11 $PYTHON $T/test_airplay_volume.py $AUDIOD $RAOP

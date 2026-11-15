@@ -464,3 +464,29 @@ from the NowPlaying Settings tab. The iPhone keeps launching NowPlaying.
     launched, no unlock call, and the plugin is enabled before the wake.
   - `test_settings.py` +2: `wake_mode` is in the manifest (an enum, default `launch`) and changes live
     to `screen`.
+
+## B1.16.11 (the lock plugin follows the live setting and survives a SpringBoard restart)
+
+Device-found on the iPad: after a respring while Spotify was already playing, the plugin was not shown
+again until the next start from nothing. SpringBoard had forgotten the enabled bundle while audiod still
+counted it as enabled. The same gap left a live change of `lock_plugin` without effect until the next
+start. `Server::syncLockPlugin()` runs every run-loop pass while a source plays:
+
+- **Live setting.**
+  - `lock_plugin` switched on enables the plugin at once ("lock-plugin enabled ... (turned on while
+    playing)"), except after audiod unlocked the device for this start (the agreed rule).
+  - Switched off, it is disabled at once.
+  - It is edge-triggered on the setting, so a failing SpringBoard call is never retried in a loop.
+  - The bundle is disabled under the name it was enabled with, even when the setting has changed since.
+    Before, the disable used the current setting's name, which is empty once the setting is off.
+- **SpringBoard restart.**
+  - While the plugin is enabled, SpringBoard's pid (`DisplayWaker::springBoardPid()`, from `sysctl
+    KERN_PROC_ALL`) is polled every 2 s.
+  - When it changes, the bundle is enabled again once the new SpringBoard has been up for 4 s: "lock-plugin
+    re-enabled ... after a SpringBoard restart".
+  - A hung SpringBoard (same pid) is not detected; noted in the backlog.
+- **Tests:** `hosttest/test_lockplugin.py` (8 checks), with the mock waker's `AUDIOD_MOCK_SB_RESTART_MS`.
+  - A live on/off while playing: one enable and one disable, under the enabled name, and no re-enable
+    without a restart.
+  - A restart 3 s in: one re-enable, 6–10.5 s in.
+  - After an audiod unlock, switching the setting on keeps the plugin off.

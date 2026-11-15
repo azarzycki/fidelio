@@ -21,6 +21,9 @@
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/sysctl.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 
@@ -95,6 +98,22 @@ class SpringBoardWaker : public DisplayWaker {
     IOS3_TRACE("unlock-on-play: SBSOpenSensitiveURLAndUnlock(%s, unlock) -> %s (%llu ms)", url.c_str(),
                ok ? "true (accepted: unlocks and opens the app)" : "false (refused, e.g. a missing entitlement)", (unsigned long long)ms);
     return ok ? 1 : 0;
+  }
+  // B1.16.11: SpringBoard's pid from the kernel's process list (0 if it is not running right now).
+  int springBoardPid() override {
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0 };
+    size_t len = 0;
+    if (sysctl(mib, 4, nullptr, &len, nullptr, 0) != 0 || len == 0) return 0;
+    len += len / 4;  // the list may grow between the two calls
+    struct kinfo_proc* procs = (struct kinfo_proc*)malloc(len);
+    if (!procs) return 0;
+    int pid = 0;
+    if (sysctl(mib, 4, procs, &len, nullptr, 0) == 0) {
+      for (size_t i = 0, n = len / sizeof(struct kinfo_proc); i < n; i++)
+        if (strncmp(procs[i].kp_proc.p_comm, "SpringBoard", sizeof procs[i].kp_proc.p_comm) == 0) { pid = procs[i].kp_proc.p_pid; break; }
+    }
+    free(procs);
+    return pid;
   }
   bool enableLockBundle(const std::string& name) override { return setLock(name, true); }
   bool disableLockBundle(const std::string& name) override { return setLock(name, false); }

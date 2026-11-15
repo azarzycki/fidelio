@@ -183,19 +183,59 @@ void Server::pollHardwareVolume(uint64_t now) {
 // B1.11: enable the lock-screen bundle for a playback start from nothing (onStartFromNone decides
 // when), and disable it when nothing is active any more. dlopen/dlsym; no-op if the flag is off or the
 // API is unavailable.
-void Server::enableLockPlugin(const std::string& source, uint64_t atMs) {
+void Server::enableLockPlugin(const std::string& source, uint64_t atMs, const char* why) {
   if (opts.lockPlugin.empty() || !waker || lockEnabled) return;
   if (waker->enableLockBundle(opts.lockPlugin)) {
     lockEnabled = true;
-    logEvent(Event{Event::WAKE, atMs, "none", source, "lock-plugin enabled " + opts.lockPlugin});
+    lockEnabledName = opts.lockPlugin;
+    sbPidAtEnable = waker->springBoardPid();  // B1.16.11: to notice a SpringBoard restart later
+    sbNewSeenMs = 0;
+    logEvent(Event{Event::WAKE, atMs, "none", source, "lock-plugin enabled " + opts.lockPlugin + (why ? std::string(" (") + why + ")" : "")});
   }
 }
 
-void Server::disableLockPlugin() {
+void Server::disableLockPlugin(const char* why) {
   if (!lockEnabled || !waker) return;
-  waker->disableLockBundle(opts.lockPlugin);
+  waker->disableLockBundle(lockEnabledName);  // the name it was enabled under, even if the setting changed
   lockEnabled = false;
-  logEvent(Event{Event::WAKE, nowMs(), "", "none", "lock-plugin disabled " + opts.lockPlugin});
+  sbPidAtEnable = 0;
+  sbNewSeenMs = 0;
+  logEvent(Event{Event::WAKE, nowMs(), "", "none", "lock-plugin disabled " + lockEnabledName + (why ? std::string(" (") + why + ")" : "")});
+}
+
+// B1.16.11: onStartFromNone decides about the plugin when playback starts. This covers what can change
+// while a source keeps playing.
+//  - The lock_plugin setting changed live: on -> enable now (unless audiod unlocked the device for this
+//    start: the agreed rule); off -> disable now. Edge-triggered on the setting, so a failing SpringBoard
+//    call is never retried in a loop.
+//  - SpringBoard restarted (a respring forgets an enabled bundle while audiod still counts it as on):
+//    SpringBoard's pid is polled every kSbCheckMs while the plugin is enabled, and once a new SpringBoard
+//    has been up for kSbSettleMs the bundle is enabled again. Device-found on the iPad: after a respring
+//    while playing, the plugin was not shown until the next start from nothing.
+void Server::syncLockPlugin(uint64_t now) {
+  if (!waker) return;
+  std::string a = arbiter.activeName();
+  int settingOn = opts.lockPlugin.empty() ? 0 : 1;
+  if (settingOn != lockSettingSeen) {
+    bool first = lockSettingSeen < 0;
+    lockSettingSeen = settingOn;
+    if (!first && !a.empty()) {
+      if (!settingOn && lockEnabled) disableLockPlugin("turned off while playing");
+      else if (settingOn && !lockEnabled && !unlockedThisStart) enableLockPlugin(a, now, "turned on while playing");
+    }
+  }
+  if (!lockEnabled || a.empty() || now - lastSbCheckMs < kSbCheckMs) return;
+  lastSbCheckMs = now;
+  int pid = waker->springBoardPid();
+  if (pid <= 0) return;  // unknown (host build) or SpringBoard is down at this moment
+  if (sbPidAtEnable <= 0) { sbPidAtEnable = pid; return; }
+  if (pid == sbPidAtEnable) { sbNewSeenMs = 0; return; }
+  if (!sbNewSeenMs) { sbNewSeenMs = now; return; }  // a new SpringBoard: let it finish starting
+  if (now - sbNewSeenMs < kSbSettleMs) return;
+  bool ok = waker->enableLockBundle(lockEnabledName);
+  logEvent(Event{Event::WAKE, now, "none", a, "lock-plugin re-enabled " + lockEnabledName + " after a SpringBoard restart" + (ok ? "" : " (FAILED)")});
+  sbPidAtEnable = pid;
+  sbNewSeenMs = 0;
 }
 
 // B1.14: once a second, if settings.conf changed, apply the live options to the running config and
@@ -231,6 +271,7 @@ void Server::onStartFromNone(const Event& e) {
   bool unlockPossible = opts.wakeOnPlay && opts.wakeLaunch && waker && opts.unlockOnPlay && waker->canUnlock();
   if (!unlockPossible) enableLockPlugin(e.to, e.atMs);
   WakeResult w = maybeWake(e);
+  unlockedThisStart = (w == WAKE_UNLOCKED);  // B1.16.11: syncLockPlugin keeps the plugin off for this start then
   if (unlockPossible && w != WAKE_UNLOCKED) enableLockPlugin(e.to, e.atMs);  // not unlocked by us: plugin as before
 }
 
@@ -518,7 +559,10 @@ void Server::afterTick() {
   }
   std::string a = arbiter.activeName();
   if (!a.empty()) lastActiveName = a;  // B1.16: remember it for a later PLAY with nothing active
-  if (a.empty()) disableLockPlugin();  // nothing active: turn the lock bundle off (B1.11)
+  if (a.empty()) {  // nothing active: turn the lock bundle off (B1.11); the next start decides afresh
+    disableLockPlugin();
+    unlockedThisStart = false;
+  }
   writeActiveSourceFile(a.empty() ? "none" : a);
   pump();
 }
@@ -631,6 +675,7 @@ void Server::run() {
     out->tick();
     pollHardwareVolume(now);  // B1.9 A: buttons / external changes -> the producers
     firePreempts(now);        // B1.12: tell a source that lost the output to pause
+    syncLockPlugin(now);      // B1.16.11: live lock_plugin changes, re-enable after a SpringBoard restart
     maybeReloadSettings(now);  // B1.14: pick up a settings.conf change
     if (out->resumed()) {
       // The output was paused (interruption / yielding to another app) and just resumed: the active

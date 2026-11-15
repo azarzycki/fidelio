@@ -41,6 +41,9 @@ class DisplayWaker {
   // Returns false (logs once) if unavailable. Default: unsupported.
   virtual bool enableLockBundle(const std::string& name) { (void)name; return false; }
   virtual bool disableLockBundle(const std::string& name) { (void)name; return false; }
+  // B1.16.11: SpringBoard's pid (0 = unknown), so the server can tell that SpringBoard restarted (a
+  // respring forgets an enabled lock bundle). Default: unknown, i.e. no restart detection.
+  virtual int springBoardPid() { return 0; }
   virtual std::string describe() = 0;
 };
 
@@ -55,6 +58,8 @@ class DisplayWaker {
 //               must treat both modes alike (the accepted request is the result)
 //       refuse  returns 0 (the request failed); still locked
 //       missing the symbol is absent: canUnlock() false, openURLAndUnlock returns kUnavailable
+//   AUDIOD_MOCK_SB_RESTART_MS=N   B1.16.11: SpringBoard "restarts" N ms after start: springBoardPid()
+//                                 is 100 before and 200 after (unset: always 100, no restart)
 class MockDisplayWaker : public DisplayWaker {
  public:
   MockDisplayWaker() {
@@ -62,6 +67,9 @@ class MockDisplayWaker : public DisplayWaker {
     locked = l && strcmp(l, "0") != 0 && *l;
     const char* m = getenv("AUDIOD_MOCK_UNLOCK");
     mode = m && *m ? m : "ok";
+    const char* r = getenv("AUDIOD_MOCK_SB_RESTART_MS");
+    sbRestartMs = r && *r ? strtoull(r, nullptr, 10) : 0;
+    startMs = nowMs();
   }
   int wake(const std::string& bundleId) override {
     last = bundleId;
@@ -79,15 +87,36 @@ class MockDisplayWaker : public DisplayWaker {
     IOS3_TRACE("mock waker: openURLAndUnlock(%s) -> %d (call #%d, mode %s)", url.c_str(), rc, unlockCalls, mode.c_str());
     return rc;
   }
-  bool enableLockBundle(const std::string& name) override { lockName = name; lockEnables++; return true; }
-  bool disableLockBundle(const std::string& name) override { lockName = name; lockDisables++; return true; }
+  bool enableLockBundle(const std::string& name) override {
+    lockName = name; lockEnables++;
+    IOS3_TRACE("mock waker: enableLockBundle(%s)", name.c_str());
+    return true;
+  }
+  bool disableLockBundle(const std::string& name) override {
+    lockName = name; lockDisables++;
+    IOS3_TRACE("mock waker: disableLockBundle(%s)", name.c_str());
+    return true;
+  }
+  int springBoardPid() override { return sbRestartMs && nowMs() - startMs >= sbRestartMs ? 200 : 100; }
   std::string describe() override { return std::string("mock display waker (") + (locked ? "locked" : "unlocked") + ", unlock " + mode + ")"; }
   int calls = 0, screenWakes = 0, unlockCalls = 0, lockEnables = 0, lockDisables = 0;
   std::string last, lockName;
 
  private:
+  static uint64_t nowMs() {
+#ifdef __APPLE__
+    static mach_timebase_info_data_t tb;
+    if (tb.denom == 0) mach_timebase_info(&tb);
+    return mach_absolute_time() / 1000000ull * tb.numer / tb.denom;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000ull + (uint64_t)ts.tv_nsec / 1000000ull;
+#endif
+  }
   bool locked = false;
   std::string mode;
+  uint64_t sbRestartMs = 0, startMs = 0;
 };
 
 #ifdef __APPLE__
