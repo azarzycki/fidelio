@@ -32,10 +32,9 @@ if ! armv6-ios3-check "$BND/Fidelio" > "$OUT/check.txt" 2>&1; then
     cat "$OUT/check.txt"; echo "FAIL: unexpected link errors"; exit 1
   fi
 fi
-# ARMv6 ISA baseline (only clz beyond ARMv5 is accepted, as for every Fidelio binary)
-ISA=$(llvm-objdump-18 --triple=armv6-apple-darwin -d "$BND/Fidelio" 2>/dev/null \
-  | grep -Eo '\b(movw|movt|udiv|sdiv|dmb|dsb|isb|rbit|sbfx|ubfx|bfi|bfc|pld|cbz|cbnz|tbb|tbh)\b' | sort -u || true)
-[ -z "$ISA" ] || { echo "FAIL: post-ARMv6 instructions: $ISA"; exit 1; }
+# ARMv6 ISA baseline: no instruction the ARM1176 cannot run. tools/isa_scan.py decodes every word as the
+# device CPU and as ARMv7 (a grep of an armv6 disassembly cannot see movw/udiv/...: they print as <unknown>).
+python3 -I ../../tools/isa_scan.py "$BND/Fidelio" > "$OUT/isa.txt" 2>&1 || { cat "$OUT/isa.txt"; echo "FAIL: post-ARMv6 instructions (or the scan failed)"; exit 1; }
 
 cp Info.plist "$BND/"
 echo "built $BND (MH_BUNDLE armv6, fake-signed, base class resolved at load); undefined-at-link: $SUP1 (+metaclass)"
