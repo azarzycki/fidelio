@@ -12,10 +12,16 @@
 	<true/>
 	<key>com.apple.springboard.activateawayviewplugins</key>
 	<true/>
-	<!-- B1.16.4: SBSOpenSensitiveURLAndUnlock (unlock-on-play). The device proof on the iPad was made with
-	     com.apple.springboard.openurlswhenlocked as well; this set leaves it out until a device test shows
-	     it is needed (tools/build-arm.sh also produces a fidelio-audiod signed with it, for that test). -->
+	<!-- B1.16.4: SBSOpenSensitiveURLAndUnlock (unlock-on-play). -->
 	<key>com.apple.springboard.opensensitiveurl</key>
+	<true/>
+	<!-- B1.16.6: needed as well to open an app's own URL scheme on a LOCKED device. Device A/B on the
+	     5.1.1 iPad: SBSOpenSensitiveURLAndUnlock(nowplaying:, unlock) returns false without it and true
+	     with it, from audiod and from an entitled cycript, as root and as mobile. With it, the iPad
+	     unlocks into NowPlaying. prefs: (a system URL) opens with opensensitiveurl alone, which is why
+	     an earlier test missed it. Untested on the 3.1.3 phone; a key its SpringBoard never checks is
+	     simply ignored. -->
+	<key>com.apple.springboard.openurlswhenlocked</key>
 	<true/>
 </dict>
 </plist>

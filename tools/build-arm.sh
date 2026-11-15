@@ -7,10 +7,7 @@
 #   binaries the entitlement keys (armv6-ios3-ldid -e) against common/fidelio-springboard.entitlements.plist.
 #
 #   fidelio-audiod, fidelio-lockctl  audiod/CMakeLists.txt + toolchain file (POST_BUILD strips and entitlement-signs)
-#   fidelio-audiod-openurlswhenlocked  B1.16.4 device A/B: the same fidelio-audiod, re-signed with the plist's keys
-#                                    plus com.apple.springboard.openurlswhenlocked (remove once the device test
-#                                    shows whether unlock-on-play needs it)
-#   fidelio-raop                     airplay/CMakeLists.txt, then strip -x + ldid -S
+#   fidelio-raop                    airplay/CMakeLists.txt, then strip -x + ldid -S
 #   cspot-ios3                       spotify/cli-src against deps/cspot (upstream + repo patch), then strip -x + ldid -S
 #   NowPlaying.app                   nowplaying/src/build.sh
 #   Fidelio.lockbundle, Fidelio.bundle   nowplaying/lockplugin/build.sh (EXT lockbundle and bundle)
@@ -48,7 +45,6 @@ ARM="$BUILD_ROOT/arm"
 ARM_OUT="${ARM_OUT:-$BUILD_ROOT/arm-out}"
 TCFILE="$TC/share/armv6-ios3/toolchain.cmake"
 ISA_SCAN="$TOOLS_DIR/isa_scan.py"
-ALT_KEY="com.apple.springboard.openurlswhenlocked"
 export PYTHONDONTWRITEBYTECODE=1
 
 case "$BUILD_ROOT$REPO$ARM_OUT" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
@@ -108,6 +104,7 @@ logged "$LOGS/arm-dockremote.log" script_env bash "$REPO/tweak/DockRemote/build.
 # ------------------------------------------------------------------ collect ---------------------------
 note "collecting into $ARM_OUT"
 mkdir -p "$ARM_OUT"
+# (fidelio-audiod-openurlswhenlocked: the B1.16.4 entitlement A/B, gone since B1.16.6; removed if an older run left it)
 rm -rf "$ARM_OUT"/{fidelio-audiod,fidelio-audiod-openurlswhenlocked,fidelio-lockctl,fidelio-raop,cspot-ios3,NowPlaying.app,Fidelio.lockbundle,Fidelio.bundle,DockRemote.dylib,DockRemote.plist,verify,report.txt,SHA256SUMS}
 mkdir -p "$ARM_OUT/verify"
 cp "$ARM/audiod/fidelio-audiod" "$ARM/audiod/fidelio-lockctl" "$ARM_OUT/"      # already stripped + entitlement-signed (POST_BUILD)
@@ -116,19 +113,12 @@ for b in "$ARM/airplay/fidelio-raop" "$ARM/cspot/cspot-ios3"; do               #
 done
 cp -R "$ARM/nowplaying/NowPlaying.app" "$ARM/lockplugin/Fidelio.lockbundle" "$ARM/lockplugin/Fidelio.bundle" "$ARM_OUT/"
 cp "$ARM/dockremote/DockRemote.dylib" "$ARM/dockremote/DockRemote.plist" "$ARM_OUT/"
-# B1.16.4 device A/B: the repo plist's keys + openurlswhenlocked (the device proof of the unlock carried it).
 ENTS="$REPO/common/fidelio-springboard.entitlements.plist"
-ALT_ENTS="$ARM_OUT/verify/openurlswhenlocked.entitlements.plist"
-grep -q "<key>$ALT_KEY</key>" "$ENTS" && die "$ENTS already has $ALT_KEY: drop the A/B variant from this script"
-sed "s|^</dict>|	<key>$ALT_KEY</key>\n	<true/>\n</dict>|" "$ENTS" > "$ALT_ENTS"
-cp "$ARM_OUT/fidelio-audiod" "$ARM_OUT/fidelio-audiod-openurlswhenlocked"
-armv6-ios3-ldid -S"$ALT_ENTS" "$ARM_OUT/fidelio-audiod-openurlswhenlocked"
 
 # ------------------------------------------------------------------ verify ----------------------------
-BINARIES="fidelio-audiod fidelio-audiod-openurlswhenlocked fidelio-lockctl fidelio-raop cspot-ios3 NowPlaying.app/NowPlaying Fidelio.lockbundle/Fidelio Fidelio.bundle/Fidelio DockRemote.dylib"
+BINARIES="fidelio-audiod fidelio-lockctl fidelio-raop cspot-ios3 NowPlaying.app/NowPlaying Fidelio.lockbundle/Fidelio Fidelio.bundle/Fidelio DockRemote.dylib"
 keys_of() { grep -o '<key>[^<]*</key>' "$1" | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' || true; }
 want_ents="$(keys_of "$ENTS")"
-want_alt="$(keys_of "$ALT_ENTS")"
 [ -n "$want_ents" ] || die "no <key> entries in $ENTS"
 bad=0
 REPORT="$ARM_OUT/report.txt"
@@ -157,12 +147,11 @@ REPORT="$ARM_OUT/report.txt"
     [ "$irc" = 2 ] || [ -z "$isa" ] && isa="ERR"
     [ "$isa" = 0 ] || bad=1
     ents="-"
-    case "$b" in fidelio-audiod|fidelio-lockctl|fidelio-audiod-openurlswhenlocked)
+    case "$b" in fidelio-audiod|fidelio-lockctl)
       armv6-ios3-ldid -e "$f" > "$ARM_OUT/verify/$tag.entitlements.xml" 2>/dev/null || true
       got="$(keys_of "$ARM_OUT/verify/$tag.entitlements.xml")"
-      want="$want_ents"; [ "$b" = fidelio-audiod-openurlswhenlocked ] && want="$want_alt"
       ents="$(echo $got | wc -w) keys: $(echo $got | sed 's/com\.apple\.springboard\.//g')"
-      [ -n "$got" ] && [ "$got" = "$want" ] || { ents="$ents  != expected"; bad=1; } ;;
+      [ -n "$got" ] && [ "$got" = "$want_ents" ] || { ents="$ents  != expected"; bad=1; } ;;
     esac
     printf '%-34s %8s  %-64s  %-18s %8s  %s\n' "$b" "$size" "$sha" "$check" "$isa" "$ents"
     echo "$sha  $b" >> "$ARM_OUT/SHA256SUMS"

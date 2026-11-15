@@ -41,6 +41,17 @@
 - (BOOL)shouldDisableOnRelock;
 @end
 
+// B1.16.6: SpringBoard's lock-screen controller, only what KeepScreenOn uses. These selectors are in the
+// 5.1.1 runtime survey of SBAwayController. A protocol, not a class: the class is looked up by name at
+// run time (objc_getClass) and each selector is checked with respondsToSelector:, so nothing is linked
+// (the build's undefined-symbol check stays at the two SBAwayViewPluginController symbols) and a
+// missing method is a no-op.
+@protocol FidelioSBAwayController <NSObject>
++ (id)sharedAwayController;
+- (void)restartDimTimer;  // restart the lock screen's dim countdown (the no-argument form)
+- (BOOL)isDimmed;         // the lock screen is dimming or off
+@end
+
 @interface FidelioLockPluginController : SBAwayViewPluginController {
   UIView* content;          // our root view (also returned by -view)
   UIImageView* coverView;

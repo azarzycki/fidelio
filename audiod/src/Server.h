@@ -45,14 +45,14 @@ struct ServerOptions {
   std::string wakeBundle = "com.fidelio.nowplaying";
   unsigned wakeMinIntervalMs = 5000;  // debounce: at most one wake per this interval
   // B1.16.4: when that launch is refused because the device is locked (3), ask SpringBoard to unlock
-  // and open unlockUrl (SBSOpenSensitiveURLAndUnlock; works only without a passcode), then retry the
-  // launch every 500 ms until it succeeds or unlockTimeoutMs pass. Off = stay on the lock screen.
+  // and open unlockUrl (SBSOpenSensitiveURLAndUnlock; works only without a passcode). B1.16.6: the
+  // accepted request is the result (device-verified: it unlocks and opens the app; a launch probe keeps
+  // answering 3 for seconds afterwards, so it is no longer used). Off = stay on the lock screen.
   bool unlockOnPlay = true;               // --unlock-on-play on|off
   std::string unlockUrl = "nowplaying:";  // --unlock-url: NowPlaying's own URL scheme, so the unlock lands in the app
-  unsigned unlockTimeoutMs = 5000;        // --unlock-timeout-ms
   // B1.11: a SpringBoard lock-screen bundle enabled while a source plays (default off so a bad
   // bundle cannot affect playback). "" = off. B1.16.4: enabled only when audiod does not unlock the
-  // device for that start (already unlocked, unlock off / unavailable / failed / not confirmed).
+  // device for that start (already unlocked, unlock off / unavailable / refused).
   std::string lockPlugin;
   // B1.12: tell a source that lost the output to pause (so a background session cannot roll on and
   // steal the output). Sent only to v2 clients; raop reacts via DACP (its own policy).
@@ -133,13 +133,9 @@ class Server {
   void sendHwVolumeTo(Client& c);   // B1.10: current hardware level to one (active) source; arms the grace
   void broadcastHwVolume();
   // B1.9 B wake + B1.16.4 unlock + B1.11 lock plugin, for a playback start from nothing
-  enum WakeResult { WAKE_NOT_RUN, WAKE_DONE, WAKE_UNLOCKING };
+  enum WakeResult { WAKE_NOT_RUN, WAKE_DONE, WAKE_UNLOCKED };
   void onStartFromNone(const Event& e);
   WakeResult maybeWake(const Event& e);
-  // B1.16.4: after an unlock request, retry the launch (one SpringBoard call per retry, from the run
-  // loop: never a blocking wait) until it succeeds or opts.unlockTimeoutMs pass.
-  void tickUnlock(uint64_t now);
-  void cancelUnlock(const char* why, uint64_t now);
   // B1.14: re-read settings.conf when it changes and apply the live options (and rewrite the manifest).
   void maybeReloadSettings(uint64_t now);
   // B1.16: a controller sent a transport verb -> route it to the active source (or, for PLAY with
@@ -166,11 +162,7 @@ class Server {
   uint64_t lastWakeMs = 0;
   std::string lastActiveName;  // B1.16: the last source that held the output (for PLAY-resumes-paused)
   bool lockEnabled = false;  // B1.11: the lock bundle is currently enabled
-  // B1.16.4: an unlock request is waiting for the launch to succeed
-  static const uint64_t kUnlockRetryMs = 500;
-  struct UnlockWait { bool active = false; std::string source; uint64_t startMs = 0, nextMs = 0; int launches = 0; };
-  UnlockWait unlockWait;
-  bool unlockUnavailableLogged = false;
+  bool unlockUnavailableLogged = false;  // B1.16.4: "SBSOpenSensitiveURLAndUnlock not available", once per process
   // B1.14 live settings
   fidelio::Registry* settings = nullptr;
   std::string settingsConf, settingsDir;

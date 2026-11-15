@@ -10,11 +10,13 @@
 // launch with 3 (verified on the iPad).
 // B1.16.4: SBSOpenSensitiveURLAndUnlock  Boolean (CFURLRef url, Boolean unlock)
 // Exported by the 3.1.2 SDK's SpringBoardServices too (so the phone has it). Disassembled there: it
-// takes the URL's string (at most 1023 UTF-8 bytes), sends SBOpenSensitiveURL(port, utf8, unlock) to
-// SpringBoard and returns true when that MIG call succeeded: proof the request arrived, not that the
-// device unlocked. Verified on the 5.1.1 iPad: (prefs:, true) unlocked it and a launch 3 s later
-// returned 0. SpringBoard checks the caller's entitlements (com.apple.springboard.opensensitiveurl;
-// see common/fidelio-springboard.entitlements.plist).
+// takes the URL's string (at most 1023 UTF-8 bytes) and sends SBOpenSensitiveURL(port, utf8, unlock) to
+// SpringBoard. B1.16.6, verified on the locked 5.1.1 iPad: the result is SpringBoard's answer. A caller
+// without com.apple.springboard.openurlswhenlocked gets false for nowplaying: (an app's own scheme;
+// prefs: needs only opensensitiveurl). With all four keys of common/fidelio-springboard.entitlements.plist
+// it returns true, and the iPad is unlocked with NowPlaying in front within 2 s. SpringBoard's isLocked
+// read 0 at 2, 6 and 12 s, while SBSLaunchApplicationWithIdentifier kept answering 3 for 5 s. So the
+// accepted request is the result, and no launch is retried after it.
 #include <dlfcn.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -76,16 +78,6 @@ class SpringBoardWaker : public DisplayWaker {
                resetIdle ? "called" : "missing", bundleId.c_str(), rc, err, (unsigned long long)ms);
     return rc;
   }
-  // B1.16.4: the launch alone, retried after an unlock request.
-  int launch(const std::string& bundleId) override {
-    ObjcAutoreleasePool pool;
-    if (!launchFn) return kUnavailable;
-    char err[200];
-    uint64_t ms = 0;
-    int rc = launchDecoded(bundleId, err, sizeof err, &ms);
-    IOS3_TRACE("unlock-on-play: SBSLaunchApplicationWithIdentifier(%s) -> %d%s (%llu ms)", bundleId.c_str(), rc, err, (unsigned long long)ms);
-    return rc;
-  }
   bool canUnlock() override { return openUnlock != nullptr; }
   int openURLAndUnlock(const std::string& url) override {
     ObjcAutoreleasePool pool;
@@ -96,7 +88,8 @@ class SpringBoardWaker : public DisplayWaker {
     Boolean ok = openUnlock(u, true);
     uint64_t ms = monoMs() - t0;
     CFRelease(u);
-    IOS3_TRACE("unlock-on-play: SBSOpenSensitiveURLAndUnlock(%s, unlock) -> %s (%llu ms)", url.c_str(), ok ? "true (request delivered)" : "false", (unsigned long long)ms);
+    IOS3_TRACE("unlock-on-play: SBSOpenSensitiveURLAndUnlock(%s, unlock) -> %s (%llu ms)", url.c_str(),
+               ok ? "true (accepted: unlocks and opens the app)" : "false (refused, e.g. a missing entitlement)", (unsigned long long)ms);
     return ok ? 1 : 0;
   }
   bool enableLockBundle(const std::string& name) override { return setLock(name, true); }

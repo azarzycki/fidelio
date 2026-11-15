@@ -334,38 +334,78 @@ app over the lock screen. audiod now unlocks first when it may:
 - **Sequence** (playback start from none only, after the wake debounce): `wake()` as in B1.9. If its
   launch returns `3` and `--unlock-on-play on` (default; registry `unlock_on_play`, Display group, live),
   audiod calls `SBSOpenSensitiveURLAndUnlock(CFURL(--unlock-url), true)` once (default `nowplaying:`, the
-  app's own URL scheme, so the unlock lands in NowPlaying), then retries
-  `SBSLaunchApplicationWithIdentifier` every 500 ms until it returns `0` or `--unlock-timeout-ms` (default
-  5000) pass. The call's `true` only means SpringBoard received the request. Disassembled in the 3.1.2 SDK,
-  it returns the MIG result of `SBOpenSensitiveURL(port, utf8, unlock)`. So the retried launch succeeding is
-  the proof that the device unlocked.
-- **Never blocking:** the retries are ticked from the run loop, one SpringBoard call per tick that is
-  due. Every call is timed in the trace (`... -> 3 (12 ms)`) so a slow SpringBoard shows up in the device log.
-- **Failure handling:** works only without a passcode. With one, SpringBoard cannot unlock by itself (it may
-  show the keypad), and the timeout ends the wait. A failed request is logged once for that start and never retried in a loop. A missing symbol is
-  logged once per process. If playback stops while audiod waits, the wait is cancelled.
+  app's own URL scheme, so the unlock lands in NowPlaying). B1.16.4 then retried
+  `SBSLaunchApplicationWithIdentifier` every 500 ms for `--unlock-timeout-ms` as the proof of the unlock.
+  **B1.16.6 removed that retry** (it was a false negative on the device, see below): the accepted request is
+  the result.
+- **Never blocking:** at most two SpringBoard calls per start (the wake's launch, then the unlock request),
+  each timed in the trace (`... -> 3 (12 ms)`) so a slow SpringBoard shows up in the device log.
+- **Failure handling:** meant for a device without a passcode. With one, SpringBoard cannot unlock by itself
+  (it may show the keypad); untested. A failed request is logged once for that start and never retried in a
+  loop. A missing symbol is logged once per process.
 - **Lock plugin precedence (agreed):** the plugin is enabled only when audiod does not unlock the device
-  for that start: already unlocked (launch `0`), unlock off, symbol missing, request failed, or not
-  confirmed within the timeout. When no unlock can be attempted it is enabled before the wake (the B1.11
-  order, so a lock screen that lights up already shows the track); otherwise after the outcome is known.
-  It is never enabled and then immediately unlocked past. NowPlaying disables the idle timer, so after an
-  unlock the device does not auto-lock while the app is in front.
+  for that start: already unlocked (launch `0`), unlock off, symbol missing, or request refused. When no
+  unlock can be attempted it is enabled before the wake (the B1.11 order, so a lock screen that lights up
+  already shows the track); otherwise after the outcome is known. It is never enabled and then
+  immediately unlocked past. NowPlaying disables the idle timer, so after an unlock the device does not
+  auto-lock while the app is in front (device-verified in B1.16.6: unlocked and lit at 12 s).
 - **Both devices:** the 3.1.2 SDK exports `SBSOpenSensitiveURLAndUnlock` too, so the phone attempts the
   unlock as well if its launch returns `3` while locked. Set `audiod.unlock_on_play=off` on a device that
   should stay on the lock screen.
 - **Entitlements:** `common/fidelio-springboard.entitlements.plist` adds
-  `com.apple.springboard.opensensitiveurl`. The device proof also carried
-  `com.apple.springboard.openurlswhenlocked`; `tools/build-arm.sh` additionally produces
-  `fidelio-audiod-openurlswhenlocked` (same binary, signed with that key as well) for the device A/B.
+  `com.apple.springboard.opensensitiveurl`, and since B1.16.6 `com.apple.springboard.openurlswhenlocked`
+  (see below). The B1.16.4 A/B binary `fidelio-audiod-openurlswhenlocked` is gone.
 - **App:** NowPlaying 1.3.1 registers `nowplaying:` (`CFBundleURLTypes`) and accepts the URL without
   looking at it. iOS registers a URL scheme when it rebuilds its app list: run `uicache` after installing.
-- **Event log** (kind `wake`): `wake: device locked, unlock requested (nowplaying:)`, `unlocked: launch ok
-  after N ms (K launches)`, `unlock not confirmed after N ms (launch R, K launches): staying on the lock
-  screen`, `wake: device locked, unlock-on-play off | unlock unavailable | unlock request failed (...):
-  staying on the lock screen`, `unlock wait cancelled: nothing is playing any more`.
-- **Tests:** `hosttest/test_unlock.py` (22 checks; the host mock waker plays a locked device through
-  `AUDIOD_MOCK_LOCKED`, `AUDIOD_MOCK_UNLOCK=ok|stuck|refuse|missing`, `AUDIOD_MOCK_UNLOCK_MS`): launch 0 ->
-  no unlock; launch 3 + unlock ok -> retried to 0, plugin off; symbol missing -> one log line per
-  process, plugin before the wake; setting off -> no unlock call; request failed -> one call, no loop;
-  accepted but never unlocked -> bounded retries, plugin after giving up; playback stopped while
-  waiting -> cancelled. `test_settings.py` +2 (manifest default, live change).
+- **Event log** (kind `wake`): `wake: device locked, unlock accepted (nowplaying:)` (B1.16.6; B1.16.4 logged
+  `unlock requested`, then `unlocked: launch ok ...` or `unlock not confirmed ...`), and `wake: device
+  locked, unlock-on-play off | unlock unavailable | unlock request failed (...): staying on the lock screen`.
+- **Tests:** `hosttest/test_unlock.py` (20 checks since B1.16.6; the host mock waker plays a locked device
+  through `AUDIOD_MOCK_LOCKED` and `AUDIOD_MOCK_UNLOCK=ok|stuck|refuse|missing`):
+  - launch 0 -> no unlock;
+  - launch 3 + accepted -> one call, no retry, plugin off;
+  - symbol missing -> one log line per process, plugin before the wake;
+  - setting off -> no unlock call;
+  - request failed -> one call, no loop, plugin on;
+  - accepted while launches would still answer 3 -> still the result, the B1.16.4 false negative is gone,
+    and `--unlock-timeout-ms` is accepted and ignored.
+
+  `test_settings.py` +2 (manifest default, live change).
+
+## B1.16.6 (device findings: a fourth entitlement, the accepted unlock is the result, a lit lock screen)
+
+From the device tests on the locked 5.1.1 iPad (cspot-build-local):
+
+- **A fourth entitlement.** `SBSOpenSensitiveURLAndUnlock(nowplaying:, true)` returns false with the three
+  B1.16.4 keys. It returns true once `com.apple.springboard.openurlswhenlocked` is added, from audiod and from
+  an entitled cycript, as root and as mobile. An app's own URL scheme on a locked device needs that key.
+  `prefs:` (a system URL) opens with `opensensitiveurl` alone, which is why an earlier test with it missed
+  this. The plist carries all four keys, `fidelio-audiod` and `fidelio-lockctl` are signed with them, and
+  `tools/build-arm.sh` checks all four.
+- **The launch probe was a false negative.** With the four keys the request is accepted and the iPad
+  unlocks into NowPlaying within 2 s. SpringBoard's own `[[SBAwayController sharedAwayController] isLocked]`
+  read 0 at 2, 6 and 12 s, and NowPlaying stayed in front and lit. `SBSLaunchApplicationWithIdentifier`
+  still answered 3 for the whole 5 s that B1.16.4 retried it. So audiod logged `unlock not confirmed after
+  5119 ms (launch 3, 10 launches)` and enabled the lock plugin on an unlocked device.
+  - Now the accepted request is the result: one event, `wake: device locked, unlock accepted
+    (nowplaying:)`, with no retry and no timeout. The plugin stays off (the agreed rule).
+  - A refusal is still `unlock request failed`, with the plugin on.
+  - `--unlock-timeout-ms` has nothing left to time. It is accepted and ignored, with a note on stderr, so a
+    command line written for B1.16.4 still starts.
+- **The lock screen stays lit while playing (`keep_screen_on`, B1.15e).** On the iPad the plugin drew for
+  the first time (B1.16.3), but the lock screen still dimmed after a few seconds: the 5.1.1 SpringBoard
+  ignores `-canScreenDim` = NO for a plugin that is not full-screen.
+  - The fix: while `KeepScreenOn` is set and a source plays, the plugin's 1 Hz refresh calls
+    `-[SBAwayController restartDimTimer]` (the no-argument form, from the 5.1.1 runtime survey). The
+    refresh only runs while the plugin is on screen.
+  - Nothing needs undoing: when the music stops or the plugin leaves the screen, the calls stop and the
+    lock screen dims as usual.
+  - A lock screen that is already dimming or off (`-isDimmed`, e.g. after the sleep button) is left
+    alone.
+  - The class is looked up by name and every selector checked, so on a SpringBoard without them it is a
+    no-op.
+  - With `lockplugin.debug` present, each `refresh:` line in `lockplugin.log` ends in
+    `keepLit=held|dimmed|off|unavailable`.
+  - `-canScreenDim` still votes, for a SpringBoard that honours it.
+  - Not done: a full-screen plugin (it would hide the clock and the unlock slider), and a backlight hold
+    from audiod (it would keep running while the plugin is hidden).

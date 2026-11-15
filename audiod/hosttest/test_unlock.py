@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Host test of B1.16.4 unlock-on-play and its precedence over the lock plugin.
+"""Host test of unlock-on-play (B1.16.4, B1.16.6) and its precedence over the lock plugin.
 
 When playback starts from nothing, audiod wakes the display and launches NowPlaying (B1.9). If that
 launch is refused because the device is locked (SpringBoard code 3), audiod asks SpringBoard to unlock
-and open the app's URL (SBSOpenSensitiveURLAndUnlock) and retries the launch every 500 ms until it
-succeeds or --unlock-timeout-ms pass. The lock plugin (B1.11) is enabled only when audiod does not
-unlock the device for that start. The host build's mock waker plays a locked device (env
-AUDIOD_MOCK_LOCKED / AUDIOD_MOCK_UNLOCK / AUDIOD_MOCK_UNLOCK_MS) and logs every call
-("mock waker: ..."); audiod logs every decision to the event log (kind "wake").
-Each scenario runs its own audiod. Usage: test_unlock.py PATH_TO_fidelio-audiod
+and open the app's URL (SBSOpenSensitiveURLAndUnlock). B1.16.6: an accepted request IS the result. On
+the 5.1.1 iPad it unlocks into NowPlaying while SpringBoard keeps answering 3 to launches for seconds,
+so there is no launch retry and no timeout any more. The lock plugin (B1.11) is enabled only when audiod
+does not unlock the device for that start. The host build's mock waker plays a locked device (env
+AUDIOD_MOCK_LOCKED / AUDIOD_MOCK_UNLOCK) and logs every call ("mock waker: ..."); audiod logs every
+decision to the event log (kind "wake"). Each scenario runs its own audiod.
+Usage: test_unlock.py PATH_TO_fidelio-audiod
 """
 import os, re, socket, struct, subprocess, sys, threading, time
 
@@ -74,7 +75,7 @@ def scenario(name, env, args, plays, total_ms):
         if os.path.exists(f):
             os.unlink(f)
     e = dict(os.environ)
-    for k in ("AUDIOD_MOCK_LOCKED", "AUDIOD_MOCK_UNLOCK", "AUDIOD_MOCK_UNLOCK_MS"):
+    for k in ("AUDIOD_MOCK_LOCKED", "AUDIOD_MOCK_UNLOCK"):
         e.pop(k, None)
     e.update(env)
     proc = subprocess.Popen([AUDIOD, "--sock", sock, "--pcm-out", out, "--event-log", evt, "--no-status", "--no-silence",
@@ -120,7 +121,9 @@ def count(text, rx):
 
 
 UNLOCK_CALL = r"mock waker: openURLAndUnlock\("
-LAUNCH_CALL = r"mock waker: launch\("
+# B1.16.6: the start's wake is the only launch. Counts B1.16.4's retry calls ("launch(") as well, so any
+# probe after an unlock request, under either name, fails the checks below.
+WAKE_CALL = r"mock waker: (?:wake|launch)\("
 
 # A. not locked: the launch succeeds, no unlock is attempted, the lock plugin is enabled as before.
 w, _, log = scenario("unlocked", {}, [], [(0, "spotify", 1500)], 3000)
@@ -129,17 +132,13 @@ check(not [ev for ev in w if "unlock" in ev[4]] and count(log, UNLOCK_CALL) == 0
 lp = has(w, "lock-plugin enabled fidelio")
 check(len(lp) == 1, "unlocked: the lock plugin is enabled (audiod did not unlock the device)")
 
-# B. locked, the unlock works (the mock unlocks 1.5 s after the request): retried launch reaches 0.
-w, _, log = scenario("unlock-ok", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "ok", "AUDIOD_MOCK_UNLOCK_MS": "1500"}, [],
-                     [(0, "spotify", 4000)], 5000)
-req = has(w, "wake: device locked, unlock requested (nowplaying:)")
-check(len(req) == 1, "locked: launch 3 -> unlock requested with the app's URL nowplaying:")
+# B. locked, SpringBoard accepts the unlock request: that is the result (B1.16.6). No launch retry, no
+#    timeout, and the lock plugin stays off (agreed rule: audiod unlocked the device, the app is in front).
+w, _, log = scenario("unlock-ok", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "ok"}, [], [(0, "spotify", 2000)], 3000)
+check(len(has(w, "wake: device locked, unlock accepted (nowplaying:)")) == 1, "locked: launch 3 -> unlock requested with the app's URL nowplaying: and accepted")
 check(count(log, UNLOCK_CALL + r"nowplaying:\) -> 1") == 1 and count(log, UNLOCK_CALL) == 1, "locked: exactly one SBSOpenSensitiveURLAndUnlock call")
-ok = has(w, "unlocked: launch ok after")
-m = re.search(r"after (\d+) ms \((\d+) launch", ok[0][4]) if ok else None
-check(m is not None and 1500 <= int(m.group(1)) <= 2100, f"locked: the retried launch reached 0 once the device unlocked ({ok[0][4] if ok else 'no unlocked event'})")
-check(m is not None and int(m.group(2)) == count(log, LAUNCH_CALL) and 3 <= int(m.group(2)) <= 5,
-      f"locked: launch retried every 500 ms until it succeeded ({count(log, LAUNCH_CALL)} retries)")
+check(count(log, WAKE_CALL) == 1 and not has(w, "unlock not confirmed") and not has(w, "unlocked:") and not has(w, "unlock wait"),
+      f"accepted: no launch retry and no confirmation wait ({count(log, WAKE_CALL)} launch)")
 check(not has(w, "lock-plugin enabled"), "locked + unlocked by audiod: the lock plugin is NOT enabled (agreed precedence)")
 
 # C. locked, SBSOpenSensitiveURLAndUnlock missing: one clear log line (once per process), plugin first.
@@ -156,33 +155,27 @@ check(order[:2] == ["lock-plugin enabled fidelio", "wake"], f"symbol missing: lo
 w, _, log = scenario("unlock-off", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "ok"}, ["--unlock-on-play", "off"],
                      [(0, "spotify", 1500)], 3000)
 check(len(has(w, "wake: device locked, unlock-on-play off: staying on the lock screen")) == 1, "setting off: locked -> stays on the lock screen")
-check(count(log, UNLOCK_CALL) == 0 and count(log, LAUNCH_CALL) == 0, "setting off: no unlock call, no launch retry")
+check(count(log, UNLOCK_CALL) == 0 and count(log, WAKE_CALL) == 1, "setting off: no unlock call, only the wake's launch")
 check(len(has(w, "lock-plugin enabled fidelio")) == 1, "setting off: the lock plugin is enabled")
 
 # E. locked, the unlock request fails: logged once, never retried in a loop, plugin enabled.
 w, _, log = scenario("unlock-refused", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "refuse"}, [], [(0, "spotify", 2500)], 3500)
 check(len(has(w, "wake: device locked, unlock request failed (nowplaying:)")) == 1, "refused: one 'unlock request failed' event")
-check(count(log, UNLOCK_CALL) == 1 and count(log, LAUNCH_CALL) == 0, f"refused: one unlock call and no retry loop ({count(log, UNLOCK_CALL)} calls)")
+check(count(log, UNLOCK_CALL) == 1 and count(log, WAKE_CALL) == 1, f"refused: one unlock call and no retry loop ({count(log, UNLOCK_CALL)} calls)")
 check(len(has(w, "lock-plugin enabled fidelio")) == 1, "refused: the lock plugin is enabled")
 
-# F. locked, the request is delivered but the device never unlocks: give up after --unlock-timeout-ms.
-w, allev, log = scenario("unlock-stuck", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "stuck"}, ["--unlock-timeout-ms", "2000"],
-                         [(0, "spotify", 4000)], 4500)
-nc = has(w, "unlock not confirmed after")
-m = re.search(r"after (\d+) ms \(launch 3, (\d+) launch", nc[0][4]) if nc else None
-check(m is not None and 2000 <= int(m.group(1)) <= 2600, f"stuck: gave up after the timeout ({nc[0][4] if nc else 'no event'})")
-check(m is not None and int(m.group(2)) == count(log, LAUNCH_CALL) and 3 <= int(m.group(2)) <= 5,
-      f"stuck: bounded retries, no loop past the timeout ({count(log, LAUNCH_CALL)} launches)")
-lp = has(w, "lock-plugin enabled fidelio")
-check(len(lp) == 1 and nc and lp[0][0] >= nc[0][0] and count(log, UNLOCK_CALL) == 1,
-      "stuck: still locked -> the lock plugin is enabled after giving up, not before")
-
-# G. locked, playback stops while audiod waits for the unlock: the wait is cancelled, no plugin.
-w, _, log = scenario("unlock-cancel", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "ok", "AUDIOD_MOCK_UNLOCK_MS": "4000"}, [],
-                     [(0, "spotify", 600)], 3500)
-check(len(has(w, "unlock wait cancelled: nothing is playing any more")) == 1, "stopped while waiting: the unlock wait is cancelled")
-check(not has(w, "unlocked:") and not has(w, "unlock not confirmed") and not has(w, "lock-plugin enabled"),
-      "stopped while waiting: no unlock outcome and no lock plugin afterwards")
+# F. B1.16.6 regression: SpringBoard accepts the request but would keep answering 3 to a launch (the
+#    5.1.1 iPad does that for seconds although it IS unlocked). B1.16.4 retried the launch, gave up with
+#    "unlock not confirmed" and enabled the plugin on an unlocked device. Also: a B1.16.4 command line
+#    with --unlock-timeout-ms still starts (the flag is accepted and ignored, with a note).
+w, _, log = scenario("unlock-stuck", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "stuck"}, ["--unlock-timeout-ms", "2000"],
+                     [(0, "spotify", 3000)], 4000)
+check(len(has(w, "wake: device locked, unlock accepted (nowplaying:)")) == 1 and not has(w, "unlock not confirmed"),
+      "accepted but launches would still answer 3: the accepted request is the result (no false 'not confirmed')")
+check(count(log, WAKE_CALL) == 1 and count(log, UNLOCK_CALL) == 1, f"accepted: no launch probe at all ({count(log, WAKE_CALL)} launch, {count(log, UNLOCK_CALL)} unlock call)")
+check(not has(w, "lock-plugin enabled"), "accepted: the lock plugin stays off for the whole start")
+check(count(log, r"note: --unlock-timeout-ms is ignored since B1\.16\.6") == 1 and len(w) >= 1,
+      "--unlock-timeout-ms (B1.16.4) is still accepted: audiod starts, notes that it is ignored")
 
 print("\n" + (f"{len(fails)} FAILURES" if fails else "all unlock-on-play checks passed"))
 sys.exit(1 if fails else 0)

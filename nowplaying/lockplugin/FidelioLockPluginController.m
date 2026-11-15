@@ -1,5 +1,7 @@
 #import "FidelioLockPluginController.h"
 
+#import <objc/runtime.h>
+
 #define FIDELIO_DIR @"/var/mobile/fidelio"
 #define COVER_PX 256.0f
 #define STALE_ACTIVE_S 30.0   // active-source older than this (audiod rewrites every 10 s) = audiod gone
@@ -204,7 +206,8 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
     if (![src isEqualToString:source]) { [source release]; source = [src copy]; [status release]; status = nil; }
     BOOL had = haveContent;
     haveContent = [source length] > 0;
-    LPTrace([NSString stringWithFormat:@"refresh: pickSource='%@' haveContent=%d", src, (int)haveContent]);
+    NSString* lit = [self holdScreenLit];
+    LPTrace([NSString stringWithFormat:@"refresh: pickSource='%@' haveContent=%d keepLit=%@", src, (int)haveContent, lit]);
     // B1.16.3: the base class may cache displayability; keep it in sync when our content appears/goes.
     if (haveContent != had) { @try { [self setViewCanBeDisplayed:haveContent]; } @catch (NSException* e) {} }
 
@@ -275,7 +278,27 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
 // --- base-class policy ---------------------------------------------------------------------------
 - (BOOL)canScreenDim {
   // KeepScreenOn (lockplugin.plist) + something actually playing: keep the screen lit. Default: dim.
+  // B1.16.6: the 5.1.1 SpringBoard ignores this vote for a plugin that is not full-screen (the lock
+  // screen dimmed after a few seconds with it saying NO); -holdScreenLit does the work there.
   @try { return !(keepScreenOn && haveContent); } @catch (NSException* e) { return YES; }
+}
+
+// B1.16.6: KeepScreenOn for real. While KeepScreenOn is set and something plays, every refresh (1 Hz,
+// and only while this plugin is on screen) restarts SpringBoard's lock-screen dim countdown,
+// -[SBAwayController restartDimTimer]. Nothing needs undoing. When the music stops, KeepScreenOn is
+// turned off, or the plugin leaves the screen, the calls stop and the countdown runs out as usual. A
+// lock screen that is already dimming or off (-isDimmed, e.g. after the sleep button) is left alone,
+// so the sleep button still wins. Returns what it did, for the debug trace: off / held / dimmed /
+// unavailable.
+- (NSString*)holdScreenLit {
+  if (!(keepScreenOn && haveContent)) return @"off";
+  Class cls = objc_getClass("SBAwayController");
+  id<FidelioSBAwayController> away = nil;
+  if (cls && [(id)cls respondsToSelector:@selector(sharedAwayController)]) away = [(id)cls sharedAwayController];
+  if (!away || ![away respondsToSelector:@selector(restartDimTimer)]) return @"unavailable";
+  if ([away respondsToSelector:@selector(isDimmed)] && [away isDimmed]) return @"dimmed";
+  [away restartDimTimer];
+  return @"held";
 }
 - (BOOL)showDateView { return YES; }                 // keep the system clock/date
 - (BOOL)showAwayItems { return YES; }                // keep slide-to-unlock etc.

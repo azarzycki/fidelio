@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
              "                           (SBSOpenSensitiveURLAndUnlock, dlopen'ed; only without a passcode) and show the app;\n"
              "                           off: stay on the lock screen (B1.16.4)\n"
              "  --unlock-url URL         (default nowplaying:) what SpringBoard opens after unlocking (NowPlaying's URL scheme)\n"
-             "  --unlock-timeout-ms MS   (default 5000) retry the launch every 500 ms for this long after the unlock request\n"
+             "  --unlock-timeout-ms MS   ignored since B1.16.6 (accepted so older command lines still start)\n"
              "  --lock-plugin NAME|off   (default off) while a source plays, enable the SpringBoard lock-screen bundle\n"
              "                           NAME.lockbundle (SBEnableLockScreenBundle, dlopen'ed; no-op if unavailable)\n"
              "  --keep-screen-on on|off  (default off) on the lock screen, keep the display lit while playing (B1.15)\n"
@@ -151,9 +151,10 @@ int main(int argc, char** argv) {
       so.unlockUrl = next("--unlock-url");
       if (so.unlockUrl.empty() || so.unlockUrl.size() > 1000) { fprintf(stderr, "--unlock-url must be 1..1000 characters\n"); return 1; }
     } else if (a == "--unlock-timeout-ms") {
-      long v = strtol(next("--unlock-timeout-ms"), nullptr, 10);
-      if (v < 500 || v > 60000) { fprintf(stderr, "--unlock-timeout-ms must be 500..60000\n"); return 1; }
-      so.unlockTimeoutMs = (unsigned)v;
+      // B1.16.6: there is no launch retry after an unlock any more (the accepted request is the result).
+      // Still accepted, so a command line written for B1.16.4 keeps starting.
+      next("--unlock-timeout-ms");
+      fprintf(stderr, "note: --unlock-timeout-ms is ignored since B1.16.6 (an accepted unlock request is the result)\n");
     }
     else if (a == "--lock-plugin") { std::string v = next("--lock-plugin"); so.lockPlugin = (v == "off") ? "" : v; }
     else if (a == "--preempt-pause") { std::string v = next("--preempt-pause"); if (v == "on") so.preemptPause = true; else if (v == "off") so.preemptPause = false; else { fprintf(stderr, "--preempt-pause must be on|off\n"); return 1; } }
