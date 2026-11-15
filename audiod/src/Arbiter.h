@@ -72,7 +72,8 @@ struct Event {
 
 class Arbiter {
  public:
-  explicit Arbiter(const Tunables& t) : tun(t) {
+  void setTunables(const Tunables& t) { Tunables n = t; if (n.producingGapMs > n.releaseMs) n.producingGapMs = n.releaseMs; tun = n; }
+    explicit Arbiter(const Tunables& t) : tun(t) {
     // A quiet-released source that still counts as producing would re-take the output in the same tick.
     if (tun.producingGapMs > tun.releaseMs) tun.producingGapMs = tun.releaseMs;
   }

@@ -16,9 +16,14 @@ extern char** environ;
 
   nowPlaying = [[NowPlayingViewController alloc] initWithStatus:status];
   technical = [[TechnicalViewController alloc] initWithStatus:status];
+  // The Settings tab lives inside a navigation controller so an enum option can push a picker.
+  settingsVC = [[SettingsViewController alloc] init];
+  settingsNav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+  settingsNav.title = @"Settings";
+  settingsNav.tabBarItem = [[[UITabBarItem alloc] initWithTitle:@"Settings" image:nil tag:2] autorelease];
 
   tabs = [[UITabBarController alloc] init];
-  tabs.viewControllers = [NSArray arrayWithObjects:nowPlaying, technical, nil];
+  tabs.viewControllers = [NSArray arrayWithObjects:nowPlaying, technical, settingsNav, nil];
 
   window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   window.backgroundColor = [UIColor blackColor];
@@ -45,7 +50,8 @@ extern char** environ;
   [status refresh];
   [self watchdog];
   if (tabs.selectedViewController == nowPlaying) [nowPlaying update];
-  else [technical update];
+  else if (tabs.selectedViewController == technical) [technical update];
+  else if (tabs.selectedViewController == settingsNav) [settingsVC update];
 }
 
 - (void)watchdog {
@@ -91,6 +97,8 @@ extern char** environ;
   [tabs release];
   [nowPlaying release];
   [technical release];
+  [settingsVC release];
+  [settingsNav release];
   [status release];
   [window release];
   [super dealloc];

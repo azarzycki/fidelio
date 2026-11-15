@@ -239,14 +239,18 @@ static NSDate* Mtime(NSString* path) {
   UIDevice* dev = [UIDevice currentDevice];
   float level = dev.batteryLevel;
   if (level < 0) return @"n/a";
+  int pct = (int)(level * 100.0f + 0.5f);
   NSString* st = @"";
   switch (dev.batteryState) {
-    case UIDeviceBatteryStateCharging: st = @" charging"; break;
-    case UIDeviceBatteryStateFull: st = @" full"; break;
+    // At 100% a plugged-in device stops drawing charge, so iOS's own status bar reads "Not Charging"
+    // even though the state is still Charging. Report that as "charged", not a misleading "charging"
+    // (the iPad on a weak USB dock sat at "100% charging" forever otherwise).
+    case UIDeviceBatteryStateCharging: st = pct >= 100 ? @" charged" : @" charging"; break;
+    case UIDeviceBatteryStateFull: st = @" charged"; break;
     case UIDeviceBatteryStateUnplugged: st = @" on battery"; break;
     default: break;
   }
-  return [NSString stringWithFormat:@"%d%%%@", (int)(level * 100.0f + 0.5f), st];
+  return [NSString stringWithFormat:@"%d%%%@", pct, st];
 }
 
 + (NSString*)formatTime:(long long)ms {

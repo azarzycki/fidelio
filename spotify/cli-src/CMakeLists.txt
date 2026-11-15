@@ -30,7 +30,7 @@ file(GLOB SOURCES "*.cpp")
 if(NOT APPLE)
   list(FILTER SOURCES EXCLUDE REGEX "AudioQueueSink")  # host build: audiod / --no-audio only
 endif()
-add_executable(cspot-ios3 ${SOURCES} ${COMMON}/AudiodFraming.cpp ${COMMON}/SocketSink.cpp)
+add_executable(cspot-ios3 ${SOURCES} ${COMMON}/AudiodFraming.cpp ${COMMON}/SocketSink.cpp ${COMMON}/Settings.cpp)
 target_include_directories(cspot-ios3 PRIVATE "." ${COMMON} ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 if(APPLE)
   target_link_libraries(cspot-ios3 PUBLIC cspot "-framework AudioToolbox" "-framework CoreFoundation")

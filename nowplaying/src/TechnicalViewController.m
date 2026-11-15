@@ -23,8 +23,14 @@
   [super viewDidLoad];
   self.tableView.backgroundColor = [UIColor blackColor];
   self.tableView.separatorColor = [UIColor colorWithWhite:0.22f alpha:1];
-  self.tableView.rowHeight = 30;  // 14 rows x 30 = 420 px: fits the 431 px above the tab bar (34 did not)
+  self.tableView.rowHeight = 30;
   self.tableView.allowsSelection = NO;
+  // The row list grows over time (the last one, Build, was clipped behind the tab bar on the iPad).
+  // A bottom inset the height of the tab bar lets the final rows scroll clear on any screen instead
+  // of depending on an exact row-count-times-height fit.
+  self.tableView.scrollEnabled = YES;
+  self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 56, 0);
+  self.tableView.scrollIndicatorInsets = self.tableView.contentInset;
   [self update];
 }
 

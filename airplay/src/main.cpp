@@ -20,7 +20,13 @@
 #include "SocketSink.h"
 #include "audiod/proto.h"
 #include "Mdns.h"
+#include "RaopSettings.h"
 #include "RtspServer.h"
+#include "Settings.h"
+
+#ifndef RAOP_BUILD_HASH
+#define RAOP_BUILD_HASH "dev"
+#endif
 #include "StatusFile.h"
 #include "ios3_trace.h"
 
@@ -101,6 +107,24 @@ int main(int argc, char** argv) {
   setvbuf(stderr, NULL, _IONBF, 0);
   signal(SIGPIPE, SIG_IGN);
   Options o = parse(argc, argv);
+
+  // B1.14: option registry -> manifest + settings.conf (startup; raop's options are restart-oriented).
+  fidelio::Registry sreg("raop", RAOP_BUILD_HASH);
+  raop::buildRegistry(sreg);
+  sreg.parseArgv(argc, argv);
+  if (!o.statusDir.empty()) {
+    sreg.loadFile(o.statusDir + "/settings.conf");
+    for (const fidelio::Option& so : sreg.options()) {
+      if (so.origin != "file") continue;
+      const std::string& k = so.key; const std::string& v = so.value;
+      if (k == "name") o.name = v;
+      else if (k == "airplay_volume") o.volumeMode = v == "honor" ? RaopSession::VOL_HONOR : v == "ignore" ? RaopSession::VOL_IGNORE : RaopSession::VOL_AUTO;
+      else if (k == "airplay_preempt") o.preemptPolicy = v == "pause-only" ? 1 : v == "disconnect" ? 2 : v == "none" ? 3 : 0;
+      else if (k == "preempt_verify_ms") o.preemptVerifyMs = atoi(v.c_str());
+      else if (k == "preempt_cooldown_ms") o.preemptCooldownMs = atoi(v.c_str());
+      else if (k == "latency_ms") o.latencyMs = atoi(v.c_str());
+    }
+  }
   RaopSession::volumeMode = o.volumeMode;
   if (o.help) {
     printf("Usage: fidelio-raop [OPTION]...\n"
@@ -153,6 +177,7 @@ int main(int argc, char** argv) {
 
   StatusFile status(o.statusDir, o.name);
   status.setState("idle");
+  if (!o.statusDir.empty()) sreg.writeManifest(o.statusDir);  // B1.14
 
   uint8_t mac[6];
   fakeMac(o.name, mac);

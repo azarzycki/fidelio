@@ -2,6 +2,7 @@
 #import "FidelioStatus.h"
 #import "NowPlayingViewController.h"
 #import "TechnicalViewController.h"
+#import "SettingsViewController.h"
 
 // Watchdog: if the status file stops being updated for this long, cspot is hung or dead and the
 // app prods it with `killall -9 cspot-ios3` (launchd's KeepAlive relaunches it). Only stale files
@@ -17,6 +18,8 @@
   FidelioStatus* status;
   NowPlayingViewController* nowPlaying;
   TechnicalViewController* technical;
+  SettingsViewController* settingsVC;
+  UINavigationController* settingsNav;
   NSTimer* timer;
   BOOL everValid;            // status-spotify.plist has been seen since launch
   NSTimeInterval lastProd;   // CFAbsoluteTime of the last killall, 0 = never

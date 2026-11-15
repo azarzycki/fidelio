@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "AudiodSettings.h"
+
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
@@ -195,6 +197,21 @@ void Server::disableLockPlugin() {
   waker->disableLockBundle(opts.lockPlugin);
   lockEnabled = false;
   logEvent(Event{Event::WAKE, nowMs(), "", "none", "lock-plugin disabled " + opts.lockPlugin});
+}
+
+// B1.14: once a second, if settings.conf changed, apply the live options to the running config and
+// rewrite the manifest so the app shows the new effective values.
+void Server::maybeReloadSettings(uint64_t now) {
+  if (!settings || settingsConf.empty()) return;
+  if (now - lastSettingsCheckMs < 1000) return;
+  lastSettingsCheckMs = now;
+  if (!settings->reloadIfChanged(settingsConf)) return;
+  Tunables t = arbiter.tunables();
+  applyRegistry(*settings, opts, t);
+  arbiter.setTunables(t);
+  if (!settingsDir.empty()) settings->writeManifest(settingsDir);
+  IOS3_TRACE("settings.conf changed: applied live (max_volume=%d crossfade=%u wake=%d preempt=%d spotify_abs=%d airplay_abs=%d)",
+             opts.maxVolumePct, opts.crossfadeMs, (int)opts.wakeOnPlay, (int)opts.preemptPause, (int)opts.absoluteVolume, (int)opts.airplayAbsolute);
 }
 
 void Server::maybeWake(const Event& e) {
@@ -520,6 +537,7 @@ void Server::run() {
     out->tick();
     pollHardwareVolume(now);  // B1.9 A: buttons / external changes -> the producers
     firePreempts(now);        // B1.12: tell a source that lost the output to pause
+    maybeReloadSettings(now);  // B1.14: pick up a settings.conf change
     if (out->resumed()) {
       // The output was paused (interruption / yielding to another app) and just resumed: the active
       // source's ring holds audio from before the pause. Drop it; the producer keeps sending current audio.

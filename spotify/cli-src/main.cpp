@@ -27,7 +27,13 @@
 #include "BellUtils.h"  // for BELL_SLEEP_MS
 #include "CSpotContext.h"
 #include "CliPlayer.h"
+#include "CspotSettings.h"
 #include "PlayerSink.h"
+#include "Settings.h"
+
+#ifndef CSPOT_BUILD_HASH
+#define CSPOT_BUILD_HASH "dev"
+#endif
 VolumeCurve PlayerSink::curve = VOLUME_LOG;
 #include "audiod/proto.h"
 #include "Logger.h"
@@ -328,6 +334,23 @@ int main(int argc, char** argv) {
     return 0;
   }
   IOS3_TRACE("cspot-ios3 rev8 start (no-audio=%d, bitrate=%d, port=%d)", (int)args.noAudio, args.bitrate, args.port);
+
+  // B1.14: option registry -> manifest + settings.conf (startup; cspot's options are restart-oriented).
+  if (!args.statusDir.empty()) {
+    fidelio::Registry sreg("cspot", CSPOT_BUILD_HASH);
+    cspotcli::buildRegistry(sreg);
+    sreg.parseArgv(argc, argv);
+    sreg.loadFile(args.statusDir + "/settings.conf");
+    for (const fidelio::Option& o : sreg.options()) {
+      if (o.origin != "file") continue;
+      const std::string& k = o.key; const std::string& v = o.value;
+      if (k == "name") args.name = v;
+      else if (k == "bitrate") args.bitrate = atoi(v.c_str());
+      else if (k == "initial_volume") args.initialVolumePct = atoi(v.c_str());
+      else if (k == "volume_curve") args.volumeCurve = v == "cubic" ? VOLUME_CUBIC : v == "linear" ? VOLUME_LINEAR : VOLUME_LOG;
+    }
+    sreg.writeManifest(args.statusDir);
+  }
 
   std::unique_ptr<StatusWriter> status;
   if (!args.statusDir.empty()) {

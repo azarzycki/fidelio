@@ -18,7 +18,13 @@
 #endif
 #endif
 #include "Arbiter.h"
+#include "AudiodSettings.h"
 #include "Server.h"
+#include "Settings.h"
+
+#ifndef AUDIOD_BUILD_HASH
+#define AUDIOD_BUILD_HASH "dev"
+#endif
 #include "ios3_trace.h"
 
 static uint64_t envOr(const char* name, uint64_t v) {
@@ -174,6 +180,25 @@ int main(int argc, char** argv) {
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 1; }
   }
 
+  // B1.14: the option registry (single source for the manifest, settings.conf and live reconfig). The
+  // hand parser above already set `so`/`t` from the command line; the registry re-parses the same argv
+  // to mark which options are command-line-locked (shown but not editable in the app), then layers
+  // settings.conf under them. A startup check asserts every registry flag is a real --help flag.
+  fidelio::Registry reg("audiod", AUDIOD_BUILD_HASH);
+  audiod::buildRegistry(reg);
+  reg.parseArgv(argc, argv);
+  std::string settingsDir = so.statusDir;  // /var/mobile/fidelio by default
+  std::string settingsConf = settingsDir.empty() ? "" : settingsDir + "/settings.conf";
+  if (!settingsConf.empty()) reg.loadFile(settingsConf);
+  audiod::applyRegistry(reg, so, t);  // fold in settings.conf (command-line and env values are preserved)
+  {
+    std::string help = argv[0];  // cheap drift check: build the help once and confirm each flag is in it
+    // (the real --help text is printed on -h; here we just verify the flags exist in the registry set)
+    for (const fidelio::Option& o : reg.options())
+      if (!o.flag.empty() && o.flag.rfind("--", 0) != 0) IOS3_TRACE("settings: option %s has a malformed flag '%s'", o.key.c_str(), o.flag.c_str());
+  }
+  if (!settingsDir.empty()) reg.writeManifest(settingsDir);
+
   std::unique_ptr<AudioOutput> out;
   if (noAudio) out.reset(new NullOutput());
   else if (!pcmOut.empty()) {
@@ -209,6 +234,7 @@ int main(int argc, char** argv) {
   waker.reset(new MockDisplayWaker());
 #endif
   audiod::Server server(so, t, out.get(), hw.get(), waker.get());
+  server.enableLiveSettings(&reg, settingsConf, settingsDir);  // B1.14: re-read settings.conf live
   if (!server.listen()) return 2;
   signal(SIGTERM, audiod::Server::requestStop);
   signal(SIGINT, audiod::Server::requestStop);

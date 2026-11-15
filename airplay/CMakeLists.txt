@@ -17,7 +17,7 @@ if(NOT APPLE)
 endif()
 # Shared with fidelio-audiod and cspot-ios3: the audiod wire framing and the SocketSink output.
 set(COMMON ${CMAKE_CURRENT_SOURCE_DIR}/../common)
-add_executable(fidelio-raop ${SRC} ${COMMON}/AudiodFraming.cpp ${COMMON}/SocketSink.cpp)
+add_executable(fidelio-raop ${SRC} ${COMMON}/AudiodFraming.cpp ${COMMON}/SocketSink.cpp ${COMMON}/Settings.cpp)
 target_include_directories(fidelio-raop PRIVATE src ${COMMON} ${CMAKE_CURRENT_SOURCE_DIR}/.. ${MBEDTLS_PREFIX}/include)
 target_compile_options(fidelio-raop PRIVATE -O2 -Wall -Wno-unused-function)
 target_link_libraries(fidelio-raop PRIVATE alacdec

@@ -21,6 +21,7 @@
 #include "AudiodFraming.h"
 #include "DisplayWake.h"
 #include "HardwareVolume.h"
+#include "Settings.h"
 
 namespace audiod {
 
@@ -58,6 +59,8 @@ class Server {
   ~Server();
   bool listen();
   void run();  // until requestStop()
+  // B1.14: live settings. reg stays owned by the caller; conf is settings.conf, dir holds the manifest.
+  void enableLiveSettings(fidelio::Registry* reg, const std::string& conf, const std::string& dir) { settings = reg; settingsConf = conf; settingsDir = dir; }
   static uint64_t nowMs();
   static void requestStop(int signo);  // signal-handler safe
 
@@ -110,6 +113,8 @@ class Server {
   void broadcastHwVolume();
   // B1.9 B
   void maybeWake(const Event& e);
+  // B1.14: re-read settings.conf when it changes and apply the live options (and rewrite the manifest).
+  void maybeReloadSettings(uint64_t now);
   // B1.12: a source lost the output -> after a flap-filtering delay, tell it (PREEMPTED) if it is
   // still not active. Scheduled on the TAKEOVER, fired from the run loop.
   void schedulePreempt(const Event& e);
@@ -129,6 +134,10 @@ class Server {
   uint64_t lastHwPollMs = 0;
   uint64_t lastWakeMs = 0;
   bool lockEnabled = false;  // B1.11: the lock bundle is currently enabled
+  // B1.14 live settings
+  fidelio::Registry* settings = nullptr;
+  std::string settingsConf, settingsDir;
+  uint64_t lastSettingsCheckMs = 0;
   // B1.10 test hook (AUDIOD_STALL_ACTIVE_MS): gate reads of the active source for this long once it
   // first becomes active, to reproduce the device backpressure stall on the host.
   uint64_t stallActiveMs = 0;
