@@ -173,3 +173,6 @@ Since B1.1 the volume goes to audiod as a VOLUME message and the status files ar
   60 dB like librespot: 50 % = -30 dB), computed once in the CLI and applied as a linear gain to
   both the local AudioQueue (`--direct-audio`) and the VOLUME message to audiod. RAOP's volume
   path is unchanged (true dB, -144 = unity).
+
+## Cover size (B1.18)
+`--cover-size large|listed` (registry `cover_size`, Spotify group, advanced; default `large`). The library takes the first image of the track's `cover_group`, and the trimmed `metadata.proto` carries no size field, so it cannot choose a size itself. Usually that first image is the 300 px one. Album-art ids on `i.scdn.co` carry the size in their first 16 hex digits (`ab67616d0000b273` 640 px, `ab67616d00001e02` 300 px, `ab67616d00004851` 64 px), followed by the same image hash for every size. `CoverUrl.h` rewrites a 300/64 px id to the 640 px one. `StatusWriter` fetches that first and falls back to the listed URL if it fails (trace `cover: no 640 px version, using the listed size`). Ids without that prefix are fetched as listed. The iPad shows the cover at 600 pt; the phone decodes any size down to 256 px. The 1 MB response cap is unchanged (a 640 px JPEG is roughly 100 to 200 KB). Host test: `spotify/hosttest/cover_url_test.cpp` (6 checks).

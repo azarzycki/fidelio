@@ -1,14 +1,19 @@
 #import "NowPlayingViewController.h"
 #import <QuartzCore/QuartzCore.h>
 
+#include "NPLayout.h"
+
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 
-// Layout for a 320x480 portrait screen with the status bar hidden and a 49 px tab bar: 431 px usable.
-#define COVER_SIZE FIDELIO_COVER_PX  // FidelioStatus scales the cover to exactly this
+// B1.18: the layout comes from NPLayout (plain C, host-tested): the phone keeps the B1.16.1 frames
+// (320x431 usable with the status bar hidden and the 49 px tab bar); the tablet gets a 600 pt cover,
+// larger type and 60+ pt controls, stacked in portrait and side by side in landscape.
+
+static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
 
 @implementation NowPlayingViewController
 
@@ -74,13 +79,14 @@
 }
 
 - (void)loadView {
-  UIView* v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 431)];
+  CGSize screen = [UIScreen mainScreen].bounds.size;  // the tab bar controller sets the real frame later
+  UIView* v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, screen.width, screen.height - 49)];
   v.backgroundColor = [UIColor blackColor];
   v.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   self.view = v;
   [v release];
 
-  NSString* ph = [[NSBundle mainBundle] pathForResource:@"placeholder" ofType:@"png"];
+  NSString* ph = [[NSBundle mainBundle] pathForResource:([FidelioStatus isTablet] ? @"placeholder_600" : @"placeholder") ofType:@"png"];
   placeholder = [[UIImage alloc] initWithContentsOfFile:ph];
 
   coverView = [[UIImageView alloc] initWithFrame:CGRectZero];
@@ -104,6 +110,9 @@
 
   // B1.16/B1.16.1: transport controls (previous / play-pause / next), drawn as custom glyphs so iOS 5
   // does not render U+25B6 as a blue emoji box; the active source is driven via audiod.
+  glyphScale = 1;
+  titleFontSize = 0;
+  playGlyph = 1;
   prevBtn = [self makeControl:0 action:@selector(prevTapped)];
   playBtn = [self makeControl:1 action:@selector(playTapped)];  // 1 = play glyph by default; update: swaps to pause
   nextBtn = [self makeControl:3 action:@selector(nextTapped)];
@@ -114,11 +123,12 @@
 
 // B1.16.1: draw a transport glyph (0=prev |<<, 1=play >, 2=pause ||, 3=next >>|) ourselves, so both
 // iOS 3.1.3 (plain) and iOS 5.1.1 (which turns U+25B6 into a blue emoji) render the same, and the
-// disabled state is a visible dim. 36x30 white-on-clear.
-+ (UIImage*)transportGlyph:(int)kind dim:(BOOL)dim {
-  CGSize sz = CGSizeMake(36, 30);
+// disabled state is a visible dim. 36x30 white-on-clear, times `scale` (B1.18: 2 on the tablet).
++ (UIImage*)transportGlyph:(int)kind dim:(BOOL)dim scale:(CGFloat)scale {
+  CGSize sz = CGSizeMake(36 * scale, 30 * scale);
   UIGraphicsBeginImageContext(sz);
   CGContextRef c = UIGraphicsGetCurrentContext();
+  CGContextScaleCTM(c, scale, scale);
   CGFloat g = dim ? 0.32f : 1.0f;
   CGContextSetRGBFillColor(c, g, g, g, 1);
   CGFloat midY = 15, h = 18, half = h / 2;         // shapes ~18 px tall, vertically centered
@@ -147,8 +157,9 @@
 
 - (UIButton*)makeControl:(int)kind action:(SEL)sel {
   UIButton* b = [UIButton buttonWithType:UIButtonTypeCustom];
-  [b setImage:[[self class] transportGlyph:kind dim:NO] forState:UIControlStateNormal];
-  [b setImage:[[self class] transportGlyph:kind dim:YES] forState:UIControlStateDisabled];
+  b.tag = kind;  // the glyph kind, so a scale change can redraw it
+  [b setImage:[[self class] transportGlyph:kind dim:NO scale:glyphScale] forState:UIControlStateNormal];
+  [b setImage:[[self class] transportGlyph:kind dim:YES scale:glyphScale] forState:UIControlStateDisabled];
   [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:b];
   return [b retain];  // ivar owns it; released in releaseSubviews
@@ -156,36 +167,64 @@
 
 // Set the play/pause button's glyph (1=play, 2=pause) for both the normal and disabled states.
 - (void)setPlayGlyph:(int)kind {
-  [playBtn setImage:[[self class] transportGlyph:kind dim:NO] forState:UIControlStateNormal];
-  [playBtn setImage:[[self class] transportGlyph:kind dim:YES] forState:UIControlStateDisabled];
+  if (kind == playGlyph && [playBtn imageForState:UIControlStateNormal]) return;  // nothing to redraw (update runs at 1 Hz)
+  playGlyph = kind;
+  [playBtn setImage:[[self class] transportGlyph:kind dim:NO scale:glyphScale] forState:UIControlStateNormal];
+  [playBtn setImage:[[self class] transportGlyph:kind dim:YES scale:glyphScale] forState:UIControlStateDisabled];
 }
 
-// B1.16.1: lay out every subview from the view's REAL height (431 usable on the 320x480 iPhone frame
-// with the 49 px tab bar), anchoring the bottom cluster to the height so the controls can never fall
-// under the tab bar. Called from loadView and on every appearance / frame change.
+// B1.18: the tablet rotates (the dock may hold it either way); the phone stays portrait as before.
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
+- (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)o duration:(NSTimeInterval)d { [self layoutContent]; }
+- (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)o { [self layoutContent]; }
+
+// B1.16.1: lay out every subview from the view's REAL size, anchoring the bottom cluster to the height so
+// the controls can never fall under the tab bar. B1.18: the frames come from NPLayoutCompute. Called
+// from loadView, on every appearance and on rotation.
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self layoutContent]; }
 
 - (void)layoutContent {
   CGFloat W = self.view.bounds.size.width, H = self.view.bounds.size.height;
   if (W < 1 || H < 1) return;
-  coverView.frame = CGRectMake((W - COVER_SIZE) / 2, 4, COVER_SIZE, COVER_SIZE);
-  CGFloat y = 4 + COVER_SIZE + 4;                    // just below the cover
-  titleLabel.frame  = CGRectMake(12, y, W - 24, 30); y += 30;
-  artistLabel.frame = CGRectMake(12, y, W - 24, 24); y += 24;
-  albumLabel.frame  = CGRectMake(12, y, W - 24, 20);
-  CGFloat btnH = 40, btnY = H - btnH - 5;            // the control row sits just above the tab bar
-  CGFloat stateY = btnY - 18, timesY = stateY - 18, progY = timesY - 12;
-  progress.frame       = CGRectMake(20, progY, W - 40, 9);
-  elapsedLabel.frame   = CGRectMake(20, timesY, 110, 16);
-  remainingLabel.frame = CGRectMake(W - 130, timesY, 110, 16);
-  stateLabel.frame     = CGRectMake(14, stateY, W - 28, 16);
-  CGFloat cx[3] = { W * 0.25f, W * 0.5f, W * 0.75f };
-  prevBtn.frame = CGRectMake(cx[0] - 30, btnY, 60, btnH);
-  playBtn.frame = CGRectMake(cx[1] - 30, btnY, 60, btnH);
-  nextBtn.frame = CGRectMake(cx[2] - 30, btnY, 60, btnH);
-  // Regression guard: nothing may extend past the usable height.
+  NPLayout L;
+  NPLayoutCompute(W, H, [FidelioStatus isTablet] ? 1 : 0, &L);
+  coverView.frame = CG(L.cover);
+  coverView.layer.cornerRadius = L.tablet ? 16.0f : 10.0f;
+  titleLabel.frame = CG(L.title);
+  artistLabel.frame = CG(L.artist);
+  albumLabel.frame = CG(L.album);
+  progress.frame = CG(L.progress);
+  elapsedLabel.frame = CG(L.elapsed);
+  remainingLabel.frame = CG(L.remaining);
+  stateLabel.frame = CG(L.state);
+  prevBtn.frame = CG(L.prev);
+  playBtn.frame = CG(L.play);
+  nextBtn.frame = CG(L.next);
+  if (L.titleFont != titleFontSize) {  // fonts change only between the phone and the tablet's two layouts
+    titleFontSize = L.titleFont;
+    titleLabel.font = [UIFont boldSystemFontOfSize:L.titleFont];
+    artistLabel.font = [UIFont systemFontOfSize:L.artistFont];
+    albumLabel.font = [UIFont systemFontOfSize:L.albumFont];
+    elapsedLabel.font = [UIFont boldSystemFontOfSize:L.timeFont];
+    remainingLabel.font = [UIFont boldSystemFontOfSize:L.timeFont];
+    stateLabel.font = [UIFont systemFontOfSize:L.stateFont];
+    // the side-by-side column is left-aligned under the title; the stacked layouts are centred
+    UITextAlignment al = L.sideBySide ? UITextAlignmentLeft : UITextAlignmentCenter;
+    titleLabel.textAlignment = al; artistLabel.textAlignment = al; albumLabel.textAlignment = al; stateLabel.textAlignment = al;
+  }
+  if (L.glyphScale != glyphScale) {
+    glyphScale = L.glyphScale;
+    UIButton* bs[2] = { prevBtn, nextBtn };
+    for (int i = 0; i < 2; i++) {
+      [bs[i] setImage:[[self class] transportGlyph:bs[i].tag dim:NO scale:glyphScale] forState:UIControlStateNormal];
+      [bs[i] setImage:[[self class] transportGlyph:bs[i].tag dim:YES scale:glyphScale] forState:UIControlStateDisabled];
+    }
+    [playBtn setImage:nil forState:UIControlStateNormal];  // force setPlayGlyph to redraw at the new scale
+    [self setPlayGlyph:playGlyph];
+  }
+  // Regression guard: nothing may extend past the usable height (the host layout test checks the same).
   CGFloat maxB = 0; UIView* worst = nil;
-  for (UIView* v in self.view.subviews) { CGFloat b = CGRectGetMaxY(v.frame); if (b > maxB) { maxB = b; worst = v; } }
+  for (UIView* v in self.view.subviews) { CGFloat bt = CGRectGetMaxY(v.frame); if (bt > maxB) { maxB = bt; worst = v; } }
   if (maxB > H + 0.5f) NSLog(@"NowPlaying LAYOUT WARNING: a subview bottom (%.0f) exceeds the usable height (%.0f): %@", maxB, H, worst);
 }
 

@@ -41,6 +41,19 @@ The fork's `TrackInfo.imageUrl` is already `https://i.scdn.co/image/<hex file id
 
 Memory: the app allocates the two view hierarchies, one decoded cover (≈300 KB for a 300 px JPEG) and a 14-row table. No caches, no large buffers.
 
+## One app for the phone and the iPad (1.4.0, B1.18)
+The same ARMv6 binary runs natively on both: `UIDeviceFamily` is 1 and 2, set by hand because the 3.1 SDK has no such key. A screen whose shorter side exceeds 600 pt counts as a tablet, decided at run time from `[UIScreen mainScreen].bounds` (no `UI_USER_INTERFACE_IDIOM` in the 3.1 SDK, no OS-version test). The iPad no longer runs the app in the 320×480 compatibility frame with the 2× button.
+- **Now Playing layout** (`NPLayout.c`, plain C, used by the app and by the host test `nowplaying/hosttest/layout_test.c`): the phone keeps the B1.16.1 frames exactly (the test pins them). On the tablet:
+  - **portrait:** a 600 pt cover on top, larger type (title 40 pt), then progress, times and state, then 96×64 pt transport buttons (touch targets ≥ 60 pt);
+  - **landscape:** the cover left, and on the right a column with the text at the cover's top edge and the controls ending at its bottom edge.
+
+  Usable sizes tested: 320×431, 768×955/975 and 1024×699/719 (with and without the status bar, minus the 49 pt tab bar).
+- **Rotation:** the tablet rotates to all four orientations (`UISupportedInterfaceOrientations~ipad`, every view controller agrees); the phone stays portrait. On iOS 4+ the tab bar controller is the window's `rootViewController` (iOS 5 routes rotation through it); on 3.1 its view is added as before.
+- **Cover:** decoded to a 600 px square on the tablet (1.4 MB) and 256 px on the phone as before. `placeholder_600.png` is the tablet's empty tile. cspot fetches Spotify's 640 px cover (`--cover-size`, see CSPOT.md).
+- **Technical and Settings:** on the tablet the tables sit in a centred column at most 640 pt wide (readable rows), Technical in 20 pt type with 44 pt rows. The Technical tab is now a plain view controller owning its table, which is what allows the column.
+- **Status bar:** hidden on both devices (an appliance display); launch images `Default-Portrait~ipad.png` 768×1024 and `Default-Landscape~ipad.png` 1024×768 are full-screen for that reason. Icons: `Icon.png` 57 and `Icon-72.png` 72.
+- After installing 1.4.0 run `uicache` as for 1.3.1: the device family, icons and launch images are read when the app list is rebuilt.
+
 ## Install
 ```sh
 scp -r NowPlaying.app root@phone:/Applications/

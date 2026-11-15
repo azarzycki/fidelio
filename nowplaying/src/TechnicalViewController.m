@@ -3,7 +3,7 @@
 @implementation TechnicalViewController
 
 - (id)initWithStatus:(FidelioStatus*)s {
-  if ((self = [super initWithStyle:UITableViewStylePlain])) {
+  if ((self = [super initWithNibName:nil bundle:nil])) {
     status = s;
     self.title = @"Technical";
     UIImage* icon = [[UIImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"tab_technical" ofType:@"png"]];
@@ -16,23 +16,44 @@
 
 - (void)dealloc {
   [rows release];
+  [table release];
   [super dealloc];
+}
+
+- (void)loadView {
+  CGSize screen = [UIScreen mainScreen].bounds.size;
+  table = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, screen.width, screen.height - 49) style:UITableViewStylePlain];
+  table.dataSource = self;
+  table.delegate = self;
+  table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  self.view = [FidelioStatus columnViewForTable:table background:[UIColor blackColor]];
+}
+
+- (void)viewDidUnload {  // a memory warning purged the view: let the table go with it (loadView makes a new one)
+  [super viewDidUnload];
+  [table release];
+  table = nil;
 }
 
 - (void)viewDidLoad {
   [super viewDidLoad];
-  self.tableView.backgroundColor = [UIColor blackColor];
-  self.tableView.separatorColor = [UIColor colorWithWhite:0.22f alpha:1];
-  self.tableView.rowHeight = 30;
-  self.tableView.allowsSelection = NO;
+  table.backgroundColor = [UIColor blackColor];
+  table.separatorColor = [UIColor colorWithWhite:0.22f alpha:1];
+  table.rowHeight = [FidelioStatus isTablet] ? 44 : 30;
+  table.allowsSelection = NO;
   // The row list grows over time (the last one, Build, was clipped behind the tab bar on the iPad).
   // A bottom inset the height of the tab bar lets the final rows scroll clear on any screen instead
   // of depending on an exact row-count-times-height fit.
-  self.tableView.scrollEnabled = YES;
-  self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 56, 0);
-  self.tableView.scrollIndicatorInsets = self.tableView.contentInset;
+  table.scrollEnabled = YES;
+  table.contentInset = UIEdgeInsetsMake(0, 0, 56, 0);
+  table.scrollIndicatorInsets = table.contentInset;
   [self update];
 }
+
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self update]; }
+
+// B1.18: the tablet rotates; the phone stays portrait as before.
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
 
 - (void)update {
   NSString* codec = [NSString stringWithFormat:@"%@ %lld kbps", [status string:@"codec"], [status integer:@"bitrate_kbps"]];
@@ -61,7 +82,7 @@
       nil];
   [rows release];
   rows = [r retain];
-  [self.tableView reloadData];
+  [table reloadData];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView {
@@ -79,9 +100,10 @@
     cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cellId] autorelease];
     cell.backgroundColor = [UIColor blackColor];
     cell.textLabel.textColor = [UIColor colorWithWhite:0.65f alpha:1];
-    cell.textLabel.font = [UIFont systemFontOfSize:15];
+    CGFloat fs = [FidelioStatus isTablet] ? 20 : 15;  // B1.18: tablet type
+    cell.textLabel.font = [UIFont systemFontOfSize:fs];
     cell.detailTextLabel.textColor = [UIColor whiteColor];
-    cell.detailTextLabel.font = [UIFont boldSystemFontOfSize:15];
+    cell.detailTextLabel.font = [UIFont boldSystemFontOfSize:fs];
     cell.detailTextLabel.adjustsFontSizeToFitWidth = YES;
     cell.detailTextLabel.minimumFontSize = 10;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;

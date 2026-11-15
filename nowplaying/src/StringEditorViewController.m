@@ -1,5 +1,6 @@
 #import "StringEditorViewController.h"
 #import "SettingsViewController.h"
+#import "FidelioStatus.h"  // B1.18: isTablet, allowsOrientation, columnViewForTable
 
 @implementation StringEditorViewController
 
@@ -19,7 +20,9 @@
   v.backgroundColor = [UIColor groupTableViewBackgroundColor];
   v.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   CGFloat w = v.bounds.size.width;
-  field = [[UITextField alloc] initWithFrame:CGRectMake(10, 20, w - 20, 34)];
+  // B1.18: on the tablet the field is a centred 600 pt column instead of the full width
+  CGFloat fw = [FidelioStatus isTablet] && w > 640 ? 600 : w - 20;
+  field = [[UITextField alloc] initWithFrame:CGRectMake((w - fw) / 2, 20, fw, 34)];
   field.borderStyle = UITextBorderStyleRoundedRect;
   field.text = [option objectForKey:@"value"];
   field.placeholder = [option objectForKey:@"title"];
@@ -28,7 +31,8 @@
   field.clearButtonMode = UITextFieldViewModeWhileEditing;
   field.returnKeyType = UIReturnKeyDone;
   field.delegate = self;
-  field.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+  field.autoresizingMask = [FidelioStatus isTablet] ? (UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin)
+                                                    : UIViewAutoresizingFlexibleWidth;
   [v addSubview:field];
   self.view = v;
   self.navigationItem.rightBarButtonItem =
@@ -36,6 +40,8 @@
 }
 
 - (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; [field becomeFirstResponder]; }
+
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }  // B1.18
 
 // Enforce maxlen (bytes) and reject control characters as they are typed.
 - (BOOL)textField:(UITextField*)tf shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString*)s {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/run-host-tests.sh [REPO]   (REPO defaults to the repo this script lives in)
 #
-# Builds the host targets the 18 audiod host suites need (only what is missing / out of date), runs
+# Builds the host targets the 20 host suites need (18 audiod + the NowPlaying layout + cspot's cover URL) (only what is missing / out of date), runs
 # the suites one after another (they share fixed /tmp/audiod-* dirs and TCP ports: never in
 # parallel), and prints a per-suite table plus a TOTAL line.
 #
@@ -41,7 +41,7 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 283 ok, 0 FAIL, at B1.16.4)
+# name | baseline ok count | command (baseline: 319 ok, 0 FAIL, at B1.18)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -61,6 +61,8 @@ preempt      11 $PYTHON $T/test_preempt.py $AUDIOD
 ap_preempt   11 $PYTHON $T/test_airplay_preempt.py $AUDIOD $RAOP
 ap_volume    11 $PYTHON $T/test_airplay_volume.py $AUDIOD $RAOP
 volume       11 $PYTHON $T/test_volume.py $AUDIOD
+layout       30 $HOST/nowplaying/layout_test
+cover_url     6 $HOST/cspot/cover_url_test
 "
 
 case "$BUILD_ROOT$REPO" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
@@ -109,6 +111,14 @@ build_host() {
       -DBELL_EXTERNAL_MBEDTLS="$HOST/sysroot/lib/cmake/MbedTLS" -DMBEDTLS_RELEASE=RELEASE \
       "-DCMAKE_CXX_FLAGS=-include cstring" "${cc[@]}"
   PATH="$NANOPB_PY_DIR:$PATH" logged "$LOGS/host-cspot-build.log" ninja -C "$HOST/cspot"
+
+  # B1.18: two plain host tests without a CMake project of their own: the NowPlaying layout core (the
+  # same C the app compiles) and cspot's cover-URL helper (header-only).
+  mkdir -p "$HOST/nowplaying"
+  logged "$LOGS/host-layout-build.log" cc -O2 -Wall -Wextra -std=c99 -I"$REPO/nowplaying/src" -o "$HOST/nowplaying/layout_test" \
+    "$REPO/nowplaying/src/NPLayout.c" "$REPO/nowplaying/hosttest/layout_test.c"
+  logged "$LOGS/host-cover-url-build.log" c++ -O2 -Wall -std=c++17 -I"$REPO/spotify/cli-src" -o "$HOST/cspot/cover_url_test" \
+    "$REPO/spotify/hosttest/cover_url_test.cpp"
 }
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
@@ -117,7 +127,7 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
   note "host build done after ${SECONDS}s"
 fi
 BUILD_SECS=$SECONDS
-for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
+for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/cspot/cover_url_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
          "$HOST/audiod/aqsink_bare_test" "$HOST/audiod/writeframe_test" "$HOST/audiod/settings_test"; do
   [ -x "$f" ] || die "missing host binary $f (run without SKIP_BUILD=1)"
 done

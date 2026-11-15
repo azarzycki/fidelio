@@ -46,8 +46,12 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
   table.dataSource = self;
   table.delegate = self;
   table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-  self.view = table;
+  // B1.18: on the tablet the grouped table sits in a centred column (readable rows); the phone is as before.
+  self.view = [FidelioStatus columnViewForTable:table background:[UIColor groupTableViewBackgroundColor]];
 }
+
+// B1.18: the tablet rotates; the phone stays portrait as before.
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
 
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reload]; }
 

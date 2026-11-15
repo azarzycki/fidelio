@@ -106,6 +106,7 @@ struct Options {
   int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
   int initialVolumePct = 50; // --initial-volume: what Connect sees and what we play at before the first slider move
   VolumeCurve volumeCurve = VOLUME_LOG;  // --volume-curve
+  bool largeCover = true;    // --cover-size large|listed (B1.18): fetch Spotify's 640 px cover, the iPad shows it at 600
 #ifdef __APPLE__
   AudioQueueSink::Options audio;  // --audio-route, --on-route-change, --audio-session (direct audio only)
 #endif
@@ -146,6 +147,16 @@ static void buildCspotRegistry(fidelio::Registry& r, Options& o) {
   x.read=[&o]{ return o.volumeCurve==VOLUME_CUBIC ? std::string("cubic") : o.volumeCurve==VOLUME_LINEAR ? std::string("linear") : std::string("log"); };
   x.write=[&o](const std::string& v){ o.volumeCurve = v=="cubic" ? VOLUME_CUBIC : v=="linear" ? VOLUME_LINEAR : VOLUME_LOG; return true; };
   r.add(x);
+
+  // B1.18: cover size. The iPad shows the cover at 600 pt; the size the track metadata lists first is
+  // usually 300 px. The phone scales any size down to 256 when it decodes.
+  x = {}; x.key="cover_size"; x.flag="--cover-size"; x.type=O::ENUM;
+  x.choices={{"large","640 px"},{"listed","As listed"}};
+  x.def="large"; x.title="Cover size"; x.desc="Fetch Spotify's 640 px album cover (the iPad shows covers at 600 px); falls back to the size the track lists if the large one is not available.";
+  x.group="Spotify"; x.live=false; x.advanced=true;
+  x.read=[&o]{ return o.largeCover ? std::string("large") : std::string("listed"); };
+  x.write=[&o](const std::string& v){ o.largeCover = (v=="large"); return true; };
+  r.add(x);
 }
 
 static Options parseArgs(int argc, char** argv) {
@@ -180,6 +191,11 @@ static Options parseArgs(int argc, char** argv) {
       else if (v == "cubic") o.volumeCurve = VOLUME_CUBIC;
       else if (v == "linear") o.volumeCurve = VOLUME_LINEAR;
       else throw std::invalid_argument("--volume-curve must be log|cubic|linear");
+    } else if (a == "--cover-size") {
+      std::string v = next("--cover-size");
+      if (v == "large") o.largeCover = true;
+      else if (v == "listed") o.largeCover = false;
+      else throw std::invalid_argument("--cover-size must be large|listed");
     }
     else if (a == "--status-dir") o.statusDir = next("--status-dir");
     else if (a == "--no-status") o.statusDir.clear();
@@ -351,6 +367,8 @@ int main(int argc, char** argv) {
                  "                           library's 0 made the slider sit at zero and jump on first touch)\n"
                  "  --volume-curve log|cubic|linear\n"
                  "                           slider -> gain: log over 60 dB (default, like librespot), cubic, or linear\n"
+                 "  --cover-size large|listed  large (default): fetch Spotify's 640 px album cover, falling back to the size\n"
+                 "                           the track lists (usually 300 px) if the large one is not available (B1.18)\n"
                  "  --audio-route auto|speaker|lineout\n"
                  "                           auto/lineout: follow the system route (dock line-out when docked,\n"
                  "                           speaker otherwise); speaker: force the built-in speaker (iOS 3 can\n"
@@ -388,7 +406,8 @@ int main(int argc, char** argv) {
   std::unique_ptr<StatusWriter> status;
   if (!args.statusDir.empty()) {
     status = std::make_unique<StatusWriter>(args.statusDir, args.name, args.bitrate);
-    IOS3_TRACE("StatusWriter writing to %s", args.statusDir.c_str());
+    status->setLargeCover(args.largeCover);
+    IOS3_TRACE("StatusWriter writing to %s (cover size: %s)", args.statusDir.c_str(), args.largeCover ? "640 px when available" : "as listed");
   }
 
   std::unique_ptr<PlayerSink> audioSink;

@@ -3,6 +3,7 @@
 // Writes <dir>/status.json and <dir>/status.plist atomically (tmp + rename) on every state
 // change and once a second while playing; fetches the album cover (HTTPS, i.scdn.co) on its
 // own thread and saves <dir>/cover.jpg.
+#include <atomic>
 #include <pthread.h>
 #include <stdint.h>
 
@@ -27,6 +28,8 @@ class StatusWriter {
   void setCountryProvider(std::function<std::string()> provider);
   // Position helpers used by the player: the audio actually ended (playlist end).
   void audioEnded();
+  // B1.18: fetch the 640 px cover first (CoverUrl.h), the listed one if that fails. Set before the first track.
+  void setLargeCover(bool on) { largeCover = on; }
 
  private:
   static const size_t kMaxCoverBytes = 1024 * 1024;  // Spotify covers are tens of KB; a bound for Content-Length
@@ -40,6 +43,7 @@ class StatusWriter {
 
   std::string dir, device;
   int bitrate;
+  std::atomic<bool> largeCover{true};  // set from main, read by the writer thread
 
   std::mutex mutex;
   pthread_t thread;

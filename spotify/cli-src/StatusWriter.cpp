@@ -1,5 +1,7 @@
 #include "StatusWriter.h"
 
+#include "CoverUrl.h"
+
 #include <errno.h>
 #ifdef __APPLE__
 #include <mach/mach_time.h>
@@ -340,7 +342,13 @@ void StatusWriter::threadLoop() {
       // a while, and the writer is single-threaded.
       writeFiles();
       std::string name;
-      bool ok = fetchCover(url, name);
+      bool ok = false;
+      std::string large = largeCover ? largeCoverUrl(url) : url;
+      if (large != url) {  // B1.18: the 640 px version first; the listed size if that fails
+        ok = fetchCover(large, name);
+        if (!ok) IOS3_TRACE("cover: no 640 px version, using the listed size");
+      }
+      if (!ok) ok = fetchCover(url, name);
       std::scoped_lock l(mutex);
       coverFile = ok ? name : "";
     }

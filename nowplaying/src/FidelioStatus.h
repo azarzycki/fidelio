@@ -6,15 +6,16 @@
 #import <UIKit/UIKit.h>
 
 #define FIDELIO_DIR @"/var/mobile/fidelio"
-#define FIDELIO_APP_VERSION @"1.3.1 (url scheme)"
+#define FIDELIO_APP_VERSION @"1.4.0 (universal)"
 #define FIDELIO_STALE_S 15.0          // status file older than this: the player is not updating it
 #define FIDELIO_ACTIVE_SOURCE_STALE_S 30.0  // active-source older than this (audiod rewrites it every 10 s): audiod is gone
-#define FIDELIO_COVER_PX 256.0f       // the cover is shown at 256x256 (non-Retina), so that is all we keep
+// B1.18: the cover is decoded to the size it is shown at: 256 px on the phone (memory: a deliberate
+// limit), 600 px on the tablet ([FidelioStatus coverPixels], from NPLayout's NPCoverPixels).
 #define FIDELIO_COVER_MAX_PX 1600.0f  // decoding is w*h*4 bytes; 1600^2 = 10 MB is the most this device should spare
 
 @interface FidelioStatus : NSObject {
   NSDictionary* dict;      // last parsed status.plist, or nil
-  UIImage* cover;          // current cover scaled to FIDELIO_COVER_PX square, or nil
+  UIImage* cover;          // current cover scaled to a coverPixels square, or nil
   NSString* coverName;     // "cover.jpg" or ""
   NSDate* coverMtime;      // mtime of the file at the last load attempt, nil if it was absent
   unsigned long long coverSize;
@@ -50,7 +51,15 @@
 + (NSTimeInterval)uptime;
 + (NSString*)wifiAddress;
 + (NSString*)batteryString;
-+ (UIImage*)newCoverFromFile:(NSString*)path;  // +1; FIDELIO_COVER_PX square, nil if unreadable/too big. Main thread only.
++ (UIImage*)newCoverFromFile:(NSString*)path;  // +1; coverPixels square, nil if unreadable/too big. Main thread only.
+// B1.18: one universal app. A screen whose shorter side exceeds 600 pt is a tablet (decided once, from
+// [UIScreen mainScreen].bounds: no UI_USER_INTERFACE_IDIOM in the 3.1 SDK).
++ (BOOL)isTablet;
++ (CGFloat)coverPixels;                                 // 256 phone, 600 tablet
++ (BOOL)allowsOrientation:(UIInterfaceOrientation)o;    // tablet: all four; phone: portrait only (as before)
+// The tablet shows a table in a centred column at most 640 pt wide (readable rows instead of 768 or
+// 1024 pt ones): returns a container holding t (t keeps its own color), or t itself on the phone.
++ (UIView*)columnViewForTable:(UITableView*)t background:(UIColor*)bg;
 + (NSString*)formatTime:(long long)ms;        // mm:ss
 + (NSString*)formatDuration:(NSTimeInterval)s;  // 1d 02:03:04 / 02:03:04
 @end

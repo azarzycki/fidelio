@@ -1,4 +1,5 @@
 #import "FidelioStatus.h"
+#include "NPLayout.h"
 
 #include <arpa/inet.h>
 #include <ifaddrs.h>
@@ -156,10 +157,42 @@ static NSDate* Mtime(NSString* path) {
 
 // UIImage keeps the file-backed CGImage, and the first draw decodes it to a w*h*4 bitmap that
 // stays resident (a 640x640 Spotify cover is 1.6 MB, a 1400x1400 AirPlay/iTunes one 7.8 MB,
-// 3000x3000 is 36 MB -- a jetsam kill on 116 MB). Decode once into a FIDELIO_COVER_PX square
+// 3000x3000 is 36 MB -- a jetsam kill on 116 MB). Decode once into a coverPixels square
 // (aspect-fill, 256 KB), then drop the original. Dimensions come from the JPEG header, so
 // oversized files are refused before anything is decoded. UIGraphics contexts are
 // main-thread-only on iPhone OS 3; refresh runs from the main-thread timer.
++ (BOOL)isTablet {
+  static int tablet = -1;
+  if (tablet < 0) {
+    CGSize s = [UIScreen mainScreen].bounds.size;
+    tablet = NPIsTablet(s.width, s.height) ? 1 : 0;
+  }
+  return tablet == 1;
+}
+
++ (CGFloat)coverPixels { return NPCoverPixels([self isTablet] ? 1 : 0); }
+
++ (BOOL)allowsOrientation:(UIInterfaceOrientation)o {
+  return [self isTablet] || o == UIInterfaceOrientationPortrait;
+}
+
++ (UIView*)columnViewForTable:(UITableView*)t background:(UIColor*)bg {
+  if (![self isTablet]) return t;
+  CGRect f = t.frame;
+  UIView* box = [[[UIView alloc] initWithFrame:f] autorelease];
+  box.backgroundColor = bg;
+  box.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  CGFloat w = f.size.width > 640 ? 640 : f.size.width;
+  t.frame = CGRectMake((f.size.width - w) / 2, 0, w, f.size.height);
+  t.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleHeight;
+  // iOS 3.2+ tables draw a backgroundView over backgroundColor; drop it so the column and the margins
+  // match (respondsToSelector: the 3.1 SDK and the phone's OS have no such property).
+  if ([t respondsToSelector:@selector(setBackgroundView:)]) [t performSelector:@selector(setBackgroundView:) withObject:nil];
+  t.backgroundColor = bg;
+  [box addSubview:t];
+  return box;
+}
+
 + (UIImage*)newCoverFromFile:(NSString*)path {
   UIImage* img = [[UIImage alloc] initWithContentsOfFile:path];
   if (!img) return nil;
@@ -168,10 +201,11 @@ static NSDate* Mtime(NSString* path) {
     [img release];
     return nil;
   }
-  CGFloat scale = FIDELIO_COVER_PX / (sz.width < sz.height ? sz.width : sz.height);
+  CGFloat px = [self coverPixels];
+  CGFloat scale = px / (sz.width < sz.height ? sz.width : sz.height);
   CGFloat w = sz.width * scale, h = sz.height * scale;
-  UIGraphicsBeginImageContext(CGSizeMake(FIDELIO_COVER_PX, FIDELIO_COVER_PX));
-  [img drawInRect:CGRectMake((FIDELIO_COVER_PX - w) / 2, (FIDELIO_COVER_PX - h) / 2, w, h)];
+  UIGraphicsBeginImageContext(CGSizeMake(px, px));
+  [img drawInRect:CGRectMake((px - w) / 2, (px - h) / 2, w, h)];
   UIImage* small = [UIGraphicsGetImageFromCurrentImageContext() retain];
   UIGraphicsEndImageContext();
   [img release];

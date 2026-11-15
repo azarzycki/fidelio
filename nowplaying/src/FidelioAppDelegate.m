@@ -29,7 +29,10 @@ extern char** environ;
 
   window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   window.backgroundColor = [UIColor blackColor];
-  [window addSubview:tabs.view];
+  // B1.18: iOS 4+ routes rotation through the window's root view controller (the tablet rotates);
+  // iPhone OS 3.1 has no rootViewController, so the tab bar's view is added directly as before.
+  if ([window respondsToSelector:@selector(setRootViewController:)]) [window performSelector:@selector(setRootViewController:) withObject:tabs];
+  else [window addSubview:tabs.view];
   [window makeKeyAndVisible];
 
   [self startTimer];

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Generate Icon.png (57x57), placeholder.png (256x256), Default.png (320x480) and the two
-30x30 tab bar glyphs (tab_nowplaying.png, tab_technical.png, tab_settings.png) for NowPlaying.app: a dark
+"""Generate Icon.png (57x57), placeholder.png (256x256), Default.png (320x480), the iPad set
+(B1.18: Icon-72.png, placeholder_600.png, Default-Portrait~ipad.png 768x1024, Default-Landscape~ipad.png
+1024x768) and the 30x30 tab bar glyphs (tab_nowplaying.png, tab_technical.png, tab_settings.png) for NowPlaying.app: a dark
 gradient tile with rounded corners and a drawn eighth-note glyph.
 Pure Python (zlib + struct), no PIL, deterministic output."""
 import struct
@@ -110,6 +111,12 @@ out = sys.argv[1] if len(sys.argv) > 1 else "."
 tile(f"{out}/Icon.png", 57, 10, (72, 204, 142))
 tile(f"{out}/placeholder.png", 256, 22, (112, 118, 128))
 png(f"{out}/Default.png", 320, 480, [[0, 0, 0, 255] * 320 for _ in range(480)])
+# B1.18, iPad (universal app): 72 px icon, a 600 px placeholder (the tablet's cover size), black launch
+# images for both orientations (the status bar is hidden, so they are full-screen)
+tile(f"{out}/Icon-72.png", 72, 12, (72, 204, 142))
+tile(f"{out}/placeholder_600.png", 600, 52, (112, 118, 128))
+png(f"{out}/Default-Portrait~ipad.png", 768, 1024, [[0, 0, 0, 255] * 768 for _ in range(1024)])
+png(f"{out}/Default-Landscape~ipad.png", 1024, 768, [[0, 0, 0, 255] * 1024 for _ in range(768)])
 glyph(f"{out}/tab_nowplaying.png", 30, note_glyph_hit)
 glyph(f"{out}/tab_technical.png", 30, list_glyph_hit)
 glyph(f"{out}/tab_settings.png", 30, sliders_glyph_hit)
