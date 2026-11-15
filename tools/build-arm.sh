@@ -12,6 +12,7 @@
 #   NowPlaying.app                   nowplaying/src/build.sh
 #   Fidelio.lockbundle, Fidelio.bundle   nowplaying/lockplugin/build.sh (EXT lockbundle and bundle)
 #   DockRemote.dylib                 tweak/DockRemote/build.sh
+#   voltest                          audiod/probe/build.sh (a device probe of the system volume categories, B1.16.12)
 #
 # Exit status: 0 all built and verified; 1 a verification failed (see report); 3 setup / build error.
 #
@@ -100,12 +101,14 @@ logged "$LOGS/arm-lockplugin-lockbundle.log" script_env bash "$REPO/nowplaying/l
 logged "$LOGS/arm-lockplugin-bundle.log" script_env bash "$REPO/nowplaying/lockplugin/build.sh" "$ARM/lockplugin" bundle
 note "DockRemote.dylib"
 logged "$LOGS/arm-dockremote.log" script_env bash "$REPO/tweak/DockRemote/build.sh" "$ARM/dockremote"
+note "voltest (probe)"
+logged "$LOGS/arm-voltest.log" script_env bash "$REPO/audiod/probe/build.sh" "$ARM/probe"
 
 # ------------------------------------------------------------------ collect ---------------------------
 note "collecting into $ARM_OUT"
 mkdir -p "$ARM_OUT"
 # (fidelio-audiod-openurlswhenlocked: the B1.16.4 entitlement A/B, gone since B1.16.6; removed if an older run left it)
-rm -rf "$ARM_OUT"/{fidelio-audiod,fidelio-audiod-openurlswhenlocked,fidelio-lockctl,fidelio-raop,cspot-ios3,NowPlaying.app,Fidelio.lockbundle,Fidelio.bundle,DockRemote.dylib,DockRemote.plist,verify,report.txt,SHA256SUMS}
+rm -rf "$ARM_OUT"/{fidelio-audiod,fidelio-audiod-openurlswhenlocked,fidelio-lockctl,fidelio-raop,cspot-ios3,NowPlaying.app,Fidelio.lockbundle,Fidelio.bundle,DockRemote.dylib,DockRemote.plist,voltest,verify,report.txt,SHA256SUMS}
 mkdir -p "$ARM_OUT/verify"
 cp "$ARM/audiod/fidelio-audiod" "$ARM/audiod/fidelio-lockctl" "$ARM_OUT/"      # already stripped + entitlement-signed (POST_BUILD)
 for b in "$ARM/airplay/fidelio-raop" "$ARM/cspot/cspot-ios3"; do               # CSPOT.md: strip -x, then ldid -S, then check
@@ -113,10 +116,11 @@ for b in "$ARM/airplay/fidelio-raop" "$ARM/cspot/cspot-ios3"; do               #
 done
 cp -R "$ARM/nowplaying/NowPlaying.app" "$ARM/lockplugin/Fidelio.lockbundle" "$ARM/lockplugin/Fidelio.bundle" "$ARM_OUT/"
 cp "$ARM/dockremote/DockRemote.dylib" "$ARM/dockremote/DockRemote.plist" "$ARM_OUT/"
+cp "$ARM/probe/voltest" "$ARM_OUT/"
 ENTS="$REPO/common/fidelio-springboard.entitlements.plist"
 
 # ------------------------------------------------------------------ verify ----------------------------
-BINARIES="fidelio-audiod fidelio-lockctl fidelio-raop cspot-ios3 NowPlaying.app/NowPlaying Fidelio.lockbundle/Fidelio Fidelio.bundle/Fidelio DockRemote.dylib"
+BINARIES="fidelio-audiod fidelio-lockctl fidelio-raop cspot-ios3 NowPlaying.app/NowPlaying Fidelio.lockbundle/Fidelio Fidelio.bundle/Fidelio DockRemote.dylib voltest"
 keys_of() { grep -o '<key>[^<]*</key>' "$1" | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' || true; }
 want_ents="$(keys_of "$ENTS")"
 [ -n "$want_ents" ] || die "no <key> entries in $ENTS"
