@@ -91,15 +91,16 @@ The **dock**:
 ## 2. Current state
 
 ### 2.1 Git
-- `main` = **`6721da9`** plus the commit that adds these docs (see `git log`). `6721da9` is tools only;
-  no binary changed.
+- `main`: see `git log`. On 2026-11-18 it holds `6721da9` (tools only), `dfbbc3d` (this record moved
+  into the repo), `b8d8976` (the volume probe extended) and the docs commit after it. No binary that is
+  installed on a device changed since `5dc865f`.
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
   - Earliest rounds: `audiod-b11`, `-b12`, `-b13`, `-b15` … `-b19`, `-b110` … `-b116`. There is no `-b14`.
   - `audiod-b1161` (32af243), `-b116dr` (272c7e5), `-b116lp` (0b90521).
   - The second cloud session's: `-b1164` (ab0c7aa), `-b118`, `-b1165`, `-b1166`, `-b1167`, `-b1168`,
     `-b1169`, `-b11610`, `-b11611`.
-  - voltest (5dc865f) and 6721da9 have no marker. Check with `git ls-remote --heads origin`.
+  - voltest (5dc865f, b8d8976) and 6721da9 have no marker. Check with `git ls-remote --heads origin`.
 - The old cloud session branch `ccr-afef93fb-x0jdve` is history, at `5dc865f`.
 - **Patches:** the series `diffs/fidelio-0001…0049`, one per commit, existed only in the retired private
   store. The commits are the record.
@@ -123,8 +124,9 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | B1.16.11 | 7330752 | 0048 | lock plugin follows a live setting change and a SpringBoard restart | not installed |
 | voltest | 5dc865f | 0049 | the volume probe (no marker) | ran on the phone once (paused) |
 | tools | 6721da9 | none | cspot build date pinned (§6.3), host compiler check (§6.4); no binary changed | nothing to install |
+| voltest | b8d8976 | none | the probe also shows iapd's side of the volume and can call `IAPAudioSetVolume` (§3.1) | not run on a device yet |
 
-### 2.3 Current builds: `tools/build-arm.sh` at 6721da9
+### 2.3 Current builds: `tools/build-arm.sh` at b8d8976
 
 | Binary | Size | sha256 | Round |
 |---|---|---|---|
@@ -135,7 +137,7 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | NowPlaying.app/NowPlaying | 109,856 | `f23daec8999e7314fac17920e5c7b62856c7654c345266670836bf9b5504f273` | B1.16.9, 8eec470 (1.4.1) |
 | Fidelio.lockbundle/Fidelio = Fidelio.bundle/Fidelio | 56,304 | `559763a5b019d4f478eb86477bb37b02e3befbacffc86878b284d8fd7f927ae4` | B1.16.7, e3e448e |
 | DockRemote.dylib | 34,640 | `4ae947d5f0d2b55e04b6d780eeafab61741180eef0987052725b692bfa8ca639` | B1.16.8, 4ed6a5a |
-| voltest | 51,056 | `bb9569923304ba639327ebf2d10104122f6cd06730e8166b9b7a9af197f956b9` | probe, 5dc865f |
+| voltest | 51,200 | `8c9f1f0372f05643f34d088fc4d6b16538dbf5eefd2fb8354d16e851754299f1` | probe, b8d8976 (the 5dc865f one was 51,056, `bb956992…f956b9`) |
 
 - Each is byte-identical to the build the cloud session published for its round.
 - All eight reproduce from nothing, on any day, at the reference paths of §6.1. cspot-ios3's and
@@ -241,20 +243,57 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 
      Now also: note whether the phone's own volume buttons and the built-in iPod app's volume slider move
      the dock, and repeat a reading after reseating the phone.
-  2. **Static analysis of the phone's `iapd`** (build iapd-444.1). In progress on 2026-11-18; add the
-     results here. The binary contains:
-     - an `ISL::MediaVolumeMgr` with "legacy" and "non-legacy volume support";
-     - `setVolumeControlSupported`, `SetVolumeMaster`, `SetLineoutEnabled`, and a Display Remote volume
-       range;
-     - the imports `IAPAudioVolumeChangedNotification`, `IAPAudioVolumeControlSupportChangedNotification`
-       and `SBSetMediaVolume`;
-     - a `LogDeviceVolumeChanges` preference.
+  2. **Static analysis, done 2026-11-18** (no device touched): the phone's `iapd` (build iapd-444.1) and
+     the 3.1.2 SDK's IAP, Celestial and CoreMedia. The full notes are on the owner's PC at
+     `C:\code\fidelio\research\2026-11-18-phone-dock-volume.md`.
+     - **What audiod's call does.** `setVolumeTo:forCategory:` ends in CoreMedia's session manager, which
+       stores the level and writes it to the virtual audio device. Celestial and CoreMedia never
+       reference IAP. `currentRouteHasVolumeControl` reads a property of that audio device.
+     - **The one path from the phone's volume to an accessory in this iapd.** `IAPAudioSetVolume(float)`
+       (the private IAP.framework; a MIG call to iapd) reaches `ISL::MediaVolumeMgr`'s setter with
+       notifyApp = 0. That raises an internal "volume changed" event, and the Display Remote lingo then
+       sends the accessory a volume notification, **but only if the accessory asked for volume events**.
+       Line-out and mute do not gate it.
+     - **Who calls `IAPAudioSetVolume`:** no binary in the SDK. If anything does, it is the virtual audio
+       plug-in inside `mediaserverd`, which was not analysed.
+     - **Accessory → phone:** the Display Remote "set state" command and the Simple Remote volume steps
+       reach the same setter with notifyApp = 1, which calls `SBSetMediaVolume`. Inference: the dock's
+       buttons use the former.
+     - **"Volume control supported" is two flags.** One comes from a bit in the capability mask an
+       accessory sends when it identifies the newer way (IDPS). The other is raised when an accessory
+       that identified the older way subscribes to, or asks for, the volume. An IDPS accessory without
+       the capability bit is refused the subscription. The second flag is cleared on detach and when
+       the device sleeps; only a new request from the accessory raises it again.
+     - **A second channel exists:** `IAPDigitalAudioSetVolumeOffset(int)` puts a value into the Digital
+       Audio lingo's track attributes. Its units, and whether this dock applies it, are unknown.
+     - **Re-checked by the session against the binaries:** the IAP exports; `IAPAudioSetVolume`'s
+       argument and return value; iapd's routine for it (clamp to 0..1, scale by 255, notifyApp = 0).
+     - **The most likely reading (inference):** the dock pushes its own level to the phone but has no
+       accepted subscription to the phone's volume on this OS. One packet log tells three cases apart:
+       the dock never asks; it asks and is refused (a hook in our tweak can lift that); or it subscribed
+       and nothing forwards the phone's volume (audiod calling `IAPAudioSetVolume` fixes that).
 
      The history file's Task 12 lists `SBSetMediaVolume(port, float)` / `SBGetMediaVolume`
      (SpringBoardServices) as "confirmed present, **not used** (noted as the alternative volume path if
      AVSystemController misbehaves)".
-  3. **If iapd can send the phone's volume to the dock,** drive that from the DockRemote tweak, which
-     already runs inside iapd on the phone.
+  3. **Next, at the dock, in this order** (`voltest` from b8d8976 or later; every state line now ends
+     with `iap: supported= volume= lineout= digital=`):
+     1. While playing: `voltest`, then `voltest set Audio/Video 0.15`. Does `iap: volume=` follow? If
+        it does, the system forwards the phone's volume to iapd. Then `voltest iap set 0.15` and
+        `voltest iap set 0.30`: does the dock's loudness follow?
+     2. The packet log. Undocked: set the booleans `PrintIapPackets`, `LogDeviceVolumeChanges` and
+        `LogLineOut` in iapd's preferences (domain `com.apple.iapd`), restart iapd **undocked** (the keys
+        are read once at start), dock, and read the syslog for: how the dock identifies and its
+        capability mask; the Display Remote lingo's subscribe command and its answer; the volume
+        notification; the "set state" command when a dock button is pressed; and the
+        `volume changing … notifyApp=` lines.
+     3. `voltest iap offset` with small negative numbers, by ear.
+     4. Hooks from the DockRemote tweak, one at a time, chosen by the packet log.
+     5. The same packet log on the iPad as the working case to compare with, if absolute volume does
+        work there.
+  4. **Then the fix follows from what the dock does:** audiod calls `IAPAudioSetVolume` after it sets the
+     system volume; or the DockRemote tweak, which already runs inside iapd on the phone, makes iapd
+     accept or force the dock's subscription; or both.
 - **The settings stay as they are for now:** `spotify_volume` and `airplay_volume_mode`, absolute |
   software, default absolute, per source. The relabel of the choices is still wanted: "System volume (the
   dock follows)" and "Software gain (scales the stream)".
@@ -449,8 +488,9 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   - At `5dc865f`: `tools/build-arm.sh` exit 0, `result: OK`, in 79 s from nothing including the fetches.
     `tools/run-host-tests.sh`: `TOTAL host: 340 ok, 0 FAIL`, 22 of 22 suites on the first run, exit 0,
     575 s, host compiler g++ 13.3.0.
-  - At `6721da9`: `tools/build-arm.sh` `result: OK` with all eight binaries equal to §2.3 (47 s with cspot
-    rebuilt, 14 s warm).
+  - At `6721da9`: `tools/build-arm.sh` `result: OK` with all eight binaries equal to the published ones (47 s
+    with cspot rebuilt, 14 s warm).
+  - At `b8d8976`: `result: OK` twice (15 s, 13 s). Only voltest changed; it is the same on both runs.
 - **BUILD.md** (`spotify/BUILD.md`) documents the toolchain in full: the tarball contents, the wrapper
   flags, the float ABI, `libios3compat`, the patches, and what was verified.
 - **cspot's nanopb generator** needs a python3 whose protobuf still has `reflection.MakeClass`.
@@ -797,6 +837,8 @@ Defaults are in brackets.
 
 ### 12.1 `main`, newest first (subjects shortened)
 ```
+b8d8976 tools: voltest shows iapd's side of the volume, can call IAPAudioSetVolume
+dfbbc3d docs: the project record moves into the repo
 6721da9 tools: cspot build date pinned, host compiler check
 5dc865f tools: voltest probe (B1.16.12 diagnosis)
 7330752 B1.16.11 lock plugin live setting + respring
