@@ -276,20 +276,47 @@ The patch numbers are those of the retired series (§2.1); the history file refe
      The history file's Task 12 lists `SBSetMediaVolume(port, float)` / `SBGetMediaVolume`
      (SpringBoardServices) as "confirmed present, **not used** (noted as the alternative volume path if
      AVSystemController misbehaves)".
+     - **The Digital Audio lingo's volume field** (follow-up analysis, 2026-11-18; the owner asked for
+       this path to be tested too). The audio stream is USB audio with the dock as the host, so a
+       volume request inside the stream itself goes from the dock to the phone, not the other way; the
+       phone → dock direction has to use the accessory protocol beside it. (The host and device roles
+       are from general knowledge of these docks, not yet read off this phone.)
+       - iapd treats the value of `IAPDigitalAudioSetVolumeOffset` as an opaque 32-bit word and puts it
+         unchanged into the third field of the lingo's track-attributes message, next to the sample
+         rate and a sound-check field that is always 0 in this build.
+       - The message goes out at once when the value changes, if the lingo is active. iapd re-sends it
+         every 500 ms until the dock acknowledges it. So the packet log shows whether the dock accepts
+         the message; only listening shows whether it applies the field.
+       - Units: upstream, MediaToolbox and CoreMedia compute a "hardware volume offset" in decibels
+         (−127 to +18, from the item's volume and Sound Check) for the audio device. That this is what
+         reaches iapd is inferred from the name only; the connecting code is in `mediaserverd`.
+       - A change of the phone's volume may overwrite a test value with the system's own.
   3. **Next, at the dock, in this order** (`voltest` from b8d8976 or later; every state line now ends
      with `iap: supported= volume= lineout= digital=`):
-     1. While playing: `voltest`, then `voltest set Audio/Video 0.15`. Does `iap: volume=` follow? If
-        it does, the system forwards the phone's volume to iapd. Then `voltest iap set 0.15` and
-        `voltest iap set 0.30`: does the dock's loudness follow?
-     2. The packet log. Undocked: set the booleans `PrintIapPackets`, `LogDeviceVolumeChanges` and
-        `LogLineOut` in iapd's preferences (domain `com.apple.iapd`), restart iapd **undocked** (the keys
-        are read once at start), dock, and read the syslog for: how the dock identifies and its
-        capability mask; the Display Remote lingo's subscribe command and its answer; the volume
-        notification; the "set state" command when a dock button is pressed; and the
-        `volume changing … notifyApp=` lines.
-     3. `voltest iap offset` with small negative numbers, by ear.
-     4. Hooks from the DockRemote tweak, one at a time, chosen by the packet log.
-     5. The same packet log on the iPad as the working case to compare with, if absolute volume does
+     1. **Turn on iapd's logging first,** so every later step shows in the syslog. Undocked: set the
+        booleans `PrintIapPackets`, `LogDeviceVolumeChanges` and `LogLineOut` in iapd's preferences
+        (domain `com.apple.iapd`), restart iapd **undocked** (the keys are read once at start), then
+        dock. In the log, `Acc:` lines come from the dock and `iPod:` lines are sent by the phone.
+     2. **Read the attach:** how the dock identifies and its capability mask; whether it subscribes to
+        volume events on the Display Remote lingo, and the phone's answer; the Digital Audio exchange
+        (the phone's track-attributes message and the dock's acknowledgement).
+     3. **While playing:** `voltest`, then `voltest set Audio/Video 0.15`. Does `iap: volume=` follow? If
+        it does, the system forwards the phone's volume to iapd.
+     4. **The notification path:** `voltest iap set 0.15`, then `0.30`. Does the dock's loudness follow?
+        The log shows whether a volume notification went out.
+     5. **The Digital Audio path:** `voltest iap offset N`, without touching the phone's volume.
+        - N in this order: −12, −30, 0 (decibels as an integer). If accepted but inaudible: −1200,
+          −3000, 0. Then the float bits of −20.0 (−1046478848), then 0.
+        - Reading it: `-> 0` means nothing was sent (lingo inactive). A track-attributes message
+          followed by the dock's acknowledgement means accepted: listen. The message repeating twice a
+          second means the dock ignores or rejects it. A later message ending in zeros that was not
+          requested means the system overwrote the value.
+        - Avoid large positive values. Finish with 0: the value stays in iapd until undock.
+     6. **The dock's buttons:** which command they send, and the `volume changing … notifyApp=` lines.
+     7. **The USB roles:** read the phone's USB configuration while docked, to confirm the dock is the
+        host.
+     8. Hooks from the DockRemote tweak, one at a time, chosen by the packet log.
+     9. The same packet log on the iPad as the working case to compare with, if absolute volume does
         work there.
   4. **Then the fix follows from what the dock does:** audiod calls `IAPAudioSetVolume` after it sets the
      system volume; or the DockRemote tweak, which already runs inside iapd on the phone, makes iapd
