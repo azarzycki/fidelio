@@ -15,6 +15,19 @@
 //   voltest set active V       setActiveCategoryVolumeTo:V           (what the volume buttons change)
 //   voltest set CATEGORY V     setVolumeTo:V forCategory:CATEGORY    (e.g. Audio/Video = what audiod does)
 //   voltest watch [SECONDS]    print the state whenever it changes (5 polls a second; default 30 s)
+//
+// The accessory daemon's side (iapd, reached through the private IAP.framework). In iapd-444.1 the only
+// way the phone's volume goes to a dock is a Display Remote volume notification, and iapd sends it only
+// after IAPAudioSetVolume, and only if the accessory asked for volume events:
+//   voltest iap                show only iapd's side
+//   voltest iap set V          IAPAudioSetVolume(V), 0..1: ask iapd to send the volume to the accessory.
+//                              START LOW: if the dock follows, this sets its loudness.
+//   voltest iap offset N       IAPDigitalAudioSetVolumeOffset(N): the volume field of the Digital Audio
+//                              lingo's track attributes (units unknown; try small negative numbers)
+// Every state line ends with "iap: supported= volume= lineout= digital=": whether the accessory has
+// volume control, iapd's own volume (0..1), and the line-out and digital-audio device states. If
+// iapd's volume follows "voltest set Audio/Video V", the system forwards the phone's volume to iapd.
+// If it only follows the dock's buttons, nothing forwards it and audiod has to call IAPAudioSetVolume.
 // iPhone OS 3.1 SDK, armv6: one binary for both devices.
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
@@ -42,6 +55,56 @@ static NSString* Desc(id o) {
   if (!o) return @"(nil)";
   NSString* d = [o description];
   return [[d componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "];
+}
+
+// ---- iapd's side: IAP.framework's C wrappers around MIG calls to the com.apple.iapd service. They are
+// plain C exports, so there is no type encoding to check at run time. These prototypes were read from
+// the armv6 code of the 3.1.2 SDK's IAP binary: every wrapper returns 1 when its MIG call succeeded;
+// IAPAudioSetVolume takes the float in r0 (softfp); IAPAudioIsVolumeControlSupported stores one byte,
+// IAPAudioGetVolume a float and IAPAudioGetDeviceState an int through the pointer.
+typedef BOOL (*IapSetVolumeFn)(float);
+typedef BOOL (*IapGetVolumeFn)(float*);
+typedef BOOL (*IapGetBoolFn)(BOOL*);
+typedef BOOL (*IapGetDeviceStateFn)(int, int*);
+typedef BOOL (*IapSetIntFn)(int);
+static void* iap = NULL;
+static void* IapSym(const char* name) { return iap ? dlsym(iap, name) : NULL; }
+
+static NSString* IapState(void) {
+  if (!iap) return @"iap: unavailable";
+  NSMutableString* s = [NSMutableString stringWithString:@"iap:"];
+  IapGetBoolFn sup = (IapGetBoolFn)IapSym("IAPAudioIsVolumeControlSupported");
+  BOOL b = NO;
+  if (!sup) [s appendString:@" supported=missing"];
+  else if (sup(&b)) [s appendFormat:@" supported=%d", (int)b];
+  else [s appendString:@" supported=failed"];
+  IapGetVolumeFn get = (IapGetVolumeFn)IapSym("IAPAudioGetVolume");
+  float v = -1;
+  if (!get) [s appendString:@" volume=missing"];
+  else if (get(&v)) [s appendFormat:@" volume=%.3f", v];
+  else [s appendString:@" volume=failed"];
+  // Device ids as iapd uses them: 1 = line-out, 3 = digital audio.
+  IapGetDeviceStateFn dev = (IapGetDeviceStateFn)IapSym("IAPAudioGetDeviceState");
+  static const int ids[2] = {1, 3};
+  static const char* const names[2] = {"lineout", "digital"};
+  for (int i = 0; i < 2; i++) {
+    int st = -1;
+    if (!dev) [s appendFormat:@" %s=missing", names[i]];
+    else if (dev(ids[i], &st)) [s appendFormat:@" %s=%d", names[i], st];
+    else [s appendFormat:@" %s=failed", names[i]];
+  }
+  return s;
+}
+// iapd also serves the dock, so "watch" asks it only on every iapEvery-th state line.
+static int iapEvery = 1;
+static NSString* IapStateThrottled(void) {
+  static NSString* cached = nil;
+  static int n = 0;
+  if (!cached || n++ % iapEvery == 0) {
+    [cached release];
+    cached = [IapState() retain];
+  }
+  return cached;
 }
 
 static NSString* State(void) {
@@ -73,11 +136,13 @@ static NSString* State(void) {
       [s appendFormat:@" | %@=%@", [k stringByReplacingOccurrencesOfString:@"AVSystemController_" withString:@""], Desc(a)];
     }
   }
+  [s appendFormat:@" | %@", IapStateThrottled()];
   return s;
 }
 
 static void Usage(void) {
-  fprintf(stderr, "usage: voltest | voltest set active V | voltest set CATEGORY V | voltest watch [SECONDS]\n");
+  fprintf(stderr, "usage: voltest | voltest set active V | voltest set CATEGORY V | voltest watch [SECONDS]\n"
+                  "       voltest iap | voltest iap set V | voltest iap offset N\n");
 }
 
 int main(int argc, char** argv) {
@@ -87,8 +152,33 @@ int main(int argc, char** argv) {
   if (!cls || !class_getClassMethod(cls, sel_registerName("sharedAVSystemController"))) { fprintf(stderr, "AVSystemController unavailable\n"); return 2; }
   ctl = ((id (*)(id, SEL))objc_msgSend)((id)cls, sel_registerName("sharedAVSystemController"));
   if (!ctl) { fprintf(stderr, "sharedAVSystemController returned nil\n"); return 2; }
+  iap = dlopen("/System/Library/PrivateFrameworks/IAP.framework/IAP", RTLD_LAZY);  // optional: the state line says so
 
-  if (argc == 1) {
+  if (argc >= 2 && strcmp(argv[1], "iap") == 0) {
+    if (!iap) { fprintf(stderr, "dlopen IAP failed\n"); return 2; }
+    if (argc == 2) {
+      printf("%s\n", [IapState() UTF8String]);
+    } else if (argc == 4 && strcmp(argv[2], "set") == 0) {
+      float v = (float)atof(argv[3]);
+      if (v < 0 || v > 1) { fprintf(stderr, "V must be 0..1\n"); return 1; }
+      IapSetVolumeFn set = (IapSetVolumeFn)IapSym("IAPAudioSetVolume");
+      if (!set) { fprintf(stderr, "IAPAudioSetVolume missing\n"); return 2; }
+      printf("before: %s\n", [State() UTF8String]);
+      BOOL ok = set(v);
+      printf("IAPAudioSetVolume(%.3f) -> %d\n", v, (int)ok);
+      usleep(500 * 1000);
+      printf("after:  %s\n", [State() UTF8String]);
+    } else if (argc == 4 && strcmp(argv[2], "offset") == 0) {
+      int n = atoi(argv[3]);
+      IapSetIntFn off = (IapSetIntFn)IapSym("IAPDigitalAudioSetVolumeOffset");
+      if (!off) { fprintf(stderr, "IAPDigitalAudioSetVolumeOffset missing\n"); return 2; }
+      BOOL ok = off(n);
+      printf("IAPDigitalAudioSetVolumeOffset(%d) -> %d\n", n, (int)ok);
+    } else {
+      Usage();
+      return 1;
+    }
+  } else if (argc == 1) {
     printf("%s\n", [State() UTF8String]);
     printf("types: getActiveCategoryVolume:andName: %s | setActiveCategoryVolumeTo: %s | setVolumeTo:forCategory: %s | routeForCategory: %s | volumeCategoryForAudioCategory: %s\n",
            Types("getActiveCategoryVolume:andName:") ?: "-", Types("setActiveCategoryVolumeTo:") ?: "-", Types("setVolumeTo:forCategory:") ?: "-",
@@ -112,6 +202,7 @@ int main(int argc, char** argv) {
     printf("after:  %s\n", [State() UTF8String]);
   } else if (argc >= 2 && strcmp(argv[1], "watch") == 0) {
     int secs = argc >= 3 ? atoi(argv[2]) : 30;
+    iapEvery = 5;  // iapd once a second
     NSString* last = nil;
     for (int i = 0; i < secs * 5; i++) {
       NSAutoreleasePool* p = [[NSAutoreleasePool alloc] init];
