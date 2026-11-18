@@ -29,6 +29,9 @@
 #  * cspot-ios3 embeds absolute source paths (deps/cspot/..., <REPO>/spotify/cli-src/...), so its hash
 #    is only comparable between builds at the same paths. The other binaries embed no build paths:
 #    three clean rebuilds gave identical hashes.
+#  * cspot-ios3 also embeds a build date: civetweb's build identifier is __DATE__. cspot is therefore
+#    built with SOURCE_DATE_EPOCH = CSPOT_SOURCE_DATE_EPOCH (_common.sh), which fixes that string
+#    whatever day the build runs on. The value is part of the build dir's stamp.
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
@@ -84,11 +87,14 @@ logged "$LOGS/arm-airplay-build.log" cmake_env ninja -C "$ARM/airplay"
 note "cspot-ios3"
 ensure_cspot_tree
 ensure_nanopb_python
-stamp_dir "$ARM/cspot" "$REPO $(cat "$DEPS/cspot.stamp")"
-[ -f "$ARM/cspot/build.ninja" ] || PATH="$NANOPB_PY_DIR:$PATH" logged "$LOGS/arm-cspot-configure.log" cmake_env \
+# A fixed __DATE__ for civetweb's build identifier (see CSPOT_SOURCE_DATE_EPOCH in _common.sh). The
+# date is in the stamp, so a build dir made with another date, or with the wall clock, is rebuilt.
+cspot_env() { cmake_env env SOURCE_DATE_EPOCH="$CSPOT_SOURCE_DATE_EPOCH" "$@"; }
+stamp_dir "$ARM/cspot" "$REPO $(cat "$DEPS/cspot.stamp") date=$CSPOT_SOURCE_DATE_EPOCH"
+[ -f "$ARM/cspot/build.ninja" ] || PATH="$NANOPB_PY_DIR:$PATH" logged "$LOGS/arm-cspot-configure.log" cspot_env \
   cmake -S "$REPO/spotify/cli-src" -B "$ARM/cspot" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$TCFILE" -DCMAKE_BUILD_TYPE=Release \
     -DCSPOT_DIR="$DEPS/cspot" -DBELL_EXTERNAL_MBEDTLS="$ARM/sysroot/lib/cmake/MbedTLS" -DMBEDTLS_RELEASE=RELEASE
-PATH="$NANOPB_PY_DIR:$PATH" logged "$LOGS/arm-cspot-build.log" cmake_env ninja -C "$ARM/cspot"
+PATH="$NANOPB_PY_DIR:$PATH" logged "$LOGS/arm-cspot-build.log" cspot_env ninja -C "$ARM/cspot"
 
 # ------------------------------------------------------------------ the repo's own build.sh scripts ---
 # They document only IOS3_SDK + PATH, so the two libc++/compat variables are NOT set for them.

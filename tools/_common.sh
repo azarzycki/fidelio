@@ -29,6 +29,12 @@ CSPOT_PATCH_REL="spotify/patches/cspot-squeezelite-ee1720c-0001-armv6-ios3.patch
 MBEDTLS_URL="https://github.com/Mbed-TLS/mbedtls"
 MBEDTLS_TAG="v3.6.7"
 MBEDTLS_COMMIT="068ff080b369adfac81509f9b57b2afabaf82dc5"
+# civetweb (cspot's bell/external/civetweb/civetweb.c) stores __DATE__ in the binary as its build
+# identifier, so cspot-ios3 would hash differently on every calendar day. build-arm.sh builds cspot
+# with SOURCE_DATE_EPOCH set to this value; clang then expands __DATE__ from it (in UTC).
+# 1794744000 = 2026-11-15 12:00 UTC = "Nov 15 2026", the date already inside the published
+# cspot-ios3 of B1.18 (sha256 2979aedd...), so that file stays byte-identical to a fresh build.
+CSPOT_SOURCE_DATE_EPOCH=1794744000
 
 die()  { echo "ERROR: $*" >&2; exit 3; }
 note() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -45,7 +51,7 @@ logged() {
 need_tools() {
   local t missing=""
   for t in "$@"; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
-  [ -z "$missing" ] || die "missing tools:$missing (Ubuntu 24.04: apt-get install clang-18 llvm-18 cmake ninja-build protobuf-compiler python3-protobuf libavahi-client-dev)"
+  [ -z "$missing" ] || die "missing tools:$missing (Ubuntu 24.04: apt-get install clang-18 llvm-18 cmake ninja-build protobuf-compiler python3-protobuf libavahi-client-dev g++)"
 }
 
 # REPO: absolute path of the worktree to build (default: the repo this script lives in)

@@ -76,7 +76,9 @@ note "repo: $(repo_describe "$REPO")"
 
 # ---------------------------------------------------------------------------- build ----------
 build_host() {
-  need_tools cmake ninja git protoc openssl "$PYTHON"
+  # cc and c++: the plain host tests below call them by name, and they are CMake's default compilers
+  # (a minimal Ubuntu image has clang-18 but neither; apt: g++).
+  need_tools cmake ninja git protoc openssl "$PYTHON" cc c++
   local cc=()
   [ -n "${HOST_CC:-}" ] && cc+=(-DCMAKE_C_COMPILER="$HOST_CC")
   [ -n "${HOST_CXX:-}" ] && cc+=(-DCMAKE_CXX_COMPILER="$HOST_CXX")
