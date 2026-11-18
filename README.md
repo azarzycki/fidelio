@@ -22,5 +22,6 @@ three original repos (fidelio-ios3-spotify / -airplay / -nowplaying).
 ## Toolchain
 
 Linux x86_64 → ARMv6 Mach-O for iOS 3.1.3 (cctools-port ld64, clang 18, ldid fake-sign,
-static libc++ 18.1.3, mbedTLS 3.6.7). Builds run on the cloud build session; see
-`spotify/` for the toolchain patches and build scripts.
+static libc++ 18.1.3, mbedTLS 3.6.7). `tools/build-arm.sh` builds and verifies every binary
+and `tools/run-host-tests.sh` runs the host suites; `spotify/BUILD.md` documents the toolchain,
+and `docs/HANDOFF.md` has the project state and conventions.

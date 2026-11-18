@@ -65,22 +65,19 @@ Wrapper environment variables:
 
 ## 1. SDK
 
-The `iPhoneOS3.1.2.sdk.tar.xz` you shared on Google Drive was fetched with the Drive "download anyway" confirm URL:
+The SDK is Apple's. It is not part of this project and is not distributed with it, and this file gives no download location for it: you supply your own copy. It is the `iPhoneOS3.1.2.sdk` directory from Apple's "iPhone SDK 3.1.3 with Xcode 3.2.1" disk image. The copy used here, packed as `iPhoneOS3.1.2.sdk.tar.xz`:
 ```sh
-curl -sSL -o page.html "https://drive.usercontent.google.com/download?id=1YQOttK5BEXLbSayM-lJLN152TK-PaEGX&export=download"
-# extract the uuid from the confirm form, then:
-curl -sSL -o iPhoneOS3.1.2.sdk.tar.xz "https://drive.usercontent.google.com/download?id=1YQOttK5BEXLbSayM-lJLN152TK-PaEGX&export=download&confirm=t&uuid=<uuid>"
 stat -c %s  iPhoneOS3.1.2.sdk.tar.xz   # 97995312
-sha256sum   iPhoneOS3.1.2.sdk.tar.xz   # d5122c3bd2ddd217de918ff3635c590261424dc7f3a5e63d4cbd8417bec2d5e2  (matches)
+sha256sum   iPhoneOS3.1.2.sdk.tar.xz   # d5122c3bd2ddd217de918ff3635c590261424dc7f3a5e63d4cbd8417bec2d5e2
 tar -xJf iPhoneOS3.1.2.sdk.tar.xz      # 557 MB, 75 symlinks, fat armv5/armv6/armv7 dylibs
 ```
-As instructed, the archive.org DMG download (`iphone_sdk_3.1.3_with_xcode_3.2.1__snow_leopard__10m2003a.dmg`, 3,026,214,216 bytes, sha256 `9b2d24d0…` of the first 2.87 GB only; the transfer was cut once and resumed with `curl -C -`) was started at the beginning and kept running in parallel. Cross-check after the build was finished:
+That tarball was cross-checked against the disk image (`iphone_sdk_3.1.3_with_xcode_3.2.1__snow_leopard__10m2003a.dmg`, 3,026,214,216 bytes) after the build was finished:
 ```sh
 7z x xcode.dmg "iPhone SDK/Packages/iPhoneSDK3_1_2.pkg"     # 160,839,223 bytes
 7z x iPhoneSDK3_1_2.pkg                                     # -> Payload~ (577,215,488 bytes)
 bsdtar -xf Payload~                                         # -> Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS3.1.2.sdk
 ```
-The two trees were compared entry by entry (2303 files and symlinks each; sha256 of every regular file, target of every symlink): **0 missing, 0 extra, 0 differing**. The Drive archive is exactly the SDK from the official DMG. The DMG and the other packages were deleted afterwards.
+The two trees were compared entry by entry (2303 files and symlinks each; sha256 of every regular file, target of every symlink): **0 missing, 0 extra, 0 differing**. The tarball is exactly the SDK from the official DMG. The DMG and the other packages were deleted afterwards.
 
 `apt-get install p7zip-full libarchive-tools libssl-dev uuid-dev libxml2-dev libplist-dev patchelf` (build dependencies).
 
