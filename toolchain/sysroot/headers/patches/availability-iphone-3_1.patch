@@ -1,0 +1,35 @@
+availability-iphone-3_1.patch
+Licence: this patch changes two files of Apple's CarbonHeaders-18.1 and is under that release's
+licence (Apple Public Source License 2.0).
+
+What: Availability.h gains the version constant __IPHONE_3_1 (30100), and AvailabilityInternal.h
+makes it the default of __IPHONE_OS_VERSION_MAX_ALLOWED (the release says __IPHONE_3_0).
+Why: the sysroot describes iPhone OS 3.1, as the iPhoneOS3.1.2 SDK does, and a source that tests
+__IPHONE_OS_VERSION_MAX_ALLOWED must get the answer it would get there (30100). CarbonHeaders-18.1
+is the last published release of these two files from that time; it stops at iPhone OS 3.0. No
+availability macro for 3.1 (__AVAILABILITY_INTERNAL__IPHONE_3_1...) is added: nothing in this
+repository uses one, so a declaration that names __IPHONE_3_1 in an availability macro does not
+compile here until it is added.
+Affects: no object of the build (all 409 compiles give the same objects with and without it).
+
+--- a/usr/include/Availability.h
++++ b/usr/include/Availability.h
+@@ -121,6 +121,7 @@
+ #define __IPHONE_2_1     20100  
+ #define __IPHONE_2_2     20200  
+ #define __IPHONE_3_0     30000  
++#define __IPHONE_3_1     30100   /* iPhone OS 3.1 (added for the sysroot, see the patch) */
+ #define __IPHONE_NA      99999  /* not available */
+ 
+ #include <AvailabilityInternal.h>
+--- a/usr/include/AvailabilityInternal.h
++++ b/usr/include/AvailabilityInternal.h
+@@ -50,7 +50,7 @@
+ #ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+     /* make sure a default max version is set */
+     #ifndef __IPHONE_OS_VERSION_MAX_ALLOWED
+-        #define __IPHONE_OS_VERSION_MAX_ALLOWED     __IPHONE_3_0
++        #define __IPHONE_OS_VERSION_MAX_ALLOWED     __IPHONE_3_1   /* the sysroot describes iPhone OS 3.1 */
+     #endif
+     /* make sure a valid min is set */
+     #if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_2_0
