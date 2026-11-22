@@ -139,8 +139,9 @@ only.
     whole is distributed under GPL-3.0-or-later (the top-level `LICENSE`).
   - Each package carries the MIT `LICENSE` and the notices for the third-party code linked into its
     binaries. That list has not been drawn up (`docs/HANDOFF.md` §4).
-  - Open, the owner has not decided: whether the Spotify receiver becomes a package of its own, so that
-    the GPL terms attach to that package only.
+  - Decided by the owner on 2026-11-22: the Spotify receiver stays in the main package ("the structural
+    distinction is enough"). It is a separate program there, and the GPL text and the source pointer
+    name that one binary.
 - **Not packaged:** the volume probe, Apple's SDK, the jailbreak.
 - **To check on the devices first:** the `dpkg` versions; whether Cydia's `firmware` pseudo-package is
   registered, so a package can declare its OS range as a dependency; which shell tools the install scripts
