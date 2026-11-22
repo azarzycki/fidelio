@@ -130,6 +130,17 @@ only.
   left restartable if a step fails, and only the shell tools both devices have.
 - **Spotify credentials:** a root-only file on the device that the Spotify job reads. Never in a package
   or the repo. A README says how to fill it.
+- **Licences in the packages** (added 2026-11-22):
+  - Every binary carries the source notice for its start-up code, which toolchain revision 3 puts there
+    (`docs/HANDOFF.md` §6.3). The packages are built with revision 3 or later.
+  - The package that holds `cspot-ios3` includes the text of the GNU General Public License, version 3,
+    and says where that binary's source is: this repository at the release's commit, the pinned commit
+    of the Spotify library and the patch in `spotify/patches/` (`tools/_common.sh`). The binary as a
+    whole is distributed under GPL-3.0-or-later (the top-level `LICENSE`).
+  - Each package carries the MIT `LICENSE` and the notices for the third-party code linked into its
+    binaries. That list has not been drawn up (`docs/HANDOFF.md` §4).
+  - Open, the owner has not decided: whether the Spotify receiver becomes a package of its own, so that
+    the GPL terms attach to that package only.
 - **Not packaged:** the volume probe, Apple's SDK, the jailbreak.
 - **To check on the devices first:** the `dpkg` versions; whether Cydia's `firmware` pseudo-package is
   registered, so a package can declare its OS range as a dependency; which shell tools the install scripts
