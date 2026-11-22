@@ -25,3 +25,9 @@ spotify/patches/ are derivative works of their respective upstream projects
 (cctools-port, ldid, LLVM, cspot/bell) and are governed by those projects'
 licenses. The license texts under toolchain/licenses/ belong to the
 third-party components listed in toolchain/THIRD-PARTY-NOTICES.md.
+
+The Spotify receiver (cspot-ios3) statically links this repository's code
+with the cspot library, which its upstream publishes under the GNU General
+Public License, version 3 or later. That binary as a whole is therefore
+distributed under GPL-3.0-or-later. The source files in this repository that
+go into it remain available under the MIT license above.
