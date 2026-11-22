@@ -1,0 +1,29 @@
+sys-cdefs-arm.patch
+Licence: this patch changes a file of Apple's xnu-1228.15.4 (bsd/sys/cdefs.h) and is under that
+release's licence (Apple Public Source License 2.0, APPLE_LICENSE in the release).
+
+What: sys/cdefs.h gets an ARM branch in its long-double section: on ARM, long double is the same
+type as double, no symbol takes a long-double variant suffix ($LDBL128), and
+__DARWIN_LONG_DOUBLE_IS_DOUBLE is 1.
+Why: the Mac OS X release knows ppc and x86 only and stops with "#error Unknown architecture" on
+ARM. The rest of the file is taken as published: with xnu's install rule for the iPhone product
+(xnu-bsd-sys, -DPRODUCT_iPhone) it already selects the iPhone settings for the symbol variants
+(__DARWIN_ONLY_64_BIT_INO_T, __DARWIN_ONLY_UNIX_CONFORMANCE and __DARWIN_ONLY_VERS_1050 are 1), so
+the assembler names of libSystem functions ($UNIX2003, $INODE64, $DARWIN_EXTSN, ...) come out as
+iPhone OS has them.
+Affects: every unit (sys/cdefs.h is included by nearly every C library header); without the branch
+none of them compiles. Libc's <math.h> and <stdlib.h> test __DARWIN_LONG_DOUBLE_IS_DOUBLE.
+
+--- a/usr/include/sys/cdefs.h
++++ b/usr/include/sys/cdefs.h
+@@ -486,6 +486,10 @@
+ #  define	__DARWIN_LDBL_COMPAT(x)	/* nothing */
+ #  define	__DARWIN_LDBL_COMPAT2(x) /* nothing */
+ #  define	__DARWIN_LONG_DOUBLE_IS_DOUBLE	0
++#elif defined(__arm__)
++#  define	__DARWIN_LDBL_COMPAT(x)	/* nothing */
++#  define	__DARWIN_LDBL_COMPAT2(x) /* nothing */
++#  define	__DARWIN_LONG_DOUBLE_IS_DOUBLE	1
+ #else
+ #  error Unknown architecture
+ #endif

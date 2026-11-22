@@ -1,0 +1,42 @@
+mach-arm-vm_param.patch
+Licence: this patch changes a file of Apple's xnu-4570.1.46 (osfmk/mach/arm/vm_param.h) and is under
+that release's licence (Apple Public Source License 2.0, APPLE_LICENSE in the release).
+
+What: PAGE_SHIFT, PAGE_SIZE, PAGE_MASK and VM_PAGE_SIZE are the constants of a 4096-byte page
+(the file's own PAGE_MIN_SHIFT/PAGE_MIN_SIZE/PAGE_MIN_MASK) instead of the variables vm_page_shift,
+vm_page_size and vm_page_mask, and <mach/vm_page_size.h> is no longer included.
+Why: xnu-4570.1.46 is the only published release with osfmk/mach/arm, and it is from 2017, when
+64-bit ARM devices had 16 KB pages and user code had to read the page size at run time. On the
+32-bit ARMv6 devices of iPhone OS 3 the page size was the fixed constant 4096, and code compiled for
+them uses it as a constant. With the variables, every use of PAGE_SIZE would load a libSystem
+variable that the binaries of this project never imported. <mach/vm_page_size.h> is not installed
+in this sysroot (it is a later header, and it declares symbols for iPhone OS 7).
+Affects: the units that include <mach/vm_param.h> or <mach/mach.h> through other headers (37 units
+of the build); without the change they do not compile.
+
+--- a/usr/include/mach/arm/vm_param.h
++++ b/usr/include/mach/arm/vm_param.h
+@@ -37,18 +37,16 @@
+ #define _MACH_ARM_VM_PARAM_H_
+ 
+ 
+-#if !defined (KERNEL) && !defined (__ASSEMBLER__)
+-#include <mach/vm_page_size.h>
+-#endif
+ 
+ #define BYTE_SIZE	8	/* byte size in bits */
+ 
+ 
+-#define PAGE_SHIFT			vm_page_shift
+-#define PAGE_SIZE			vm_page_size
+-#define PAGE_MASK			vm_page_mask
++/* 32-bit ARM, iPhone OS 3: the page size is a constant 4096 bytes */
++#define PAGE_SHIFT			PAGE_MIN_SHIFT
++#define PAGE_SIZE			PAGE_MIN_SIZE
++#define PAGE_MASK			PAGE_MIN_MASK
+ 
+-#define VM_PAGE_SIZE		vm_page_size
++#define VM_PAGE_SIZE		PAGE_MIN_SIZE
+ 
+ #define	machine_ptob(x)		((x) << PAGE_SHIFT)
+ 

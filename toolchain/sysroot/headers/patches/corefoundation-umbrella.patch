@@ -1,0 +1,29 @@
+corefoundation-umbrella.patch
+Licence: this patch changes a file of Apple's CF-550 and is under that release's licence (Apple
+Public Source License 2.0, APPLE_LICENSE in the release).
+
+What: CoreFoundation.h, the umbrella header, also includes <CoreFoundation/CFNotificationCenter.h>
+when it is compiled for iPhone OS.
+Why: the notification center is part of CoreFoundation on iPhone OS, and code that includes only
+<CoreFoundation/CoreFoundation.h> calls it (audiod/src/HardwareVolumeApple.cpp). CF-550 is the open
+source CF-Lite, which leaves the notification center out, so its umbrella does not name it. The
+header itself is a file of this project (own/CFNotificationCenter.h), because Apple never published
+one. Three further headers of the iPhone OS umbrella (CFAttributedString.h, CFFileDescriptor.h,
+CFStringTokenizer.h) were never published either; nothing in this repository uses them, so they are
+not provided and the umbrella does not name them.
+Affects: the units that include CoreFoundation.h; only HardwareVolumeApple.cpp (audiod) needs the
+declarations. Without them it does not compile.
+
+--- a/System/Library/Frameworks/CoreFoundation.framework/Headers/CoreFoundation.h
++++ b/System/Library/Frameworks/CoreFoundation.framework/Headers/CoreFoundation.h
+@@ -90,6 +90,10 @@
+ #include <CoreFoundation/CFURLAccess.h>
+ #include <CoreFoundation/CFUUID.h>
+ 
++#if TARGET_OS_EMBEDDED || TARGET_OS_IPHONE
++#include <CoreFoundation/CFNotificationCenter.h>
++#endif
++
+ 
+ #if (TARGET_OS_MAC && !(TARGET_OS_EMBEDDED || TARGET_OS_IPHONE)) || (TARGET_OS_EMBEDDED || TARGET_OS_IPHONE)
+ #include <CoreFoundation/CFMachPort.h>

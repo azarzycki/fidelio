@@ -1,0 +1,27 @@
+cfbase-mactypes.patch
+Licence: this patch changes a file of Apple's CF-476.19 and is under that release's licence (Apple
+Public Source License 2.0, APPLE_LICENSE in the release).
+
+What: CFBase.h takes the Carbon base types (UInt32, SInt32, OSStatus, Boolean, FourCharCode, OSType,
+...) from <MacTypes.h> instead of <libkern/OSTypes.h>.
+Why: CF-476.19 is the open-source CF-Lite, which is built without Carbon headers and so declares
+its base types from the kernel's OSTypes.h (and, where that is missing, in CFBase.h itself). The
+CoreFoundation of iPhone OS is built with MacTypes.h (CarbonHeaders-18.1, installed as published),
+and the other frameworks rely on that: AudioToolbox and CoreAudio use FourCharCode, OSType and the
+MacTypes definitions of the integer types through CoreFoundation. With MacTypes.h included,
+CFBase.h's own fallback declarations are skipped (they are guarded by !defined(__MACTYPES__)).
+libkern/OSTypes.h is not installed in this sysroot.
+Affects: every unit that includes a CoreFoundation header (all Objective-C units, audiod, airplay,
+cspot's Apple sinks); without the change they do not compile.
+
+--- a/System/Library/Frameworks/CoreFoundation.framework/Headers/CFBase.h
++++ b/System/Library/Frameworks/CoreFoundation.framework/Headers/CFBase.h
+@@ -63,7 +63,7 @@
+ #include <AvailabilityMacros.h>
+ 
+     #if defined(__MACH__)
+-        #include <libkern/OSTypes.h>
++        #include <MacTypes.h>
+     #endif
+ 
+ #if !defined(__MACTYPES__)

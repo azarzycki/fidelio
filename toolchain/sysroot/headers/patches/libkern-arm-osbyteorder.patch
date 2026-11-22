@@ -1,0 +1,64 @@
+libkern-arm-osbyteorder.patch
+Licence: this patch changes a file of Apple's xnu-4570.1.46 (libkern/libkern/arm/OSByteOrder.h) and
+is under that release's licence (Apple Public Source License 2.0, APPLE_LICENSE in the release).
+
+What: on ARMv6 and later, _OSSwapInt16() and _OSSwapInt32() swap with one "rev16" or "rev"
+instruction written as an asm statement whose operands are low registers ("l"), and
+_OSSwapInt64() swaps the two halves with _OSSwapInt32(). The 2017 file uses plain C for 16 bits
+and __builtin_bswap32/64 under clang instead.
+Why: the result is the same value, but not the same code. The compiler can move, merge or drop a
+builtin; it keeps an asm statement as written and allocates its operands from r0-r7. The headers of
+iPhone OS 3 swapped with such asm statements, so ntohs(), ntohl(), htons(), htonl() and
+OSSwapInt*() compile to a different instruction order with the builtins (seen in 9 units of the
+build: DacpRemote.cpp, Mdns.cpp, RaopSession.cpp, RtspServer.cpp, civetweb.c, MDNSService.cpp,
+MercurySession.cpp, PlainConnection.cpp, ShannonConnection.cpp).
+Affects: every unit that swaps bytes through <libkern/OSByteOrder.h> or <arpa/inet.h>.
+
+--- a/usr/include/libkern/arm/OSByteOrder.h
++++ b/usr/include/libkern/arm/OSByteOrder.h
+@@ -17,8 +17,13 @@
+     uint16_t        data
+ )
+ {
+-  /* Reduces to 'rev16' with clang */
+-  return (uint16_t)(data << 8 | data >> 8);
++  /* ARMv6 and later: one rev16 instruction, as an asm statement on low registers */
++#if defined(_ARM_ARCH_6)
++  __asm__ ("rev16 %0, %1" : "=l" (data) : "l" (data));
++#else
++  data = (uint16_t)(data << 8 | data >> 8);
++#endif
++  return data;
+ }
+ 
+ OS_INLINE
+@@ -27,8 +32,9 @@
+     uint32_t        data
+ )
+ {
+-#if defined(__llvm__)
+-  data = __builtin_bswap32(data);
++#if defined(_ARM_ARCH_6)
++  /* ARMv6 and later: one rev instruction, as an asm statement on low registers */
++  __asm__ ("rev %0, %1" : "=l" (data) : "l" (data));
+ #else
+   /* This actually generates the best code */
+   data = (((data ^ (data >> 16 | (data << 16))) & 0xFF00FFFF) >> 8) ^ (data >> 8 | data << 24);
+@@ -43,9 +49,6 @@
+     uint64_t        data
+ )
+ {
+-#if defined(__llvm__)
+-    return __builtin_bswap64(data);
+-#else
+     union {
+         uint64_t ull;
+         uint32_t ul[2];
+@@ -57,7 +60,6 @@
+     u.ul[0] = _OSSwapInt32(u.ul[0]);
+     u.ul[1] = _OSSwapInt32(u.ul[1]);
+     return u.ull;
+-#endif
+ }
+ 
+ /* Functions for byte reversed loads. */

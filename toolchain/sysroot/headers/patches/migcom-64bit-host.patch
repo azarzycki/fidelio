@@ -1,0 +1,58 @@
+migcom-64bit-host.patch
+Licence: this patch changes files of Apple's bootstrap_cmds-72 (migcom.tproj) and is under that
+release's licence (Apple Public Source License 2.0, APPLE_LICENSE in the release).
+
+What: three changes that let migcom of bootstrap_cmds-72 run on a 64-bit Linux host.
+  mig.c         drops the "#error migcom is not yet x86_64 compatible" guard.
+  utils.c       SkipVFPrintf() works on a va_copy of its va_list. Callers hand the same va_list to
+                it twice (left and right side of an assignment) and rely on a 32-bit ABI in which a
+                va_list is passed by value; on x86-64 the first call would consume the arguments of
+                the second, and migcom crashes while it writes the user code.
+  mig_machine.h always uses i386/mig_machine.h: 4-byte alignment and padding of message fields,
+                which is also the rule of the 32-bit ARM target. The original chooses by the HOST
+                architecture and stops on any host that is not i386, x86_64 or ppc.
+Why: build-headers.sh builds migcom on the build machine to generate the Mach interface headers
+(mach/clock.h, mach/mach_port.h, mach/arm/task.h, ...). No change affects what migcom writes into a
+header: the user headers it generates from xnu-1456.1.26's libsyscall .defs were compared with
+those of the reference SDK and no object of the build differs (README.md).
+Affects: no object directly; only the generated mig headers, which the "mig" rows of sources.tsv name.
+
+--- a/migcom/mig.c
++++ b/migcom/mig.c
+@@ -111,9 +111,6 @@
+ 
+ // 11/12/08 - gab: <rdar://problem/6352179>
+ // we should never be built as an x86_64 binary...
+-#ifdef __LP64__
+-#error "migcom is not yet x86_64 compatible."
+-#endif
+ 
+ extern int yyparse();
+ static FILE *myfopen();
+--- a/migcom/mig_machine.h
++++ b/migcom/mig_machine.h
+@@ -1,10 +1,4 @@
+ #if !defined(_MIG_MACHINE_H)
+ #define _MIG_MACHINE_H
+-#if defined(__i386__) || defined(__x86_64__)
+ #include "i386/mig_machine.h"
+-#elif defined(__ppc__) || defined(__ppc64__)
+-#include "ppc/mig_machine.h"
+-#else
+-#error Architecture not supported
+-#endif
+ #endif
+--- a/migcom/utils.c
++++ b/migcom/utils.c
+@@ -640,8 +640,10 @@
+  * and %f are recognized.
+  */
+ void
+-SkipVFPrintf(FILE *file, register char *fmt, va_list pvar)
++SkipVFPrintf(FILE *file, register char *fmt, va_list pvar_in)
+ {
++  va_list pvar;
++  va_copy(pvar, pvar_in);
+   if (*fmt == 0)
+     return; /* degenerate case */
+   

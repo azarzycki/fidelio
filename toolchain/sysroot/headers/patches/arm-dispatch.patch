@@ -1,0 +1,60 @@
+arm-dispatch.patch
+Licence: this patch changes files of Apple's xnu-1228.15.4 and is under that release's licence
+(Apple Public Source License 2.0, APPLE_LICENSE in the release).
+
+What: four headers that only choose the header of the target architecture get a branch for ARM:
+  usr/include/machine/_structs.h  -> arm/_structs.h     (xnu-1228.15.4 bsd/machine/_structs.h)
+  usr/include/machine/setjmp.h    -> arm/setjmp.h       (xnu-1228.15.4 bsd/machine/setjmp.h)
+  usr/include/mach/task.h         -> mach/arm/task.h    (xnu-1228.15.4 libsyscall/mach/headers/task.h)
+  usr/include/mach/thread_act.h   -> mach/arm/thread_act.h (same directory)
+Why: the published Mac OS X releases of the time know ppc and x86 only and stop with #error on ARM.
+The iPhone OS headers had the same choice with an ARM branch. The other architecture-choosing
+headers (machine/types.h, mach/machine/*.h, ...) are taken from xnu-4570.1.46, which has the ARM
+branch already; for these four no published release with an ARM branch exists.
+Affects: every unit that includes <setjmp.h>, <signal.h>, <mach/mach.h> or <pthread.h>; without the
+branch those units do not compile.
+
+--- a/usr/include/mach/task.h
++++ b/usr/include/mach/task.h
+@@ -33,6 +33,8 @@
+ #include <mach/ppc/task.h>
+ #elif defined(__ppc64__)
+ #include <mach/ppc64/task.h>
++#elif defined(__arm__)	/* 32-bit ARM (iPhone OS) */
++#include <mach/arm/task.h>
+ #else
+ #error unknown architecture
+ #endif 
+--- a/usr/include/mach/thread_act.h
++++ b/usr/include/mach/thread_act.h
+@@ -33,6 +33,8 @@
+ #include <mach/ppc/thread_act.h>
+ #elif defined(__ppc64__)
+ #include <mach/ppc64/thread_act.h>
++#elif defined(__arm__)	/* 32-bit ARM (iPhone OS) */
++#include <mach/arm/thread_act.h>
+ #else
+ #error unknown architecture
+ #endif 
+--- a/usr/include/machine/_structs.h
++++ b/usr/include/machine/_structs.h
+@@ -29,6 +29,8 @@
+ #include "ppc/_structs.h"
+ #elif defined (__i386__) || defined (__x86_64__)
+ #include "i386/_structs.h"
++#elif defined(__arm__)	/* 32-bit ARM (iPhone OS) */
++#include "arm/_structs.h"
+ #else
+ #error architecture not supported
+ #endif
+--- a/usr/include/machine/setjmp.h
++++ b/usr/include/machine/setjmp.h
+@@ -35,6 +35,8 @@
+ #include "ppc/setjmp.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "i386/setjmp.h"
++#elif defined(__arm__)	/* 32-bit ARM (iPhone OS) */
++#include "arm/setjmp.h"
+ #else
+ #error architecture not supported
+ #endif

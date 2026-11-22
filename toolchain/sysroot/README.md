@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MIT
      Copyright (c) 2026 Andy Zarzycki. Part of this repository's original work; see LICENSE at its root. -->
-# A sysroot without Apple's SDK, stage 1: the link libraries
+# A sysroot without Apple's SDK: link libraries (stage 1) and C library and CoreFoundation headers (stage 2)
 
 The ARM build of this repository compiles and links against a sysroot: the directory that `IOS3_SDK`
 names. Today that has to be a copy of Apple's `iPhoneOS3.1.2.sdk`, which is not part of this
@@ -9,11 +9,16 @@ itself.
 
 That is done in stages.
 
-- **Stage 1, this directory: the link libraries.** `stubs/build-stubs.sh` generates stand-ins for
-  the dylibs that the linker reads in the SDK. They are made from a list of names,
-  `stubs/manifest.tsv`, and from nothing else.
-- **The headers are not replaced yet.** Compiling still needs the header files of the SDK. Replacing
-  them is a later stage, and nothing here does it.
+- **Stage 1: the link libraries.** `stubs/build-stubs.sh` generates stand-ins for the dylibs that
+  the linker reads in the SDK. They are made from a list of names, `stubs/manifest.tsv`, and from
+  nothing else.
+- **Stage 2: the C library, kernel and CoreFoundation headers.** `headers/build-headers.sh` builds
+  `usr/include` and `CoreFoundation.framework/Headers` from Apple's published open-source releases,
+  fetched by commit and checked by sha256, with the releases' own install processing, a few small
+  patches of this project and one header of its own. See "Stage 2: the headers" below.
+- **Not done yet: the other frameworks' headers** (Foundation, UIKit, CoreGraphics, QuartzCore,
+  AudioToolbox, AVFoundation, Security, ...). Compiling still needs those header directories of the
+  SDK. They are a later stage (stage 3), and nothing here replaces them.
 
 So this directory does not give a complete sysroot yet. `tools/build-arm.sh`, the toolchain wrapper
 and the build notes are unchanged and still ask for the SDK.
@@ -25,6 +30,11 @@ and the build notes are unchanged and still ask for the SDK.
 | `stubs/manifest.tsv` | The libraries and, for each, the symbols a stub offers. The only input of the build. |
 | `stubs/build-stubs.sh` | `build-stubs.sh OUTDIR` builds the stubs into a new directory tree. |
 | `stubs/imports.py` | Writes the manifest from linked binaries, and checks the manifest and the stubs. |
+| `headers/sources.tsv` | Each header of stage 2 and where it comes from: release, commit, path, sha256, processing. |
+| `headers/build-headers.sh` | `build-headers.sh OUTDIR` builds the headers into a new directory tree. |
+| `headers/HEADERS.sha256` | The sha256 of every header that `build-headers.sh` writes; the build is checked against it. |
+| `headers/patches/` | This project's changes to published files, one file per topic. |
+| `headers/own/` | Files of this project where nothing was published: `CFNotificationCenter.h`, and the Mach types that mig's own sources need on a host that is not a Mach system (`own/migcom-host/`). |
 
 ## What a stub is
 
@@ -196,7 +206,7 @@ them. It keeps the notes, the re-exports and the links, never drops a library, a
 only when it is left with neither an importer nor a note; it says so when it does. It needs
 python3's standard library and nothing else.
 
-## What is verified
+## What is verified for the stubs
 
 On 2026-11-22, with toolchain revision 3 and the host's clang 18.1.3, against the reference build
 of the same day (the nine outputs built with the SDK) and the seven smoke-test files:
@@ -249,10 +259,240 @@ the ones built with the SDK.
   `-lm`, `-lpthread` and `-lc`, for example, are not there, because no link of the ARM build
   asks for them.
 
+## Stage 2: the headers
+
+`headers/build-headers.sh OUTDIR` writes
+
+```
+OUTDIR/usr/include/...                                               229 headers
+OUTDIR/System/Library/Frameworks/CoreFoundation.framework/Headers/... 35 headers
+```
+
+from nothing: from Apple's open-source releases on https://github.com/apple-oss-distributions,
+fetched by commit, and from the files in `headers/`. It reads no file of the SDK and needs no SDK.
+The script's header describes the recipe and its options; this section says what comes from where
+and what was compared.
+
+```sh
+toolchain/sysroot/headers/build-headers.sh OUTDIR                        # fetches what it needs
+IOS3_OSS_CACHE=DIR toolchain/sysroot/headers/build-headers.sh OUTDIR     # DIR/<repo>/<tag>/ checkouts
+```
+
+Besides git, sha256sum, awk and sed it needs `unifdef`, the host clang (as the preprocessor for mig),
+a host C compiler, `bison` and `flex` (to build mig, see below). `OUTDIR` must not exist yet, or be
+empty. Every published file is checked against the sha256 of its row in `sources.tsv` before it is
+used; the result is checked against `HEADERS.sha256`. On any mismatch the script stops and writes
+nothing to `OUTDIR`. Two runs give the same bytes.
+
+### The licence of these files
+
+The headers are Apple's files, under the licences their releases state: the Apple Public Source
+License 2.0 (the `APPLE_LICENSE` file of each release; xnu, Libc, CF, objc4, dyld, Libinfo, Libm,
+CarbonHeaders, and bootstrap_cmds for mig), with the Berkeley and Carnegie Mellon notices
+that many BSD and Mach headers carry as well, and a BSD-style licence for `dns_sd.h`
+(mDNSResponder). A file without a licence comment is under the licence of its release. They are not
+part of this repository: the script fetches them. What the repository holds is the list
+(`sources.tsv`, MIT), the script (MIT), this project's own files under `headers/own/` (MIT) and the
+patches under `headers/patches/`. **A patch changes a file of Apple's and is under the licence of the
+file it changes** (each patch says which); it is not under the MIT licence. The headers that mig
+generates carry no licence text; they are made from the release's APSL `.defs` files.
+`toolchain/THIRD-PARTY-NOTICES.md` does not describe these headers yet: the sysroot is not part of
+the toolchain tarball, and the notice belongs with the stage that ships it.
+
+### The allow-list
+
+`sources.tsv` has one `hdr` row per installed file, and the tree holds exactly those files. That
+matters for more than tidiness: libc++ asks with `__has_include` for `sys/_types/_mbstate_t.h` and
+`bits/types/mbstate_t.h`, clang's `stdint.h`, `limits.h`, `inttypes.h` and `float.h` include the
+sysroot's file of the same name only when one exists, and a header that exists changes what such
+code compiles. So a header is added only when a source of the build needs it. 218 headers under
+`usr/include` and 38 CoreFoundation headers were read by the build against the SDK; the stage 2 tree
+differs from that set as follows:
+
+- left out: `usr/include/stdint.h` (in the SDK a link to a gcc file). clang's own `<stdint.h>` is
+  used instead and gives the same objects. Also left out: `CFAttributedString.h`,
+  `CFFileDescriptor.h` and `CFStringTokenizer.h`, which Apple never published and which nothing in
+  the build uses (CoreFoundation.h does not name them here).
+- added: the twelve small headers that the xnu-4570.1.46 versions of the ARM headers include
+  (`sys/_types/_int8_t.h` ... `_uintptr_t.h`, `sys/_types/_os_inline.h`, `mach/machine/_structs.h`).
+  `sys/_types/_mbstate_t.h`, which libc++ probes for, is not among them and stays absent.
+
+### Where the headers come from
+
+| Category | Files | How |
+|---|---:|---|
+| published file as is | 146 | copied |
+| published file + the release's install processing | 94 | `libc` 14, `xnu` 19, `xnu-bsd-sys` 26, `xnu-4570` 33, `carbon` 2 |
+| published file (+ processing) + a patch of this project | 10 | 8 patches, below |
+| generated by mig from published `.defs` | 13 | `mig` |
+| file of this project | 1 | `own/CFNotificationCenter.h` |
+
+The processing rules are those of the releases' own makefiles, with the settings of an iPhone OS
+build (the script's header quotes them): `libc` is Libc's `installhdrs` step (the `//Begin-Libc`
+blocks removed, `unifdef` with the iPhone feature set), `xnu` and `xnu-4570` are xnu's
+`SINCFRAME_UNIFDEF` (for 4570 with `PLATFORM=iPhoneOS`), `xnu-bsd-sys` adds `bsd/sys/Makefile`'s
+`-DPRODUCT_iPhone` (it selects the iPhone settings of `sys/cdefs.h`), and `carbon` is
+CarbonHeaders' `sed` of `@CONFIG_EMBEDDED@`, `@CONFIG_IPHONE@`, `@CONFIG_IPHONE_SIMULATOR@` to 1, 1, 0
+(it makes `TargetConditionals.h` describe the phone).
+
+The releases used, all from https://github.com/apple-oss-distributions:
+
+| Repository | Tag | Commit | Headers |
+|---|---|---|---:|
+| xnu | xnu-1228.15.4 | 083332250d12f1d698a5c3282a18fee46847ec92 | 68 |
+| xnu | xnu-1456.1.26 | 3ca3bd5593ac4736fb236ffd68a7ccb91ee6c0f0 | 49 (13 of them by mig) |
+| xnu | xnu-4570.1.46 | 76e12aa3ea3036173a61fa1081c3be890e626e79 | 52 |
+| Libc | Libc-498.1.7 | 7198b93dbba0617e5927ff5a5e783f0e54ff957b | 45 |
+| CF | CF-476.19 | e92003b7fb6f7be08ee3723e6004ec155c88527a | 33 |
+| CF | CF-550 | 83e0f91d8f5285e9e0e914cda406754ed72251eb | 1 |
+| CarbonHeaders | CarbonHeaders-18.1 | 214a9ae7ab3c0c78ddb50328ca226e6313c4c782 | 4 |
+| objc4 | objc4-437.1 | 2b9fa8c3a278f9089126d1df603713b93878c22d | 4 |
+| Libinfo | Libinfo-278.0.3, Libinfo-324.1 | 0e3671f7da4f29cbcf20a3f9b49ff3a1b07b8e6f, 696adf4cfed7ac64ae7032bafee0312ea9adfe48 | 2 + 1 |
+| Libm | Libm-315 | 845f432413a66ea992f4797c66157c9824421719 | 2 |
+| dyld | dyld-132.13 | aa1d7f7a6fb257f393648940bfc32c06fa886458 | 1 |
+| mDNSResponder | mDNSResponder-212.1 | 601a08a9012e11cd93ab21902edef64cdbf3a2ae | 1 |
+| bootstrap_cmds | bootstrap_cmds-72 | 46504af5bfee6086d69d889c07bd5ca865b29fd1 | (mig itself) |
+
+The iPhone OS 3 releases of xnu and Libc were never published. The headers are therefore taken
+from the Mac OS X releases of the same time (10.5.x and 10.6: xnu-1228, xnu-1456, Libc-498), which
+match most of them byte for byte, and the ARM-specific headers from xnu-4570.1.46 (2017), the only
+published release with `bsd/arm`, `osfmk/mach/arm` and `libkern/arm`. Where several releases have a
+file, the one whose processed text is closest to what the build needs was chosen.
+
+### The patches and the file of our own
+
+Each patch begins with a comment that says what it changes, why, and which objects depend on it.
+
+| Patch | Files | Changed lines | Why |
+|---|---|---:|---|
+| `arm-dispatch.patch` | `machine/_structs.h`, `machine/setjmp.h`, `mach/task.h`, `mach/thread_act.h` | +8 | the 2009 Mac releases choose the header of the architecture among ppc and x86 only and stop with `#error` on ARM; no published version of these four has an ARM branch |
+| `arm-setjmp.patch` | `arm/setjmp.h` (from xnu-1228 `bsd/i386/setjmp.h`) | +8 | the user-space ARM `setjmp.h` was never published; the i386 file declares the same functions, the patch adds the ARM size of `jmp_buf` (28 ints) |
+| `sys-cdefs-arm.patch` | `sys/cdefs.h` | +4 | ARM branch of the long-double section (long double is double, no `$LDBL128` variants) |
+| `mach-arm-vm_param.patch` | `mach/arm/vm_param.h` (xnu-4570) | +5 −7 | the page size is the constant 4096 on 32-bit ARM, not the run-time variable of the 64-bit era |
+| `libkern-arm-osbyteorder.patch` | `libkern/arm/OSByteOrder.h` (xnu-4570) | +10 −8 | byte swaps as `rev`/`rev16` asm statements, as the headers of the time had them; clang's builtins give a different instruction order in 9 units |
+| `cfbase-mactypes.patch` | `CFBase.h` (CF-476.19) | +1 −1 | iPhone OS's CoreFoundation takes its base types from `MacTypes.h`; the open-source CF-Lite takes them from the kernel's `OSTypes.h` |
+| `corefoundation-umbrella.patch` | `CoreFoundation.h` (CF-550) | +3 | the umbrella names `CFNotificationCenter.h` |
+| `migcom-64bit-host.patch` | mig's `mig.c`, `utils.c`, `mig_machine.h` | +3 −10 | lets the 2009 mig run on a 64-bit Linux host (it is not a header of the sysroot) |
+
+`own/CFNotificationCenter.h` (57 lines, MIT): Apple never published `CFNotificationCenter.h`; no CF
+release on apple-oss-distributions has it, because the notification center is not part of the
+open-source CF-Lite. It declares what `audiod/src/HardwareVolumeApple.cpp` uses: the opaque type
+`CFNotificationCenterRef` (a pointer to `struct __CFNotificationCenter`, a name that is part of the
+C++ symbol names of functions that take one), the callback type, the four suspension behaviours and
+three functions. A source that needs more adds it there.
+
+### mig
+
+Fifteen Mach headers (`mach/mach_port.h`, `mach/vm_map.h`, `mach/arm/task.h`, ...) are not source
+files in Apple's releases: the build of libsyscall generates them from `.defs` interface definitions
+with Apple's interface generator, mig. `build-headers.sh` does the same:
+
+1. It builds `migcom` from bootstrap_cmds-72 (Mac OS X 10.6) with the host C compiler, bison (as
+   yacc) and flex, with `migcom-64bit-host.patch` and the small host headers in
+   `own/migcom-host/mach/` (the message types and constants that migcom's sources include; the
+   host is not a Mach system). migcom still uses the 4-byte alignment rules of the time, which are
+   those of 32-bit ARM.
+2. It preprocesses xnu-1456.1.26's `libsyscall/mach/*.defs` for ARMv6 with `-D__MACH30__`, as
+   libsyscall's makefile hands them to mig, with the published `osfmk/mach/*.defs` and the headers
+   built here on the include path, and runs migcom to write the user header. The ARM
+   `machine_types.defs` of the time was not published; its place is taken by the same release's
+   `osfmk/mach/i386/machine_types.defs`, which states the same 32-bit types.
+
+Two of the generated headers (`mach/arm/task.h`, `mach/arm/thread_act.h`) came out byte-identical to
+the SDK's copies. Most others differ from them by one line (a second `#include <mach/mig.h>`);
+`mach/host_priv.h` and `mach/mach_port.h` differ by routines and arguments that xnu-1456 has and the
+iPhone OS 3.1 kernel did not, which no source of the build calls. The two `.y`/`.l` generators were
+tested with bison 1.28 and flex 2.5.4 (Apple's bison-6.1.1 and flex-9 releases); any later bison and
+flex should do, because they only build the tool.
+
+### CoreFoundation
+
+The CF-476.19 files differ from the SDK's copies mostly by Apple's 22-line licence comment, which the
+SDK's copies do not carry, and further by Windows conditionals, the order of operands in version
+comparisons and the version-number constants, none of which reaches an object. Two differences do
+matter and are the two CF patches: where the base types come from (`cfbase-mactypes.patch`) and the
+notification center, which CF-Lite leaves out (`corefoundation-umbrella.patch` and
+`own/CFNotificationCenter.h`).
+
+### Adding a header
+
+A compile that fails with "file not found" for a header of `usr/include` or CoreFoundation, or a
+declaration that is missing, is fixed in this order:
+
+1. Find the file in a published release (the closest in time first) and add a `hdr` row: path,
+   repository, tag, commit, path in the release, its sha256, and the release's own processing rule.
+2. Only if no published version gives the same objects as the SDK did (check with a build against
+   the SDK, which a developer can supply): a patch in `patches/`, as small as possible, starting
+   with a comment that says what fact it encodes and why it is needed.
+3. Only for a header Apple never published: a file in `own/` that declares, in this project's own
+   words, what the sources use.
+
+Then run `build-headers.sh --update-pins OUTDIR`, which rewrites `HEADERS.sha256`, and review the
+change.
+
+### What is verified
+
+On 2026-11-22, with toolchain revision 3 and the host's clang 18.1.3, against the reference build of
+the same day (built with the SDK). The test sysroot was the stage 1 stubs, the stage 2 headers, and
+symlinks to the SDK's `Headers` directories for the other frameworks (stage 3 is not done):
+
+- **Reproducible.** Two runs of `build-headers.sh` from nothing, one from a local cache of the
+  releases and one fetching all 14 releases from GitHub, gave identical trees (264 files, no
+  symlink) that match `HEADERS.sha256` and hold exactly the `hdr` rows of `sources.tsv`.
+- **No copy of the SDK.** 147 of the 264 files have the same bytes as a file of the SDK. Each of them
+  is a published file, as is or after its release's processing rule (145), or one of the two mig
+  headers named above, generated from published `.defs` files. No patched file and no file of our
+  own equals a file of the SDK.
+- **Every compile of the build.** All 409 compiler invocations of the reference build were replayed
+  against the test sysroot: all 409 objects are byte-identical to those compiled against the SDK
+  (mbedtls 113, cspot 247, airplay 19, audiod 12, nowplaying 11, the lock-screen plugin 2 + 2,
+  DockRemote 2, voltest 1). Without `mach/mach_port.h` and `CFNotificationCenter.h` in the tree,
+  34 of them fail to compile; `-H` shows the headers coming from the test sysroot.
+- **ABI probes.** A C file with the size, alignment and field offsets of about 100 types and
+  structures, about 150 constants (among them every macro that third-party code tests with
+  `#ifdef` to choose an implementation: `CLOCK_MONOTONIC`, `SO_NOSIGPIPE`, `MSG_NOSIGNAL`,
+  `TCP_KEEPALIVE`, `AI_*`, `IPV6_*`, `O_CLOEXEC`, ...), the assembler names of about 120 libSystem
+  functions (with their `$UNIX2003`, `$INODE64`, `$DARWIN_EXTSN` suffixes) and the byte-swap
+  inlines; a C++ file with the mangled names of functions over about 90 system and CoreFoundation
+  types; an Objective-C file with the `@encode` strings of 24 types; and a program that calls the
+  setjmp family: all compile to the same object against the SDK and against the test sysroot.
+- **A full build.** `tools/build-arm.sh`, from nothing, with `IOS3_SDK` set to the test sysroot,
+  ended with `result: OK`. The sha256 of all nine outputs equal those of the reference build, and so
+  do all 405 object files, the members of all 15 static archives (the archive files differ only by
+  the time stamps that `ar` writes), the `CMakeCache.txt` of the four CMake build directories, and
+  every other file of `arm-out` but the report and DockRemote's link map (which name temporary
+  files). The compiles read their headers from the test sysroot only (ninja's dependency logs).
+
+### What differs and does not matter today
+
+The headers are not the SDK's headers, and the checks above say only that nothing this build
+compiles comes out differently. Differences that a future source could notice:
+
+- `Availability.h` and `AvailabilityInternal.h` come from xnu-4570.1.46, because CarbonHeaders-18.1
+  stops at iPhone OS 3.0 and UIKit's headers name 3.1. They express availability with clang's
+  `availability` attribute and set `__IPHONE_OS_VERSION_MAX_ALLOWED` to 10.3 instead of 3.1; a source
+  that tests that macro for a version above 3.1 gets another answer.
+- There is no `usr/include/stdint.h`, so clang's own is used: same types and limits, but
+  `__WORDSIZE` is not defined, and the limit macros are spelled with clang's builtins.
+- The ARM headers come from 2017 (xnu-4570.1.46): `arm/_structs.h` is that release's
+  `bsd/arm/_mcontext.h`, whose machine context has the same layout but is called
+  `struct __darwin_mcontext32` (the SDK: `__darwin_mcontext`), and `mcontext_t` is declared by
+  `<signal.h>`; `VM_MAX_ADDRESS` is 0x80000000 (the SDK: 0x40000000); `MACHINE_THREAD_STATE_COUNT`
+  counts the unified thread state; `EXC_TYPES_COUNT` and the 64-bit ARM types are those of that
+  release; `ARM_PGBYTES` and `ARM_PGSHIFT` do not exist (`PAGE_SIZE` is 4096 all the same).
+- The Mac OS X 10.5/10.6 headers lack a few iPhone OS additions and have a few later ones:
+  `AF_IEEE80211` is missing (`AF_MAX` is 37, the SDK: 38), `EVFILT_SESSION` exists
+  (`EVFILT_SYSCOUNT` is 11, the SDK: 10), `kDNSServiceInterfaceIndexP2P` is missing from `dns_sd.h`,
+  `VM_BEHAVIOR_FREE` is missing, and mig's `mach/host_priv.h` and `mach/mach_port.h` declare the
+  xnu-1456 routines (`mach_port_kobject`, for example).
+- CoreFoundation has no `CFAttributedString.h`, `CFFileDescriptor.h` or `CFStringTokenizer.h`, and
+  `CFNotificationCenter.h` declares only what this repository uses.
+
 ## Later stages
 
-The headers: `usr/include` and the `Headers` directory of each framework. Until they are replaced,
-a build needs the SDK for compiling, and the stubs can be tried only next to the SDK's headers, as
-in the checks above. When the headers exist, `tools/build-arm.sh`, the toolchain wrapper,
-`armv6-ios3-check` and the build notes can be pointed at the project's own sysroot; none of them
-is changed here.
+The other frameworks' headers (stage 3): Foundation, UIKit, CoreGraphics, QuartzCore, AudioToolbox,
+AudioUnit, CoreAudio, AVFoundation, Security, OpenGLES. Until they are replaced, a build needs the
+SDK for those `Headers` directories, and the stubs and stage 2 headers can be tried only next to
+them, as in the checks above. When all headers exist, `tools/build-arm.sh`, the toolchain wrapper,
+`armv6-ios3-check` and the build notes can be pointed at the project's own sysroot; none of them is
+changed here.

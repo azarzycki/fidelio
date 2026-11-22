@@ -1,0 +1,37 @@
+arm-setjmp.patch
+Licence: this patch changes a file of Apple's xnu-1228.15.4 (bsd/i386/setjmp.h, installed here as
+arm/setjmp.h) and is under that release's licence (Apple Public Source License 2.0, APPLE_LICENSE in
+the release).
+
+What: an ARM branch that sizes jmp_buf at 28 ints and sigjmp_buf at 29.
+Why: <setjmp.h> of Libc-498.1.7 takes jmp_buf, sigjmp_buf and the declarations of setjmp(),
+longjmp(), _setjmp(), _longjmp(), sigsetjmp() and siglongjmp() from <machine/setjmp.h>, which
+chooses the header of the architecture. No published release has the user-space ARM version of
+that header (xnu-4570.1.46's osfmk/arm/setjmp.h is the kernel's, without these declarations). The
+i386 header of the same release declares the same functions with the same prototypes; only the
+size of the buffer is per architecture. On 32-bit ARM it is 28 ints: that is the size that
+iPhone OS's libSystem setjmp() fills, and a buffer of another size would change every structure
+and stack frame that holds one.
+Affects: units that use jmp_buf or call the setjmp family. No unit of the build does today (all
+objects are identical with or without the patch); without it such a unit would not compile, and
+with a wrong size it would compile to different code.
+
+--- a/usr/include/arm/setjmp.h
++++ b/usr/include/arm/setjmp.h
+@@ -47,6 +47,16 @@
+ typedef int jmp_buf[_JBLEN];
+ typedef int sigjmp_buf[_JBLEN + 1];
+ 
++#elif defined(__arm__)
++
++/*
++ * 32-bit ARM (iPhone OS): the buffer is 28 ints, the size that setjmp() and
++ * sigsetjmp() of the system library fill on that architecture.
++ */
++#define _JBLEN (28)
++typedef int jmp_buf[_JBLEN];
++typedef int sigjmp_buf[_JBLEN + 1];
++
+ #else
+ 
+ /*
