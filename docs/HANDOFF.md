@@ -315,6 +315,13 @@ identical bytes. They are what the cloud session published and what was installe
   new in that session: audiod 7330752 (which re-enables the lock plugin after a SpringBoard restart),
   DockRemote 4ed6a5a hooking `GSSendEvent` in iapd, and iapd's packet logging. **Do not restart
   SpringBoard on a playing device again without the owner's word.**
+  - Two of those are unlikely on the evidence. audiod's re-enable did not run: it had unlocked the
+    phone for that start, so the plugin was not enabled and `syncLockPlugin` returns before it looks at
+    SpringBoard (`Server.cpp`); audiod's log has no line from that window. And the tweak's log has no
+    event between the last key press and the reboot, so the hook was not called in that window.
+  - Also running at that moment: the built-in iPod app (the remote's play/pause had started it a few
+    minutes before; SpringBoard's exit terminated it, NowPlaying and the Phone app), and audiod
+    streaming to the dock over USB.
 - **Wake on play on the phone** (2026-11-22, audiod 7330752, `wake_mode=launch`, no `unlock_on_play` line
   so the default "on"): the event log read `wake: device locked, unlock accepted (nowplaying:)` and
   NowPlaying was running afterwards. The older note below ("audiod never sees locked there") was written
