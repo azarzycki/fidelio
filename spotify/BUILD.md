@@ -34,6 +34,8 @@ armv6-ios3-toolchain/
   share/armv6-ios3/src/startfiles/           the script that builds the start-up objects, the notice it puts into them (notice.s), and the APSL 1.1 and 2.0 texts
 ```
 
+The tarball is published as a release of this repository, tag `toolchain-r3` (<https://github.com/azarzycki/fidelio/releases/tag/toolchain-r3>), together with source archives of cctools-port, ldid and libplist at the versions that were built.
+
 The tarball does not include the SDK or a host clang. The toolchain's own files are in this repository under `toolchain/`, and `toolchain/pack.sh` assembles the tarball (§6c). Revision 1 was the tarball of 2026-11-06: no start-up objects, no licence texts, and an older copy of this file. Revision 2 (2026-11-21) added the start-up objects, without a notice inside them, and the licence texts. Revision 3 (2026-11-22) puts the notice into the start-up objects (§6d).
 
 **Host requirements** (Ubuntu 24.04 / WSL):

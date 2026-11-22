@@ -1,7 +1,8 @@
 # Third-party notices: armv6-ios3 cross toolchain (Linux x86_64 host)
 
 For `armv6-ios3-toolchain-linux-x86_64.tar.xz`, toolchain revision 3 (the file `VERSION`). Written
-2026-11-21 for revision 2; §9 and §10 changed on 2026-11-22 for revision 3. This file states facts:
+2026-11-21 for revision 2; §9 and §10 changed on 2026-11-22 for revision 3, and the paragraph on
+where the tarball and the source archives are published was added the same day. This file states facts:
 what each part of the tarball is, which licence its upstream states for it, and where its source is.
 It is not legal advice and has not had a legal review.
 
@@ -14,6 +15,12 @@ of this tarball and in `spotify/patches/` of the project repository. Build comma
 Paths are those of the tarball. In the project repository this file is
 `toolchain/THIRD-PARTY-NOTICES.md` and the directory `LICENSES/` is `toolchain/licenses/`.
 `LICENSES/MANIFEST.tsv` gives the origin, the size and the sha256 of every licence text.
+
+The project repository is https://github.com/azarzycki/fidelio. The tarball is published there as the
+release `toolchain-r3` (https://github.com/azarzycki/fidelio/releases/tag/toolchain-r3). The same
+release page holds source archives of cctools-port (§1) and ldid (§3) at the commits named below, and
+the Ubuntu source package of libplist (§5), so that the source of these three is available from the
+place the programs are downloaded from. Each "Source:" line below names the upstream location as well.
 
 The Apple iPhoneOS SDK and the host clang are not part of this tarball.
 

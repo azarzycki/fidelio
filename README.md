@@ -33,6 +33,10 @@ export PATH=/path/to/armv6-ios3-toolchain/bin:$PATH   # toolchain revision 3 (to
 tools/build-arm.sh                                    # binaries and report in ../build/arm-out
 ```
 
+The toolchain tarball is published as a release of this repository, tag `toolchain-r3`:
+<https://github.com/azarzycki/fidelio/releases/tag/toolchain-r3>. The release notes give its size and
+sha256. Unpack it anywhere and put its `bin/` in `PATH`; it also needs the host's `clang-18`.
+
 Apple's iPhone SDK is not needed and not included. Without `IOS3_SDK`, `tools/build-arm.sh` makes
 the project's own sysroot (`toolchain/sysroot/`): stub libraries from a symbol list, headers from
 Apple's published open-source releases (fetched once, pinned by commit and sha256) and framework

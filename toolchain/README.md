@@ -30,6 +30,10 @@ armv6-ios3 cross toolchain (Linux x86_64 host -> ARMv6 iPhone OS 3.x). Revision:
   armv6-ios3-check needs python3.
 
 Full notes:  share/armv6-ios3/BUILD.md
+Source:      https://github.com/azarzycki/fidelio (directory toolchain/; the script toolchain/pack.sh
+             there assembles this tarball). The release page this tarball is published on,
+             https://github.com/azarzycki/fidelio/releases/tag/toolchain-r3, also holds source
+             archives of cctools-port, ldid and libplist at the versions that were built.
 Licences:    LICENSE (MIT) covers this project's own files: the wrapper scripts, toolchain.cmake,
              ios3compat, ios3_tls.hpp and the build notes. Everything else is third-party software:
              THIRD-PARTY-NOTICES.md lists each component with its version, licence and source, and
@@ -168,6 +172,21 @@ sources (sections, contents, relocations, symbols) is the same as in revision 2'
   commit, its licence, where its source is and which patch was applied.
 - `licenses/` holds the licence texts (`LICENSES/` in the tarball). `licenses/MANIFEST.tsv` records for
   each text where it was taken from, its size and its sha256.
+
+## Getting the tarball
+
+Revision 3 is published as a release of this repository, tag `toolchain-r3`:
+<https://github.com/azarzycki/fidelio/releases/tag/toolchain-r3>.
+
+- `armv6-ios3-toolchain-linux-x86_64.tar.xz` is the pack of the commit the tag points at. The release
+  notes give its size and sha256.
+- Next to it are source archives of the three components whose licences ask for the source to be
+  offered with the programs: cctools-port and ldid at the commits that were built, and the Ubuntu
+  source package of libplist. `THIRD-PARTY-NOTICES.md` names the versions; the patches are in
+  `spotify/patches/` and in the tarball.
+- A pack of another commit can have another sha256, because the tarball holds copies of repository
+  files (`LICENSE`, the build notes, this directory's sources). Its programs and libraries are the same
+  bytes as long as `toolchain/` and the three patches are unchanged.
 
 ## Packing a tarball
 
