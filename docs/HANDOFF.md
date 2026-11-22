@@ -424,6 +424,8 @@ of §2.3's first table is installed, and so before the packages of §3.5 are bui
 - It needs one version number for the whole suite, stamped into the app and the daemons at build time.
 - The owner's direction (2026-11-21): a release includes the packages and the toolchain tarball.
   Nothing has been published yet.
+- The toolchain tarball of a release is the pack at the release commit (§6.1): the tarball recorded
+  there was packed at `c46beee`, before the last change to `LICENSE`.
 - How CI gets Apple's SDK is open (§4).
 
 ---
@@ -570,8 +572,13 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
     3,978,908 bytes, sha256 `c635235bc75ba22882f0e1c80abd5b59808c76034fb20092791348e6d9252c7f`. On the PC
     it is `C:\code\fidelio\cloud-build\armv6-ios3-toolchain-linux-x86_64-r3.tar.xz`; it is the one
     installed in WSL. `toolchain/pack.sh --base <an unpacked toolchain>` rebuilds it, byte for byte, from
-    the repo and the upstream-built parts of a base toolchain (`toolchain/README.md`, `spotify/BUILD.md`
-    §6). Revision 3 was packed with revision 2 as its base.
+    the repo at `c46beee` and the upstream-built parts of a base toolchain (`toolchain/README.md`,
+    `spotify/BUILD.md` §6). Revision 3 was packed with revision 2 as its base.
+    - **Its sha256 belongs to the commit it was packed at.** The tarball holds copies of repo files: the
+      top-level `LICENSE`, the build notes, the toolchain's own sources. `LICENSE` changed afterwards
+      (`d1b20a9`), so a pack at a later commit differs in that one file and has another sha256. Its
+      start-up objects, and every binary built with it, are the same. For a release, pack at the release
+      commit and record that tarball's size and sha256 (§3.7).
     - Its start-up objects (`armv6-ios3/lib/startfiles/`) are built from Apple's open-source Csu, tag
       Csu-79, and each carries the source-availability notice of `toolchain/startfiles/notice.s` in a
       section `__TEXT,__csu_notice`. The linker copies it into every binary.
