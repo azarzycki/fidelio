@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# armv6-ios3-clang / armv6-ios3-clang++
+# Cross compiler driver for ARMv6 iPhone OS 3.x (Mach-O executables in the style of a 2009 toolchain).
+#
+# Environment:
+#   IOS3_SDK            (required) path to iPhoneOS3.1.2.sdk
+#   IOS3_HOST_CLANG     host clang to use (default: clang-18 if present, else clang); IOS3_HOST_CLANGXX for C++
+#   IOS3_CXX_RUNTIME    libstdc++ (default: the SDK's libstdc++ 4.2.1, C++98/TR1 library, dynamic)
+#                       libc++    (static libc++ 18 + libc++abi from this toolchain, C++17/20 library)
+#                       none      no C++ runtime flags at all (used when building libc++ itself)
+#                       -stdlib=libc++ / -stdlib=libstdc++ on the command line override it.
+#   IOS3_COMPAT_INCLUDE 1 = force-include ios3compat.h (declares clock_gettime, strnlen, getline, ...)
+#   IOS3_MIN_VERSION    deployment target, default 3.0. Do not raise it to 3.1 or later: ld64 then
+#                       emits LC_DYLD_INFO_ONLY (compressed dyld info) instead of classic relocations,
+#                       and the driver asks for crt1.3.1.o, which this toolchain does not have (the
+#                       link would silently take the SDK's copy).
+#   IOS3_LINK_MAP_DIR   when set, every link that names its output with "-o FILE" also writes ld64's
+#                       link map to $IOS3_LINK_MAP_DIR/<basename of FILE>.map (the directory is
+#                       created). The map lists every object file and archive member that was linked.
+#
+# Always added: softfp float ABI with VFPv2 (matches the SDK's armv6 dylibs: VFP code, args in core regs),
+# ARM (not Thumb) mode. thread_local/__thread are rejected by clang for iOS < 9: use ios3_tls.hpp (pthread keys);
+# at link time: no LC_FUNCTION_STARTS / LC_DATA_IN_CODE / LC_VERSION_MIN_IPHONEOS, and libios3compat.a.
+#
+# Start-up objects: the clang driver puts -lcrt1.o (executables), -ldylib1.o (dylibs) or -lbundle1.o
+# (bundles) on every link line, and ld64 looks in the -L directories before the SDK's usr/lib. Every
+# link gets -L<toolchain>/armv6-ios3/lib/startfiles first, so those names resolve to the toolchain's
+# own objects (built from Apple's open-source Csu release, see share/armv6-ios3/BUILD.md) instead of
+# the SDK's copies. A link fails here if one of the three files is missing.
+# Neither -L nor the link map changes a byte of the linked output.
+set -e
+TC_BIN="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+TC_ROOT="$(dirname "$TC_BIN")"
+TC_TGT="$TC_ROOT/armv6-ios3"
+if [ -z "$IOS3_SDK" ] || [ ! -f "$IOS3_SDK/usr/lib/libSystem.B.dylib" ]; then
+  echo "armv6-ios3: set IOS3_SDK to your iPhoneOS3.1.2.sdk directory (got '${IOS3_SDK}')" >&2; exit 2
+fi
+case "$(basename "$0")" in *clang++|*c++|*g++) DRIVER=clang++ ;; *) DRIVER=clang ;; esac
+if [ "$DRIVER" = clang++ ]; then HOSTCC="${IOS3_HOST_CLANGXX:-}"; else HOSTCC="${IOS3_HOST_CLANG:-}"; fi
+if [ -z "$HOSTCC" ]; then
+  if command -v ${DRIVER}-18 >/dev/null; then HOSTCC=${DRIVER}-18; else HOSTCC=$DRIVER; fi
+fi
+MINVER="${IOS3_MIN_VERSION:-3.0}"
+COMMON=(-target armv6-apple-ios$MINVER -isysroot "$IOS3_SDK" -miphoneos-version-min=$MINVER
+        -mfloat-abi=softfp -mfpu=vfpv2 -marm
+        -mllvm -fast-isel=0)   # LLVM 18 FastISel + ARM SjLj EH crashes the asm printer at -O0
+[ -d "$TC_TGT/include" ] && COMMON+=(-idirafter "$TC_TGT/include")
+[ "${IOS3_COMPAT_INCLUDE:-0}" = 1 ] && COMMON+=(-include "$TC_TGT/include/ios3compat.h")
+
+CXXRT="${IOS3_CXX_RUNTIME:-libstdc++}"
+LINK=1
+OUTFILE=""; prev=""
+for a in "$@"; do
+  [ "$prev" = -o ] && OUTFILE="$a"
+  case "$a" in
+    -stdlib=libc++) CXXRT=libc++ ;;
+    -stdlib=libstdc++) CXXRT=libstdc++ ;;
+    -c|-S|-E|-M|-MM|-fsyntax-only) LINK=0 ;;
+  esac
+  prev="$a"
+done
+ARGS=()
+for a in "$@"; do case "$a" in -stdlib=*) ;; *) ARGS+=("$a") ;; esac; done
+
+STARTFILES="$TC_TGT/lib/startfiles"
+LDFIRST=()   # goes before the caller's arguments: the first -L directory wins
+LDFLAGS=()
+if [ $LINK = 1 ]; then
+  for f in crt1.o dylib1.o bundle1.o; do
+    if [ ! -f "$STARTFILES/$f" ]; then
+      echo "armv6-ios3: start-up object $STARTFILES/$f is missing: this toolchain is incomplete." >&2
+      echo "armv6-ios3: refusing to link (the SDK's copy would be linked in its place); see share/armv6-ios3/BUILD.md" >&2
+      exit 2
+    fi
+  done
+  LDFIRST=(-L"$STARTFILES")
+  LDFLAGS=(--ld-path="$TC_BIN/arm-apple-darwin9-ld"
+           -Wl,-no_function_starts -Wl,-no_data_in_code_info -Wl,-no_version_load_command)
+  if [ -n "${IOS3_LINK_MAP_DIR:-}" ] && [ -n "$OUTFILE" ]; then
+    mkdir -p "$IOS3_LINK_MAP_DIR"
+    LDFLAGS+=(-Wl,-map,"$IOS3_LINK_MAP_DIR/$(basename "$OUTFILE").map")
+  fi
+fi
+if [ "$CXXRT" = none ]; then
+  : # bootstrapping a C++ runtime: add no C++ include/library flags at all
+elif [ "$CXXRT" = libc++ ]; then
+  # Static libc++/libc++abi; exceptions are SjLj via libSystem/libgcc_s's _Unwind_SjLj_*.
+  COMMON+=(-nostdinc++ -isystem "$TC_TGT/include/c++/v1")
+  if [ $LINK = 1 ] && [ "$DRIVER" = clang++ ]; then
+    LDFLAGS+=(-nostdlib++ "$TC_TGT/lib/libc++.a" "$TC_TGT/lib/libc++abi.a")
+  fi
+elif [ "$DRIVER" = clang++ ]; then
+  # The SDK's libstdc++ 4.2.1 keeps bits/c++config.h in an arch subdir clang 18 does not search.
+  COMMON+=(-stdlib=libstdc++ -cxx-isystem "$IOS3_SDK/usr/include/c++/4.2.1/armv6-apple-darwin9")
+fi
+if [ $LINK = 1 ] && [ -f "$TC_TGT/lib/libios3compat.a" ]; then
+  LDFLAGS+=("$TC_TGT/lib/libios3compat.a")
+fi
+exec "$HOSTCC" "${COMMON[@]}" "${LDFIRST[@]}" "${ARGS[@]}" "${LDFLAGS[@]}"

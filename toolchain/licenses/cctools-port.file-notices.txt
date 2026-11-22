@@ -1,0 +1,3901 @@
+cctools-port: per-file licence and copyright notices other than the standard APSL 2.0 header
+============================================================================================
+
+Source: https://github.com/tpoechtrager/cctools-port at commit 904de2a71d4da6a9b30d2efaf912a10ddc7d9ddb, directories cctools/{ar,as,efitools,ld64/src,libmacho,libstuff,misc,otool,include} (the directories built by cctools/Makefile.am SUBDIRS, plus the shared headers). Which of the header-only notices correspond to code actually compiled into a shipped binary was not determined.
+This file is NOT an upstream file. It was assembled mechanically: every distinct
+licence/copyright comment block from the first 400 lines of each scanned source file
+is reproduced verbatim once, followed by the files that carry it.
+
+Files scanned: 582
+Blocks not reproduced here (standard APSL-2.0 header): 268
+Blocks not reproduced here (standard LLVM Apache-2.0 WITH LLVM-exception header): 1
+Distinct notice blocks reproduced: 151
+Scanned files with no licence/copyright block found: 73
+
+------------------------------------------------------------------------------
+NOTICE 1  (carried by 10 files)
+  ar/append.c
+  ar/ar.c
+  ar/archive.c
+  ar/contents.c
+  ar/delete.c
+  ar/extract.c
+  ar/misc.c
+  ar/move.c
+  ar/print.c
+  ar/replace.c
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1990, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Hugh Smith at The University of Guelph.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 2  (carried by 1 file)
+  ar/archive.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1991, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Hugh Smith at The University of Guelph.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)archive.h	8.3 (Berkeley) 4/2/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 3  (carried by 1 file)
+  ar/extern.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1991, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)extern.h	8.3 (Berkeley) 4/2/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 4  (carried by 1 file)
+  ar/pathnames.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1991, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Hugh Smith at The University of Guelph.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)pathnames.h	8.1 (Berkeley) 6/6/93
+ */
+
+------------------------------------------------------------------------------
+NOTICE 5  (carried by 1 file)
+  ld64/src/3rd/eprintf.c
+------------------------------------------------------------------------------
+/* ===---------- eprintf.c - Implements __eprintf --------------------------===
+ *
+ *                     The LLVM Compiler Infrastructure
+ *
+ * This file is dual licensed under the MIT and the University of Illinois Open
+ * Source Licenses. See LICENSE.TXT for details.
+ *
+ * ===----------------------------------------------------------------------===
+ */
+
+------------------------------------------------------------------------------
+NOTICE 6  (carried by 2 files)
+  ld64/src/3rd/md5.c
+  ld64/src/3rd/md5.h
+------------------------------------------------------------------------------
+/*
+  Copyright (C) 1999 Aladdin Enterprises.  All rights reserved.
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  L. Peter Deutsch
+  ghost@aladdin.com
+
+ */
+
+------------------------------------------------------------------------------
+NOTICE 7  (carried by 1 file)
+  ld64/src/3rd/qsort_r.c
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1992, 1993
+ *  The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 8  (carried by 1 file)
+  ld64/src/3rd/reallocf.c
+------------------------------------------------------------------------------
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
+ * Copyright (c) 1998 M. Warner Losh <imp@FreeBSD.org>
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 9  (carried by 1 file)
+  ld64/src/3rd/sha1.c
+------------------------------------------------------------------------------
+/*
+SHA-1 in C
+By Steve Reid <sreid@sea-to-sky.net>
+100% Public Domain
+
+-----------------
+Modified 7/98
+By James H. Brown <jbrown@burgoyne.com>
+Still 100% Public Domain
+
+Corrected a problem which generated improper hash values on 16 bit machines
+Routine SHA1Update changed from
+	void SHA1Update(SHA1_CTX* context, unsigned char* data, unsigned int
+len)
+to
+	void SHA1Update(SHA1_CTX* context, unsigned char* data, unsigned
+long len)
+
+The 'len' parameter was declared an int which works fine on 32 bit machines.
+However, on 16 bit machines an int is too small for the shifts being done
+against
+it.  This caused the hash function to generate incorrect values if len was
+greater than 8191 (8K - 1) due to the 'len << 3' on line 3 of SHA1Update().
+
+Since the file IO in main() reads 16K at a time, any file 8K or larger would
+be guaranteed to generate the wrong hash (e.g. Test Vector #3, a million
+"a"s).
+
+I also changed the declaration of variables i & j in SHA1Update to
+unsigned long from unsigned int for the same reason.
+
+These changes should make no difference to any 32 bit implementations since
+an
+int and a long are the same size in those environments.
+
+--
+I also corrected a few compiler warnings generated by Borland C.
+1. Added #include <process.h> for exit() prototype
+2. Removed unused variable 'j' in SHA1Final
+3. Changed exit(0) to return(0) at end of main.
+
+ALL changes I made can be located by searching for comments containing 'JHB'
+-----------------
+Modified 8/98
+By Steve Reid <sreid@sea-to-sky.net>
+Still 100% public domain
+
+1- Removed #include <process.h> and used return() instead of exit()
+2- Fixed overwriting of finalcount in SHA1Final() (discovered by Chris Hall)
+3- Changed email address from steve@edmweb.com to sreid@sea-to-sky.net
+
+-----------------
+Modified 4/01
+By Saul Kravitz <Saul.Kravitz@celera.com>
+Still 100% PD
+Modified to run on Compaq Alpha hardware.
+
+-----------------
+Modified 07/2002
+By Ralph Giles <giles@ghostscript.com>
+Still 100% public domain
+modified for use with stdint types, autoconf
+code cleanup, removed attribution comments
+switched SHA1Final() argument order for consistency
+use SHA1_ prefix for public api
+move public api to sha1.h
+*/
+
+------------------------------------------------------------------------------
+NOTICE 10  (carried by 1 file)
+  ld64/src/3rd/sha1.h
+------------------------------------------------------------------------------
+/* public api for steve reid's public domain SHA-1 implementation */
+
+------------------------------------------------------------------------------
+NOTICE 11  (carried by 2 files)
+  ld64/src/3rd/sha256.c
+  ld64/src/3rd/sha256.h
+------------------------------------------------------------------------------
+/* public domain sha256 implementation based on fips180-3 */
+
+------------------------------------------------------------------------------
+NOTICE 12  (carried by 1 file)
+  ld64/src/ld/ResponseFiles.cpp
+------------------------------------------------------------------------------
+//
+//  ResponseFiles.cpp
+//  ld
+//
+//  Created by Michael Trent on 3/3/20.
+//  Copyright © 2020 Apple Inc. All rights reserved.
+//
+
+------------------------------------------------------------------------------
+NOTICE 13  (carried by 1 file)
+  ld64/src/ld/ResponseFiles.h
+------------------------------------------------------------------------------
+//
+//  ResponseFiles.hpp
+//  ld
+//
+//  Created by Michael Trent on 3/3/20.
+//  Copyright © 2020 Apple Inc. All rights reserved.
+//
+
+------------------------------------------------------------------------------
+NOTICE 14  (carried by 1 file)
+  ld64/src/ld/Snapshot.cpp
+------------------------------------------------------------------------------
+//
+//  Snapshot.cpp
+//  ld64
+//
+//  Created by Josh Behnke on 8/25/11.
+//  Copyright (c) 2011 Apple Inc. All rights reserved.
+//
+
+------------------------------------------------------------------------------
+NOTICE 15  (carried by 1 file)
+  ld64/src/ld/Snapshot.h
+------------------------------------------------------------------------------
+//
+//  Snapshot.h
+//  ld64
+//
+//  Created by Josh Behnke on 8/25/11.
+//  Copyright (c) 2011 Apple Inc. All rights reserved.
+//
+
+------------------------------------------------------------------------------
+NOTICE 16  (carried by 1 file)
+  ld64/src/ld/cs_blobs.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2017 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ *
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ *
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ *
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 17  (carried by 1 file)
+  ld64/src/ld/dwarf2.h
+------------------------------------------------------------------------------
+/* These constants were taken from version 3 of the DWARF standard,
+   which is Copyright (c) 2005 Free Standards Group, and
+   Copyright (c) 1992, 1993 UNIX International, Inc.  */
+
+------------------------------------------------------------------------------
+NOTICE 18  (carried by 1 file)
+  ld64/src/llvm/llvm-AlignOf.h
+------------------------------------------------------------------------------
+//===--- AlignOf.h - Portable calculation of type alignment -----*- C++ -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file defines the AlignOf function that computes alignments for
+// arbitrary types.
+//
+//===----------------------------------------------------------------------===//
+
+// Taken from llvmCore-3425.0.31.
+
+------------------------------------------------------------------------------
+NOTICE 19  (carried by 1 file)
+  ld64/src/llvm/llvm-DenseMap.h
+------------------------------------------------------------------------------
+//===- llvm/ADT/DenseMap.h - Dense probed hash table ------------*- C++ -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file defines the DenseMap class.
+//
+//===----------------------------------------------------------------------===//
+
+// Taken from clang-1100.247.11.10.9
+
+------------------------------------------------------------------------------
+NOTICE 20  (carried by 1 file)
+  ld64/src/llvm/llvm-DenseMapInfo.h
+------------------------------------------------------------------------------
+//===- llvm/ADT/DenseMapInfo.h - Type traits for DenseMap -------*- C++ -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file defines DenseMapInfo traits for DenseMap.
+//
+//===----------------------------------------------------------------------===//
+
+// Taken from llvmCore-3425.0.31.
+
+------------------------------------------------------------------------------
+NOTICE 21  (carried by 1 file)
+  ld64/src/llvm/llvm-DenseSet.h
+------------------------------------------------------------------------------
+//===- llvm/ADT/DenseSet.h - Dense probed hash table ------------*- C++ -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file defines the DenseSet and SmallDenseSet classes.
+//
+//===----------------------------------------------------------------------===//
+
+// Taken from clang-1100.247.11.10.9
+
+------------------------------------------------------------------------------
+NOTICE 22  (carried by 1 file)
+  ld64/src/llvm/llvm-MathExtras.h
+------------------------------------------------------------------------------
+//===-- llvm/Support/MathExtras.h - Useful math functions -------*- C++ -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file contains some functions that are useful for math stuff.
+//
+//===----------------------------------------------------------------------===//
+
+// Taken from llvmCore-3425.0.31.
+
+------------------------------------------------------------------------------
+NOTICE 23  (carried by 1 file)
+  libmacho/arch.c
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1993 NeXT Computer, Inc.
+ *
+ * Architecture computing functions.
+ *
+ * HISTORY
+ *
+ * 11 April 1997
+ *	Update m98k to ppc and removed the never supported architectures (mips,
+ *	and vax).  Apple Computer, Inc.
+ *
+ * 4 February 1993 Lennart Lovstrand <lennart@next.com>
+ *	Redesigned to use NXArchInfo based names and signatures.
+ *
+ * Originally written at NeXT, Inc.
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 24  (carried by 4 files)
+  libmacho/slot_name.c
+  include/foreign/mach/mach_error.h
+  include/foreign/mach/mach_init.h
+  include/foreign/mach/sync.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1999 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 25  (carried by 1 file)
+  libmacho/slot_name.c
+------------------------------------------------------------------------------
+/*
+ *	File:	slot_name.c
+ *	Author:	Avadis Tevanian, Jr.
+ *
+ *	Copyright (C) 1987, Avadis Tevanian, Jr.
+ *
+ *	Convert machine slot values to human readable strings.
+ *
+ * HISTORY
+ * 26-Jan-88  Mary Thompson (mrt) at Carnegie Mellon
+ *	added case for CUP_SUBTYPE_RT_APC
+ *
+ * 28-Feb-87  Avadis Tevanian (avie) at Carnegie-Mellon University
+ *	Created.
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 26  (carried by 17 files)
+  libstuff/bytesex.c
+  libstuff/rnd.c
+  include/architecture/m88k/fp_regs.h
+  include/architecture/m88k/reg_help.h
+  include/architecture/nrw/macro_help.h
+  include/architecture/nrw/reg_help.h
+  include/architecture/sparc/reg.h
+  include/mach/hppa/thread_status.h
+  include/mach/i860/thread_status.h
+  include/mach/m68k/thread_status.h
+  include/mach/m88k/thread_status.h
+  include/mach/sparc/thread_status.h
+  include/stuff/bool.h
+  include/stuff/bytesex.h
+  include/stuff/errors.h
+  include/stuff/openstep_mach.h
+  include/stuff/rnd.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004, Apple Computer, Inc. All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1.  Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer. 
+ * 2.  Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution. 
+ * 3.  Neither the name of Apple Computer, Inc. ("Apple") nor the names of
+ *     its contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission. 
+ * 
+ * THIS SOFTWARE IS PROVIDED BY APPLE AND ITS CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL APPLE OR ITS CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+ * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 27  (carried by 1 file)
+  libstuff/crc32.c
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1991, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * James W. Williams of NASA Goddard Space Flight Center.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 28  (carried by 12 files)
+  libstuff/ofile.c
+  otool/arm_disasm.h
+  otool/coff_print.c
+  otool/i386_disasm.c
+  otool/i386_disasm.h
+  otool/main.c
+  otool/ofile_print.c
+  otool/ofile_print.h
+  otool/otool.h
+  otool/print_objc.c
+  otool/print_objc2_32bit.c
+  otool/print_objc2_64bit.c
+------------------------------------------------------------------------------
+/*
+ * Copyright © 2009 Apple Inc. All rights reserved.
+ *
+ * @APPLE_LICENSE_HEADER_START@
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ * 1.  Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer. 
+ * 2.  Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution. 
+ * 3.  Neither the name of Apple Inc. ("Apple") nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission. 
+ * 
+ * THIS SOFTWARE IS PROVIDED BY APPLE AND ITS CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL APPLE OR ITS CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * @APPLE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 29  (carried by 1 file)
+  libstuff/port.c
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1998 Todd C. Miller <Todd.Miller@courtesan.com>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 30  (carried by 1 file)
+  misc/nm.c
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1989, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Hans Huebner.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 31  (carried by 1 file)
+  misc/size.c
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1988, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 32  (carried by 1 file)
+  misc/strings.c
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1980, 1987, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 33  (carried by 1 file)
+  misc/vtool.c
+------------------------------------------------------------------------------
+//
+//  vtool.c
+//  cctools
+//
+//  Created by Michael Trent on 12/29/18.
+//  Copyright © 2018 apple. All rights reserved.
+//
+
+------------------------------------------------------------------------------
+NOTICE 34  (carried by 1 file)
+  otool/arm_disasm.c
+------------------------------------------------------------------------------
+/* Instruction printing code for the ARM
+   Copyright 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
+   2007, Free Software Foundation, Inc.
+   Contributed by Richard Earnshaw (rwe@pegasus.esprit.ec.org)
+   Modification by James G. Smith (jsmith@cygnus.co.uk)
+
+   This file is part of libopcodes.
+
+   This program is free software; you can redistribute it and/or modify it under
+   the terms of the GNU General Public License as published by the Free
+   Software Foundation; either version 2 of the License, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful, but WITHOUT
+   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+   more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301,
+   USA.
+*/
+
+------------------------------------------------------------------------------
+NOTICE 35  (carried by 1 file)
+  otool/i386_disasm.c
+------------------------------------------------------------------------------
+/*
+ * This file contains the i386 disassembler routine used at NeXT Computer, Inc.
+ * to match the the assembler used at NeXT.  It was addapted from a set of
+ * source files with the following copyright which is retained below.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 36  (carried by 1 file)
+  otool/i386_disasm.c
+------------------------------------------------------------------------------
+/*
+  Copyright 1988, 1989 by Intel Corporation, Santa Clara, California.
+
+		All Rights Reserved
+
+Permission to use, copy, modify, and distribute this software and
+its documentation for any purpose and without fee is hereby
+granted, provided that the above copyright notice appears in all
+copies and that both the copyright notice and this permission notice
+appear in supporting documentation, and that the name of Intel
+not be used in advertising or publicity pertaining to distribution
+of the software without specific, written prior permission.
+
+INTEL DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
+INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS,
+IN NO EVENT SHALL INTEL BE LIABLE FOR ANY SPECIAL, INDIRECT, OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN ACTION OF CONTRACT,
+NEGLIGENCE, OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
+WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+*/
+
+------------------------------------------------------------------------------
+NOTICE 37  (carried by 1 file)
+  otool/print_bitcode.c
+------------------------------------------------------------------------------
+/*
+ * Copyright © 2015 Apple Inc. All rights reserved.
+ 
+ * @APPLE_LICENSE_HEADER_START@
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ * 1.  Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer. 
+ * 2.  Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution. 
+ * 3.  Neither the name of Apple Inc. ("Apple") nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission. 
+ * 
+ * THIS SOFTWARE IS PROVIDED BY APPLE AND ITS CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL APPLE OR ITS CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * @APPLE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 38  (carried by 1 file)
+  include/architecture/i386/fpu.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Floating Point unit.
+ *
+ * HISTORY
+ *
+ * 5 October 1992 David E. Bohman at NeXT
+ *	Added names to previously unamed fields in the mantissa.
+ *
+ * 5 April 1992 David E. Bohman at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 39  (carried by 1 file)
+  include/architecture/i386/frame.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Processor exception frame.
+ *
+ * HISTORY
+ *
+ * 31 August 1992 David E. Bohman at NeXT
+ *	Added v86 mode stuff.
+ *
+ * 8 June 1992 David E. Bohman at NeXT
+ *	Changed name of write field in err_code_t
+ *	which collided with write() in shlib.
+ *
+ * 30 March 1992 David E. Bohman at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 40  (carried by 1 file)
+  include/architecture/m88k/fp_regs.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1991 NeXT Computer, Inc.  All rights reserved.
+ *
+ *	File:	architecture/m88k/fp_regs.h
+ *	Author:	Mike DeMoney, NeXT Computer, Inc.
+ *
+ *	This include file defines Motorola 88K architecturally defined
+ *	floating point control and status registers.
+ *
+ * HISTORY
+ * 23-Jan-91  Mike DeMoney (mike@next.com)
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 41  (carried by 1 file)
+  include/architecture/m88k/reg_help.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1991 NeXT Computer, Inc.  All rights reserved.
+ *
+ *	File:	architecture/m88k/reg_help.h
+ *	Author:	Mike DeMoney, NeXT Computer, Inc.
+ *
+ *	This header file defines cpp macros useful for defining
+ *	machine register and doing machine-level operations.
+ *
+ * HISTORY
+ * 23-Jan-91  Mike DeMoney (mike@next.com)
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 42  (carried by 1 file)
+  include/architecture/nrw/macro_help.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1989 Carnegie-Mellon University
+ * Copyright (c) 1988 Carnegie-Mellon University
+ * All rights reserved.  The CMU software License Agreement specifies
+ * the terms and conditions for use and redistribution.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 43  (carried by 1 file)
+  include/architecture/nrw/reg_help.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1991 NeXT Computer, Inc.  All rights reserved.
+ *
+ *	File:	architecture/nrw/reg_help.h
+ *	Author:	Mike DeMoney, NeXT Computer, Inc.
+ *
+ *	This header file defines cpp macros useful for defining
+ *	machine register and doing machine-level operations.
+ *
+ * HISTORY
+ * 23-Jan-91  Mike DeMoney (mike@next.com)
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 44  (carried by 1 file)
+  include/architecture/sparc/reg.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1985 by Sun Microsystems, Inc.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 45  (carried by 1 file)
+  include/coff/aouthdr.h
+------------------------------------------------------------------------------
+/*
+ * Every image file has an optional header that provides information to the
+ * loader. This header is optional in the sense that some files (specifically,
+ * object files) do not have it. For image files, this header is required.
+ *
+ * Since definitions for this header were based from the GNU binutils files
+ * coff/external.h, coff/internal.h and other files the copyright info is below.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 46  (carried by 1 file)
+  include/coff/aouthdr.h
+------------------------------------------------------------------------------
+/* Copyright 2001 Free Software Foundation, Inc.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+   
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+   
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA. */
+
+------------------------------------------------------------------------------
+NOTICE 47  (carried by 1 file)
+  include/coff/filehdr.h
+------------------------------------------------------------------------------
+/*
+ * At the beginning of an object file, or immediately after the signature of an 
+ * image file, is a standard COFF file header in the following format. Note
+ *
+ * Since definitions for this header were based from the GNU binutils
+ * coff/pe.h header file that copyright info is below.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 48  (carried by 3 files)
+  include/coff/filehdr.h
+  include/coff/ms_dos_stub.h
+  include/coff/scnhdr.h
+------------------------------------------------------------------------------
+/* pe.h  -  PE COFF header information 
+
+   Copyright 2000, 2001, 2003, 2004 Free Software Foundation, Inc.
+
+   This file is part of BFD, the Binary File Descriptor library.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software Foundation,
+   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+------------------------------------------------------------------------------
+NOTICE 49  (carried by 1 file)
+  include/coff/ms_dos_stub.h
+------------------------------------------------------------------------------
+/*
+ * The MS DOS stub is a valid application that runs under MS DOS. It is placed
+ * at the front of a pecoff image. The default stub prints out the message "This
+ * program cannot be run in DOS mode" when the image is run in MS DOS.
+ *
+ * At location 0x3c (the e_lfanew field), the stub has the file offset to the
+ * PE signature. This information enables Windows to properly execute the image 
+ * file, even though it has an MS DOS stub. This file offset is placed at
+ * location 0x3c during linking.
+ *
+ * Since definitions for this header were based from the GNU binutils
+ * coff/pe.h header file that copyright info is below.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 50  (carried by 1 file)
+  include/coff/scnhdr.h
+------------------------------------------------------------------------------
+/*
+ * Each row of the section table is, in effect, a section header. This table
+ * immediately follows the optional header, if any. This positioning is
+ * required because the file header does not contain a direct pointer to the
+ * section table. Instead, the location of the section table is determined by
+ * calculating the location of the first byte after the headers.
+ *
+ * The number of entries in the section table is given by the NumberOfSections
+ * field in the file header. Entries in the section table are numbered starting
+ * from one (1). The code and data memory section entries are in the order
+ * chosen by the linker.
+ *
+ * In an image file, the VAs for sections must be assigned by the linker so
+ * that they are in ascending order and adjacent, and they must be a multiple
+ * of the SectionAlignment value in the optional header.
+ *
+ * Since definitions for this header were based from the GNU binutils
+ * coff/pe.h header file that copyright info is below.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 51  (carried by 1 file)
+  include/coff/syment.h
+------------------------------------------------------------------------------
+/*
+ * Since definitions for this header were based from the GNU binutils
+ * coff/external.h header file that copyright info is below.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 52  (carried by 1 file)
+  include/coff/syment.h
+------------------------------------------------------------------------------
+/* external.h  -- External COFF structures
+   
+   Copyright 2001 Free Software Foundation, Inc.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+   
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+   
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA. */
+
+------------------------------------------------------------------------------
+NOTICE 53  (carried by 1 file)
+  include/elf/dwarf2.h
+------------------------------------------------------------------------------
+/* Declarations and definitions of codes relating to the DWARF2 and
+   DWARF3 symbolic debugging information formats.
+   Copyright (C) 1992, 1993, 1995, 1996, 1997, 1999, 2000, 2001, 2002,
+   2003, 2004, 2005, 2006 Free Software Foundation, Inc.
+
+   Written by Gary Funck (gary@intrepid.com) The Ada Joint Program
+   Office (AJPO), Florida State University and Silicon Graphics Inc.
+   provided support for this effort -- June 21, 1995.
+
+   Derived from the DWARF 1 implementation written by Ron Guilmette
+   (rfg@netcom.com), November 1990.
+
+   This file is part of GCC.
+
+   GCC is free software; you can redistribute it and/or modify it under
+   the terms of the GNU General Public License as published by the Free
+   Software Foundation; either version 2, or (at your option) any later
+   version.
+
+   GCC is distributed in the hope that it will be useful, but WITHOUT
+   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+   License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with GCC; see the file COPYING.  If not, write to the Free
+   Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
+   02110-1301, USA.  */
+
+------------------------------------------------------------------------------
+NOTICE 54  (carried by 1 file)
+  include/foreign/ar.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1991, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ * (c) UNIX System Laboratories, Inc.
+ * All or some portions of this file are derived from material licensed
+ * to the University of California by American Telephone and Telegraph
+ * Co. or Unix System Laboratories, Inc. and are reproduced herein with
+ * the permission of UNIX System Laboratories, Inc.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Hugh Smith at The University of Guelph.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)ar.h	8.2 (Berkeley) 1/21/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 55  (carried by 1 file)
+  include/foreign/architecture/alignment.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1996 NeXT Software, Inc.
+ *
+ * Natural alignment of shorts and longs.
+ *
+ * HISTORY
+ *
+ * 2 Sept 1992 Brian Raymor at NeXT
+ *	Moved over to architecture.
+ * 18 August 1992 Jack Greenfield at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 56  (carried by 1 file)
+  include/foreign/architecture/byte_order.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Byte ordering conversion.
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 57  (carried by 1 file)
+  include/foreign/architecture/i386/alignment.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Natural alignment of shorts and longs (for i386)
+ *
+ * HISTORY
+ *
+ * 2 Sept 1992 Brian Raymor at NeXT
+ *      Moved over to architecture.
+ * 18 August 1992 Jack Greenfield at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 58  (carried by 1 file)
+  include/foreign/architecture/i386/asm_help.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1991 NeXT Computer, Inc.  All rights reserved.
+ *
+ *	File:	architecture/i386/asm_help.h
+ *	Author:	Mike DeMoney, NeXT Computer, Inc.
+ *	Modified for i386 by: Bruce Martin, NeXT Computer, Inc.
+ *
+ *	This header file defines macros useful when writing assembly code
+ *	for the Intel i386 family processors.
+ *
+ * HISTORY
+ * 10-Mar-92  Bruce Martin (bmartin@next.com)
+ *	Adapted to i386
+ * 23-Jan-91  Mike DeMoney (mike@next.com)
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 59  (carried by 1 file)
+  include/foreign/architecture/i386/cpu.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Special processor registers.
+ *
+ * HISTORY
+ *
+ * 5 April 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 60  (carried by 1 file)
+  include/foreign/architecture/i386/desc.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Segment descriptors.
+ *
+ * HISTORY
+ *
+ * 29 March 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 61  (carried by 1 file)
+  include/foreign/architecture/i386/fpu.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Floating Point unit.
+ *
+ * HISTORY
+ *
+ * 5 October 1992 ? at NeXT
+ *	Added names to previously unamed fields in the mantissa.
+ *
+ * 5 April 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 62  (carried by 1 file)
+  include/foreign/architecture/i386/frame.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Processor exception frame.
+ *
+ * HISTORY
+ *
+ * 31 August 1992 ? at NeXT
+ *	Added v86 mode stuff.
+ *
+ * 8 June 1992 ? at NeXT
+ *	Changed name of write field in err_code_t
+ *	which collided with write() in shlib.
+ *
+ * 30 March 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 63  (carried by 1 file)
+  include/foreign/architecture/i386/io.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel 386 Family: IO space defines.
+ *
+ * HISTORY
+ *
+ * 11 August 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 64  (carried by 5 files)
+  include/foreign/architecture/i386/pio.h
+  include/foreign/mach_debug/hash_info.h
+  include/foreign/mach_debug/ipc_info.h
+  include/foreign/mach_debug/page_info.h
+  include/foreign/mach_debug/vm_info.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991,1990 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon
+ * the rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 65  (carried by 1 file)
+  include/foreign/architecture/i386/reg_help.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1991 NeXT Computer, Inc.  All rights reserved.
+ *
+ *	File:	architecture/i386/reg_help.h
+ *	Author:	Mike DeMoney, NeXT Computer, Inc.
+ *      Modified for i386 by: Bruce Martin, NeXT Computer, Inc.
+ *
+ *	This header file defines cpp macros useful for defining
+ *	machine register and doing machine-level operations.
+ *
+ * HISTORY
+ * 10-Mar-92  Bruce Martin (bmartin@next.com)
+ *	Adapted to i386
+ * 23-Jan-91  Mike DeMoney (mike@next.com)
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 66  (carried by 1 file)
+  include/foreign/architecture/i386/sel.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Segment selector.
+ *
+ * HISTORY
+ *
+ * 29 March 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 67  (carried by 1 file)
+  include/foreign/architecture/i386/table.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Descriptor tables.
+ *
+ * HISTORY
+ *
+ * 30 March 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 68  (carried by 1 file)
+  include/foreign/architecture/i386/tss.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992 NeXT Computer, Inc.
+ *
+ * Intel386 Family:	Task State Segment.
+ *
+ * HISTORY
+ *
+ * 29 March 1992 ? at NeXT
+ *	Created.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 69  (carried by 2 files)
+  include/foreign/i386/_limits.h
+  include/foreign/ppc/_limits.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_LICENSE_HEADER_START@
+ * 
+ * The contents of this file constitute Original Code as defined in and
+ * are subject to the Apple Public Source License Version 1.1 (the
+ * "License").  You may not use this file except in compliance with the
+ * License.  Please obtain a copy of the License at
+ * http://www.apple.com/publicsource and read it before using this file.
+ * 
+ * This Original Code and all software distributed under the License are
+ * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
+ * License for the specific language governing rights and limitations
+ * under the License.
+ * 
+ * @APPLE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 70  (carried by 2 files)
+  include/foreign/i386/_param.h
+  include/foreign/ppc/_param.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2008 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 71  (carried by 5 files)
+  include/foreign/i386/_structs.h
+  include/foreign/mach/ppc/_structs.h
+  include/foreign/mach_debug/lockgroup_info.h
+  include/foreign/ppc/_structs.h
+  include/mach/ppc/_structs.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 72  (carried by 3 files)
+  include/foreign/i386/_types.h
+  include/foreign/mach/notify.h
+  include/foreign/ppc/_types.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2003 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 73  (carried by 19 files)
+  include/foreign/i386/eflags.h
+  include/foreign/libkern/machine/OSByteOrder.h
+  include/foreign/libkern/ppc/OSByteOrder.h
+  include/foreign/mach/message.h
+  include/foreign/mach/ndr.h
+  include/foreign/mach/policy.h
+  include/foreign/mach/ppc/processor_info.h
+  include/foreign/mach/ppc/thread_status.h
+  include/foreign/mach/ppc/vm_param.h
+  include/foreign/mach/processor_info.h
+  include/foreign/mach/shared_memory_server.h
+  include/foreign/mach/task_policy.h
+  include/foreign/mach/thread_info.h
+  include/foreign/mach_debug/hash_info.h
+  include/foreign/mach_debug/ipc_info.h
+  include/foreign/mach_debug/page_info.h
+  include/foreign/mach_debug/zone_info.h
+  include/i386/eflags.h
+  include/mach/ppc/thread_status.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2005 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 74  (carried by 13 files)
+  include/foreign/i386/eflags.h
+  include/foreign/mach/i386/asm.h
+  include/foreign/mach/i386/boolean.h
+  include/foreign/mach/i386/kern_return.h
+  include/foreign/mach/i386/thread_status.h
+  include/foreign/mach/mach.h
+  include/foreign/mach/ppc/boolean.h
+  include/foreign/mach/ppc/kern_return.h
+  include/foreign/mach/processor_info.h
+  include/foreign/mach/thread_switch.h
+  include/foreign/mach_debug/zone_info.h
+  include/i386/eflags.h
+  include/mach/i386/thread_status.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991,1990,1989 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon
+ * the rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 75  (carried by 17 files)
+  include/foreign/i386/endian.h
+  include/foreign/i386/param.h
+  include/foreign/i386/profile.h
+  include/foreign/i386/setjmp.h
+  include/foreign/i386/signal.h
+  include/foreign/mach/sync_policy.h
+  include/foreign/mach/task_ledger.h
+  include/foreign/mach/task_special_ports.h
+  include/foreign/mach/thread_special_ports.h
+  include/foreign/mach/thread_status.h
+  include/foreign/mach/vm_attributes.h
+  include/foreign/mach/vm_behavior.h
+  include/foreign/mach/vm_inherit.h
+  include/foreign/mach/vm_prot.h
+  include/foreign/mach/vm_sync.h
+  include/foreign/ppc/profile.h
+  include/foreign/ppc/vmparam.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2002 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 76  (carried by 6 files)
+  include/foreign/i386/endian.h
+  include/foreign/i386/types.h
+  include/foreign/machine/endian.h
+  include/foreign/machine/param.h
+  include/foreign/machine/types.h
+  include/foreign/ppc/types.h
+------------------------------------------------------------------------------
+/*
+ * Copyright 1995 NeXT Computer, Inc. All rights reserved.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 77  (carried by 1 file)
+  include/foreign/i386/endian.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1987, 1991, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)endian.h	8.1 (Berkeley) 6/11/93
+ */
+
+------------------------------------------------------------------------------
+NOTICE 78  (carried by 1 file)
+  include/foreign/i386/fasttrap_isa.h
+------------------------------------------------------------------------------
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "License").
+ * You may not use this file except in compliance with the License.
+ *
+ * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+ * or http://www.opensolaris.org/os/licensing.
+ * See the License for the specific language governing permissions
+ * and limitations under the License.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+ * If applicable, add the following below this CDDL HEADER, with the
+ * fields enclosed by brackets "[]" replaced with your own identifying
+ * information: Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+
+------------------------------------------------------------------------------
+NOTICE 79  (carried by 1 file)
+  include/foreign/i386/fasttrap_isa.h
+------------------------------------------------------------------------------
+/*
+ * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
+ * Use is subject to license terms.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 80  (carried by 2 files)
+  include/foreign/i386/limits.h
+  include/foreign/ppc/limits.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1988, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)limits.h	8.3 (Berkeley) 1/4/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 81  (carried by 1 file)
+  include/foreign/i386/param.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1990, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ * (c) UNIX System Laboratories, Inc.
+ * All or some portions of this file are derived from material licensed
+ * to the University of California by American Telephone and Telegraph
+ * Co. or Unix System Laboratories, Inc. and are reproduced herein with
+ * the permission of UNIX System Laboratories, Inc.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)param.h	8.1 (Berkeley) 4/4/95
+ */
+
+------------------------------------------------------------------------------
+NOTICE 82  (carried by 2 files)
+  include/foreign/i386/profile.h
+  include/foreign/ppc/profile.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1997, Apple Computer, Inc. All rights reserved.
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 83  (carried by 1 file)
+  include/foreign/i386/setjmp.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1992 NeXT Computer, Inc.  All rights reserved.
+ *
+ *	File:	setjmp.h
+ *
+ *	Declaration of setjmp routines and data structures.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 84  (carried by 4 files)
+  include/foreign/i386/types.h
+  include/foreign/i386/user_ldt.h
+  include/foreign/mach/semaphore.h
+  include/foreign/ppc/types.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2008 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 85  (carried by 2 files)
+  include/foreign/i386/types.h
+  include/foreign/ppc/types.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1990, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)types.h	8.3 (Berkeley) 1/5/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 86  (carried by 2 files)
+  include/foreign/i386/user_ldt.h
+  include/foreign/mach/host_special_ports.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon 
+ * the rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 87  (carried by 14 files)
+  include/foreign/i386/vmparam.h
+  include/foreign/libkern/OSByteOrder.h
+  include/foreign/mach/i386/boolean.h
+  include/foreign/mach/i386/thread_state.h
+  include/foreign/mach/i386/thread_status.h
+  include/foreign/mach/i386/vm_param.h
+  include/foreign/mach/i386/vm_types.h
+  include/foreign/mach/memory_object_types.h
+  include/foreign/mach/port.h
+  include/foreign/mach/vm_param.h
+  include/foreign/mach/vm_region.h
+  include/foreign/mach_debug/vm_info.h
+  include/mach/i386/thread_state.h
+  include/mach/i386/thread_status.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2006 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 88  (carried by 23 files)
+  include/foreign/libkern/OSDebug.h
+  include/foreign/libkern/OSTypes.h
+  include/foreign/mach/boolean.h
+  include/foreign/mach/clock_types.h
+  include/foreign/mach/error.h
+  include/foreign/mach/exception.h
+  include/foreign/mach/exception_types.h
+  include/foreign/mach/i386/asm.h
+  include/foreign/mach/i386/exception.h
+  include/foreign/mach/i386/fp_reg.h
+  include/foreign/mach/i386/kern_return.h
+  include/foreign/mach/i386/ndr_def.h
+  include/foreign/mach/i386/processor_info.h
+  include/foreign/mach/kern_return.h
+  include/foreign/mach/mach_param.h
+  include/foreign/mach/ppc/exception.h
+  include/foreign/mach/ppc/kern_return.h
+  include/foreign/mach/ppc/ndr_def.h
+  include/foreign/mach/time_value.h
+  include/foreign/mach/vm_task.h
+  include/foreign/mach_debug/mach_debug.h
+  include/foreign/mach_debug/mach_debug_types.h
+  include/mach/i386/fp_reg.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 89  (carried by 2 files)
+  include/foreign/libkern/OSDebug.h
+  include/foreign/libkern/OSTypes.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1999 Apple Computer, Inc.  All rights reserved.
+ *
+ * HISTORY
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 90  (carried by 1 file)
+  include/foreign/libkern/OSKextLib.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2008 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ *
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ *
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ *
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 91  (carried by 1 file)
+  include/foreign/libkern/OSReturn.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 92  (carried by 1 file)
+  include/foreign/libkern/OSReturn.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1998 Apple Inc.  All rights reserved. 
+ *
+ * HISTORY
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 93  (carried by 3 files)
+  include/foreign/libkern/_OSByteOrder.h
+  include/foreign/libkern/arm/_OSByteOrder.h
+  include/foreign/libkern/i386/_OSByteOrder.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2006 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 94  (carried by 2 files)
+  include/foreign/libkern/arm/OSByteOrder.h
+  include/foreign/libkern/i386/OSByteOrder.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1999-2006 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 95  (carried by 23 files)
+  include/foreign/mach/boolean.h
+  include/foreign/mach/error.h
+  include/foreign/mach/exception.h
+  include/foreign/mach/exception_types.h
+  include/foreign/mach/kern_return.h
+  include/foreign/mach/mach_param.h
+  include/foreign/mach/mach_traps.h
+  include/foreign/mach/machine.h
+  include/foreign/mach/message.h
+  include/foreign/mach/mig_errors.h
+  include/foreign/mach/notify.h
+  include/foreign/mach/port.h
+  include/foreign/mach/task_info.h
+  include/foreign/mach/task_special_ports.h
+  include/foreign/mach/thread_info.h
+  include/foreign/mach/thread_special_ports.h
+  include/foreign/mach/time_value.h
+  include/foreign/mach/vm_attributes.h
+  include/foreign/mach/vm_inherit.h
+  include/foreign/mach/vm_param.h
+  include/foreign/mach/vm_prot.h
+  include/foreign/mach/vm_statistics.h
+  include/foreign/mach/vm_sync.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991,1990,1989,1988,1987 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon
+ * the rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 96  (carried by 3 files)
+  include/foreign/mach/bootstrap.h
+  include/foreign/mach/task.h
+  include/foreign/mach/thread_act.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2002 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 97  (carried by 2 files)
+  include/foreign/mach/host_info.h
+  include/foreign/mach/vm_statistics.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2009 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 98  (carried by 11 files)
+  include/foreign/mach/host_info.h
+  include/foreign/mach/i386/exception.h
+  include/foreign/mach/i386/vm_param.h
+  include/foreign/mach/i386/vm_types.h
+  include/foreign/mach/mach_types.h
+  include/foreign/mach/memory_object_types.h
+  include/foreign/mach/policy.h
+  include/foreign/mach/ppc/vm_types.h
+  include/foreign/mach/std_types.h
+  include/foreign/mach/thread_status.h
+  include/foreign/mach_debug/mach_debug_types.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991,1990,1989,1988 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon
+ * the rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 99  (carried by 4 files)
+  include/foreign/mach/host_notify.h
+  include/foreign/mach/host_special_ports.h
+  include/foreign/mach/mach_interface.h
+  include/foreign/mach/port_obj.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2003 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 100  (carried by 12 files)
+  include/foreign/mach/host_reboot.h
+  include/foreign/mach/mach_syscalls.h
+  include/foreign/mach/mach_types.h
+  include/foreign/mach/ppc/boolean.h
+  include/foreign/mach/ppc/thread_state.h
+  include/foreign/mach/ppc/vm_types.h
+  include/foreign/mach/thread_switch.h
+  include/foreign/mach/vm_types.h
+  include/foreign/ppc/endian.h
+  include/foreign/ppc/param.h
+  include/foreign/ppc/setjmp.h
+  include/foreign/ppc/signal.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2004 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 101  (carried by 2 files)
+  include/foreign/mach/i386/_structs.h
+  include/mach/i386/_structs.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004-2006 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 102  (carried by 2 files)
+  include/foreign/mach/i386/fp_reg.h
+  include/mach/i386/fp_reg.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1992-1989 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon
+ * the rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 103  (carried by 4 files)
+  include/foreign/mach/i386/rpc.h
+  include/foreign/mach/ppc/rpc.h
+  include/foreign/mach/rpc.h
+  include/foreign/mach/std_types.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2002,2000 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 104  (carried by 5 files)
+  include/foreign/mach/i386/sdt_isa.h
+  include/foreign/mach/machine/sdt.h
+  include/foreign/mach/ppc/sdt_isa.h
+  include/foreign/mach/sdt.h
+  include/foreign/ppc/fasttrap_isa.h
+------------------------------------------------------------------------------
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License, Version 1.0 only
+ * (the "License").  You may not use this file except in compliance
+ * with the License.
+ *
+ * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+ * or http://www.opensolaris.org/os/licensing.
+ * See the License for the specific language governing permissions
+ * and limitations under the License.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+ * If applicable, add the following below this CDDL HEADER, with the
+ * fields enclosed by brackets "[]" replaced with your own identifying
+ * information: Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+
+------------------------------------------------------------------------------
+NOTICE 105  (carried by 5 files)
+  include/foreign/mach/i386/sdt_isa.h
+  include/foreign/mach/machine/sdt.h
+  include/foreign/mach/ppc/sdt_isa.h
+  include/foreign/mach/sdt.h
+  include/foreign/ppc/fasttrap_isa.h
+------------------------------------------------------------------------------
+/*
+ * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
+ * Use is subject to license terms.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 106  (carried by 1 file)
+  include/foreign/mach/i386/vm_param.h
+------------------------------------------------------------------------------
+/* 
+ * Copyright (c) 1994 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ * All rights reserved.
+ *
+ * Permission to use, copy, modify and distribute this software is hereby
+ * granted provided that (1) source code retains these copyright, permission,
+ * and disclaimer notices, and (2) redistributions including binaries
+ * reproduce the notices in supporting documentation, and (3) all advertising
+ * materials mentioning features or use of this software display the following
+ * acknowledgement: ``This product includes software developed by the
+ * Computer Systems Laboratory at the University of Utah.''
+ *
+ * THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ * IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ * ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ *
+ * CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ * improvements that they make and grant CSL redistribution rights.
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 107  (carried by 25 files)
+  include/foreign/mach/kmod.h
+  include/foreign/mach/mach_traps.h
+  include/foreign/mach/machine/asm.h
+  include/foreign/mach/machine/boolean.h
+  include/foreign/mach/machine/exception.h
+  include/foreign/mach/machine/kern_return.h
+  include/foreign/mach/machine/ndr_def.h
+  include/foreign/mach/machine/processor_info.h
+  include/foreign/mach/machine/rpc.h
+  include/foreign/mach/machine/sdt_isa.h
+  include/foreign/mach/machine/thread_state.h
+  include/foreign/mach/machine/thread_status.h
+  include/foreign/mach/machine/vm_param.h
+  include/foreign/mach/machine/vm_types.h
+  include/foreign/mach/mig.h
+  include/foreign/mach/mig_errors.h
+  include/foreign/mach/task_info.h
+  include/foreign/mach/thread_policy.h
+  include/foreign/machine/byte_order.h
+  include/foreign/machine/endian.h
+  include/foreign/machine/fasttrap_isa.h
+  include/foreign/machine/param.h
+  include/foreign/machine/signal.h
+  include/foreign/machine/types.h
+  include/foreign/machine/vmparam.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2007 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 108  (carried by 1 file)
+  include/foreign/mach/mach.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1999-2005 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 109  (carried by 1 file)
+  include/foreign/mach/mach_error.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991,1990,1989 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS 
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie the
+ * rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 110  (carried by 1 file)
+  include/foreign/mach/mach_init.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991,1990,1989,1988,1987,1986 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon
+ * the rights to redistribute these changes.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 111  (carried by 2 files)
+  include/foreign/mach/mach_interface.h
+  include/foreign/mach_debug/mach_debug.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (C) Apple Computer 1998
+ * ALL Rights Reserved
+ */
+
+------------------------------------------------------------------------------
+NOTICE 112  (carried by 1 file)
+  include/foreign/mach/mach_time.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2001-2005 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 113  (carried by 2 files)
+  include/foreign/mach/machine.h
+  include/foreign/mach/ppc/asm.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2007 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 114  (carried by 2 files)
+  include/foreign/mach/machine/sdt.h
+  include/mach/arm/thread_status.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2007 Apple Inc. All rights reserved.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 115  (carried by 1 file)
+  include/foreign/mach/message.h
+------------------------------------------------------------------------------
+/*
+ * NOTICE: This file was modified by McAfee Research in 2004 to introduce
+ * support for mandatory and extensible security protections.  This notice
+ * is included in support of clause 2.2 (b) of the Apple Public License,
+ * Version 2.0.
+ * Copyright (c) 2005 SPARTA, Inc.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 116  (carried by 1 file)
+  include/foreign/mach/ppc/exception.h
+------------------------------------------------------------------------------
+/* 
+ * Copyright (c) 1990, 1991, 1992, The University of Utah and
+ * the Center for Software Science at the University of Utah (CSS).
+ * All rights reserved.
+ *
+ * Permission to use, copy, modify and distribute this software is hereby
+ * granted provided that (1) source code retains these copyright, permission,
+ * and disclaimer notices, and (2) redistributions including binaries
+ * reproduce the notices in supporting documentation, and (3) all advertising
+ * materials mentioning features or use of this software display the following
+ * acknowledgement: ``This product includes software developed by the Center
+ * for Software Science at the University of Utah.''
+ *
+ * THE UNIVERSITY OF UTAH AND CSS ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ * IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSS DISCLAIM ANY LIABILITY OF
+ * ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ *
+ * CSS requests users of this software to return to css-dist@cs.utah.edu any
+ * improvements that they make and grant CSS redistribution rights.
+ *
+ * 	Utah $Hdr: $
+ */
+
+------------------------------------------------------------------------------
+NOTICE 117  (carried by 3 files)
+  include/foreign/mach/vm_purgable.h
+  include/foreign/machine/_types.h
+  include/foreign/sys/_types.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2003-2007 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 118  (carried by 3 files)
+  include/foreign/machine/_limits.h
+  include/foreign/machine/_param.h
+  include/foreign/machine/_structs.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004-2007 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 119  (carried by 1 file)
+  include/foreign/machine/limits.h
+------------------------------------------------------------------------------
+/* This is the `system' limits.h, independent of any particular
+   compiler.  GCC provides its own limits.h which can be found in
+   /usr/lib/gcc, although it is not very informative.  
+   This file is public domain.  */
+
+------------------------------------------------------------------------------
+NOTICE 120  (carried by 1 file)
+  include/foreign/machine/profile.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1997-2007 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 121  (carried by 1 file)
+  include/foreign/machine/setjmp.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2011 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 122  (carried by 2 files)
+  include/foreign/machine/setjmp.h
+  include/sys/gmon.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1995 NeXT Computer, Inc. All Rights Reserved
+ */
+
+------------------------------------------------------------------------------
+NOTICE 123  (carried by 1 file)
+  include/foreign/ppc/endian.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1995 NeXT Computer, Inc. All rights reserved.
+ * Copyright (c) 2000-2002 Apple Computer, Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 124  (carried by 1 file)
+  include/foreign/ppc/endian.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1987, 1991, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)endian.h	8.1 (Berkeley) 6/10/93
+ */
+
+------------------------------------------------------------------------------
+NOTICE 125  (carried by 1 file)
+  include/foreign/ppc/fasttrap_isa.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2007 Apple Inc. All rights reserved.
+ *
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
+ * 
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
+ * 
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ * 
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+ */
+
+------------------------------------------------------------------------------
+NOTICE 126  (carried by 1 file)
+  include/foreign/ppc/param.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1993,1995 NeXT Computer, Inc. All Rights Reserved */
+
+------------------------------------------------------------------------------
+NOTICE 127  (carried by 1 file)
+  include/foreign/ppc/setjmp.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1998 Apple Computer, Inc.  All rights reserved.
+ *
+ *	File:	ppc/setjmp.h
+ *
+ *	Declaration of setjmp routines and data structures.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 128  (carried by 1 file)
+  include/foreign/ppc/signal.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1992, 1993 NeXT Computer, Inc.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 129  (carried by 1 file)
+  include/gnu/a.out.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1980 Regents of the University of California.
+ * All rights reserved.  The Berkeley software License Agreement
+ * specifies the terms and conditions for redistribution.
+ *
+ *	@(#)a.out.h	5.1 (Berkeley) 5/30/85
+ */
+
+------------------------------------------------------------------------------
+NOTICE 130  (carried by 1 file)
+  include/gnu/exec.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1987 Carnegie-Mellon University
+ * All rights reserved.  The CMU software License Agreement specifies
+ * the terms and conditions for use and redistribution.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 131  (carried by 1 file)
+  include/gnu/exec.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1982, 1986 Regents of the University of California.
+ * All rights reserved.  The Berkeley software License Agreement
+ * specifies the terms and conditions for redistribution.
+ *
+ *	@(#)exec.h	7.1 (Berkeley) 6/4/86
+ */
+
+------------------------------------------------------------------------------
+NOTICE 132  (carried by 1 file)
+  include/gnu/symseg.h
+------------------------------------------------------------------------------
+/* GDB symbol table format definitions.
+   Copyright (C) 1986 Free Software Foundation, Inc.
+
+GDB is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY.  No author or distributor accepts responsibility to anyone
+for the consequences of using it or for whether it serves any
+particular purpose or works at all, unless he says so in writing.
+Refer to the GDB General Public License for full details.
+
+Everyone is granted permission to copy, modify and redistribute GDB,
+but only under the conditions described in the GDB General Public
+License.  A copy of this license is supposed to have been given to you
+along with GDB so you can know your rights and responsibilities.  It
+should be in a file named COPYING.  Among other things, the copyright
+notice and this notice must be preserved on all copies.
+
+In other words, go ahead and share GDB, but don't try to stop
+anyone else from sharing it farther.  Help stamp out software hoarding!
+*/
+
+------------------------------------------------------------------------------
+NOTICE 133  (carried by 1 file)
+  include/llvm-c/Disassembler.h
+------------------------------------------------------------------------------
+/*===-- llvm-c/Disassembler.h - Disassembler Public C Interface ---*- C -*-===*\
+|*                                                                            *|
+|*                     The LLVM Compiler Infrastructure                       *|
+|*                                                                            *|
+|* This file is distributed under the University of Illinois Open Source      *|
+|* License. See LICENSE.TXT for details.                                      *|
+|*                                                                            *|
+|*===----------------------------------------------------------------------===*|
+|*                                                                            *|
+|* This header provides a public interface to a disassembler library.         *|
+|* LLVM provides an implementation of this interface.                         *|
+|*                                                                            *|
+\*===----------------------------------------------------------------------===*/
+
+------------------------------------------------------------------------------
+NOTICE 134  (carried by 1 file)
+  include/llvm-c/ExternC.h
+------------------------------------------------------------------------------
+/*===- llvm-c/ExternC.h - Wrapper for 'extern "C"' ----------------*- C -*-===*\
+|*                                                                            *|
+|* Part of the LLVM Project, under the Apache License v2.0 with LLVM          *|
+|* Exceptions.                                                                *|
+|* See https://llvm.org/LICENSE.txt for license information.                  *|
+|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception                    *|
+|*                                                                            *|
+|*===----------------------------------------------------------------------===*|
+|*                                                                            *|
+|* This file defines an 'extern "C"' wrapper                                  *|
+|*                                                                            *|
+\*===----------------------------------------------------------------------===*/
+
+------------------------------------------------------------------------------
+NOTICE 135  (carried by 1 file)
+  include/llvm-c/lto.h
+------------------------------------------------------------------------------
+/*===-- llvm-c/lto.h - LTO Public C Interface ---------------------*- C -*-===*\
+|*                                                                            *|
+|* Part of the LLVM Project, under the Apache License v2.0 with LLVM          *|
+|* Exceptions.                                                                *|
+|* See https://llvm.org/LICENSE.txt for license information.                  *|
+|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception                    *|
+|*                                                                            *|
+|*===----------------------------------------------------------------------===*|
+|*                                                                            *|
+|* This header provides public interface to an abstract link time optimization*|
+|* library.  LLVM provides an implementation of this interface for use with   *|
+|* llvm bitcode files.                                                        *|
+|*                                                                            *|
+\*===----------------------------------------------------------------------===*/
+
+------------------------------------------------------------------------------
+NOTICE 136  (carried by 1 file)
+  include/mach-o/arch.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1997 Apple Computer, Inc.
+ *
+ * Functions that deal with information about architectures.
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 137  (carried by 1 file)
+  include/mach-o/gmon.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1982, 1986, 1992, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)gmon.h	8.2 (Berkeley) 1/4/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 138  (carried by 1 file)
+  include/mach-o/nlist.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1991, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ * (c) UNIX System Laboratories, Inc.
+ * All or some portions of this file are derived from material licensed
+ * to the University of California by American Telephone and Telegraph
+ * Co. or Unix System Laboratories, Inc. and are reproduced herein with
+ * the permission of UNIX System Laboratories, Inc.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)nlist.h	8.2 (Berkeley) 1/21/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 139  (carried by 1 file)
+  include/mach-o/reloc.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 1993 Christopher G. Demetriou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 140  (carried by 1 file)
+  include/mach-o/stab.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1991 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)stab.h	5.2 (Berkeley) 4/4/91
+ */
+
+------------------------------------------------------------------------------
+NOTICE 141  (carried by 1 file)
+  include/mach/arm/_structs.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004-2007 Apple Inc. All rights reserved.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 142  (carried by 1 file)
+  include/mach/arm/thread_state.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2000-2007 Apple Inc. All rights reserved.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 143  (carried by 1 file)
+  include/mach/m68k/thread_status.h
+------------------------------------------------------------------------------
+/* 
+ * Copyright (c) 1987, 1988 NeXT, Inc.
+ *
+ * HISTORY
+ * 15-May-91  Gregg Kellogg (gk) at NeXT
+ *	Use m68k_saved_state instead of NeXT_saved_state.
+ *	Use m68k_thread_state_regs NeXT_regs.
+ *	Use m68k_thread_state_68882 NeXT_thread_state_68882.
+ *	Use m68k_thread_state_user_reg NeXT_thread_state_user_reg.
+ *	Moved m68k_saved_state and USER_REGS to pcb.h.
+ *
+ */
+
+------------------------------------------------------------------------------
+NOTICE 144  (carried by 1 file)
+  include/mach/m88k/thread_status.h
+------------------------------------------------------------------------------
+/* Copyright (c) 1991 NeXT Computer, Inc.  All rights reserved.
+ *
+ *	File:	mach/m88k/thread_status.h
+ *	Author:	Mike DeMoney, NeXT Computer, Inc.
+ *
+ *	This include file defines the per-thread state
+ *	for NeXT 88K-based products.
+ *
+ * HISTORY
+ * 23-Jan-91  Mike DeMoney (mike@next.com)
+ *	Created.
+ *
+ * FIXME:
+ *	All of these types should be pulled from architecture.
+ *	Solve possible conflicting types problem for implementations
+ *	by making user define an implementation (e.g. #define __M88110__)
+ *	to get a implementation specific features.
+ *
+ *	Put fp envelope stuff in mach/m88k/m88110_fpee.h.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 145  (carried by 2 files)
+  include/mach/machine-cctools.h
+  include/mach/machine.h
+------------------------------------------------------------------------------
+/* 
+ * Mach Operating System
+ * Copyright (c) 1989 Carnegie-Mellon University
+ * Copyright (c) 1988 Carnegie-Mellon University
+ * Copyright (c) 1987 Carnegie-Mellon University
+ * All rights reserved.  The CMU software License Agreement specifies
+ * the terms and conditions for use and redistribution.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 146  (carried by 2 files)
+  include/mach/machine-cctools.h
+  include/mach/machine.h
+------------------------------------------------------------------------------
+/*
+ *	Machine independent machine abstraction.
+ *	Copyright (C) 1986, Avadis Tevanian, Jr.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 147  (carried by 1 file)
+  include/mach/sparc/thread_status.h
+------------------------------------------------------------------------------
+/*
+ *  Copyright (c) 1994 by Sun Microsystems, Inc
+ */
+
+------------------------------------------------------------------------------
+NOTICE 148  (carried by 1 file)
+  include/opcode/arm.h
+------------------------------------------------------------------------------
+/* ARM assembler/disassembler support.
+   Copyright 2004 Free Software Foundation, Inc.
+
+   This file is part of GDB and GAS.
+
+   GDB and GAS are free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 1, or (at
+   your option) any later version.
+
+   GDB and GAS are distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with GDB or GAS; see the file COPYING.  If not, write to the
+   Free Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
+   02110-1301, USA.  */
+
+------------------------------------------------------------------------------
+NOTICE 149  (carried by 1 file)
+  include/sys/gmon.h
+------------------------------------------------------------------------------
+/*-
+ * Copyright (c) 1982, 1986, 1992, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * The NEXTSTEP Software License Agreement specifies the terms
+ * and conditions for redistribution.
+ *
+ *	@(#)gmon.h	8.2 (Berkeley) 1/4/94
+ */
+
+------------------------------------------------------------------------------
+NOTICE 150  (carried by 1 file)
+  include/xar/xar.h
+------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2005 Rob Braun
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of Rob Braun nor the names of his contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+------------------------------------------------------------------------------
+NOTICE 151  (carried by 1 file)
+  include/xar/xar.h
+------------------------------------------------------------------------------
+/*
+ * Portions Copyright 2006, Apple Computer, Inc.
+ * Christopher Ryan <ryanc@apple.com>
+ */
+
+------------------------------------------------------------------------------
+FILES WITH NO LICENCE/COPYRIGHT BLOCK FOUND
+------------------------------------------------------------------------------
+  as/as.c
+  ld64/src/3rd/compat_corecrypto.h
+  ld64/src/3rd/helper.c
+  ld64/src/3rd/helper.h
+  ld64/src/3rd/include/CommonCrypto/CommonDigest.h
+  ld64/src/3rd/mkpath_np.h
+  ld64/src/3rd/qsort_r.h
+  ld64/src/3rd/reallocf.h
+  ld64/src/3rd/strlcat.h
+  ld64/src/3rd/strlcpy.h
+  ld64/src/compile_stubs.h
+  ld64/src/configure.h
+  ld64/src/ld/code-sign-blobs/superblob.h
+  ld64/src/ld/libcodedirectory.c
+  ld64/src/ld/libcodedirectory.h
+  libstuff/coff_bytesex.c
+  libstuff/llvm.c
+  libstuff/lto.c
+  libstuff/xcode.c
+  misc/depinfo.c
+  misc/diagtest.c
+  otool/arm64_disasm.c
+  otool/arm64_disasm.h
+  otool/cxa_demangle.h
+  otool/dyld_bind_info.c
+  otool/dyld_bind_info.h
+  otool/print_objc2_util.c
+  otool/print_objc2_util.h
+  include/coff/base_relocs.h
+  include/coff/bytesex.h
+  include/coff/debug_directory.h
+  include/foreign/Availability.h
+  include/foreign/AvailabilityMacros.h
+  include/foreign/dirent.h
+  include/foreign/dlfcn.h
+  include/foreign/extern.h
+  include/foreign/fcntl.h
+  include/foreign/libc.h
+  include/foreign/mach/clock.h
+  include/foreign/mach/clock_priv.h
+  include/foreign/mach/clock_reply.h
+  include/foreign/mach/exc.h
+  include/foreign/mach/host_priv.h
+  include/foreign/mach/host_security.h
+  include/foreign/mach/i386/task.h
+  include/foreign/mach/i386/thread_act.h
+  include/foreign/mach/ledger.h
+  include/foreign/mach/lock_set.h
+  include/foreign/mach/mach_host.h
+  include/foreign/mach/mach_port.h
+  include/foreign/mach/mach_vm.h
+  include/foreign/mach/ppc/task.h
+  include/foreign/mach/ppc/thread_act.h
+  include/foreign/mach/processor.h
+  include/foreign/mach/processor_set.h
+  include/foreign/mach/vm_map.h
+  include/foreign/mach/x86_64/task.h
+  include/foreign/mach/x86_64/thread_act.h
+  include/foreign/malloc/malloc.h
+  include/foreign/os/lock_private.h
+  include/foreign/servers/bootstrap.h
+  include/foreign/stdio.h
+  include/foreign/stdlib.h
+  include/foreign/strings.h
+  include/foreign/sys/attr.h
+  include/foreign/tzfile.h
+  include/foreign/unistd.h
+  include/stuff/llvm.h
+  include/stuff/lto.h
+  include/stuff/port.h
+  include/stuff/symbol.h
+  include/stuff/xcode.h
+  include/sys/cdefs.h

@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""armv6-ios3-check: static sanity checks of a Mach-O binary for iPhone OS 3.x.
+
+  armv6-ios3-check [--sdk DIR] binary...
+
+Checks (exit status 1 if any ERROR):
+  * thin or fat file with an armv6 slice; MH_EXECUTE / MH_DYLIB / MH_BUNDLE
+  * no load commands newer than the iOS 3 dyld/kernel understand
+    (LC_DYLD_INFO[_ONLY], LC_MAIN, LC_DYLD_CHAINED_FIXUPS, LC_DYLD_EXPORTS_TRIE,
+     LC_BUILD_VERSION, LC_FUNCTION_STARTS, LC_DATA_IN_CODE, LC_SOURCE_VERSION, ...)
+  * executables have LC_UNIXTHREAD and are not MH_PIE
+  * no thread-local-variable sections (TLV needs dyld from iOS 8)
+  * every LC_LOAD_DYLIB exists in the SDK, and its compatibility version is satisfied
+  * every undefined symbol is exported by the dylib its two-level ordinal points at
+Uses arm-apple-darwin9-nm from the same directory.
+"""
+import os, struct, subprocess, sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+NM = os.path.join(HERE, "arm-apple-darwin9-nm")
+
+LC = {0x1: "LC_SEGMENT", 0x2: "LC_SYMTAB", 0x5: "LC_UNIXTHREAD", 0xb: "LC_DYSYMTAB",
+      0xc: "LC_LOAD_DYLIB", 0xd: "LC_ID_DYLIB", 0xe: "LC_LOAD_DYLINKER", 0xf: "LC_ID_DYLINKER",
+      0x10: "LC_PREBOUND_DYLIB", 0x11: "LC_ROUTINES", 0x14: "LC_TWOLEVEL_HINTS",
+      0x16: "LC_SUB_FRAMEWORK", 0x1a: "LC_SUB_CLIENT",
+      0x80000018: "LC_LOAD_WEAK_DYLIB", 0x1b: "LC_UUID", 0x8000001c: "LC_RPATH",
+      0x1d: "LC_CODE_SIGNATURE", 0x1e: "LC_SEGMENT_SPLIT_INFO", 0x8000001f: "LC_REEXPORT_DYLIB",
+      0x20: "LC_LAZY_LOAD_DYLIB", 0x21: "LC_ENCRYPTION_INFO", 0x22: "LC_DYLD_INFO",
+      0x80000022: "LC_DYLD_INFO_ONLY", 0x80000023: "LC_LOAD_UPWARD_DYLIB",
+      0x24: "LC_VERSION_MIN_MACOSX", 0x25: "LC_VERSION_MIN_IPHONEOS", 0x26: "LC_FUNCTION_STARTS",
+      0x27: "LC_DYLD_ENVIRONMENT", 0x80000028: "LC_MAIN", 0x29: "LC_DATA_IN_CODE",
+      0x2a: "LC_SOURCE_VERSION", 0x2b: "LC_DYLIB_CODE_SIGN_DRS", 0x2c: "LC_ENCRYPTION_INFO_64",
+      0x2d: "LC_LINKER_OPTION", 0x2e: "LC_LINKER_OPTIMIZATION_HINT", 0x2f: "LC_VERSION_MIN_TVOS",
+      0x30: "LC_VERSION_MIN_WATCHOS", 0x31: "LC_NOTE", 0x32: "LC_BUILD_VERSION",
+      0x80000033: "LC_DYLD_EXPORTS_TRIE", 0x80000034: "LC_DYLD_CHAINED_FIXUPS",
+      0x80000035: "LC_FILESET_ENTRY", 0x36: "LC_ATOM_INFO"}
+# Known to the iPhone OS 3.x kernel + dyld (dyld-97 era), or harmless to it.
+OK = {"LC_SEGMENT", "LC_SYMTAB", "LC_UNIXTHREAD", "LC_DYSYMTAB", "LC_LOAD_DYLIB", "LC_ID_DYLIB",
+      "LC_LOAD_DYLINKER", "LC_ID_DYLINKER", "LC_ROUTINES", "LC_SUB_FRAMEWORK", "LC_SUB_CLIENT",
+      "LC_LOAD_WEAK_DYLIB", "LC_UUID", "LC_CODE_SIGNATURE", "LC_SEGMENT_SPLIT_INFO",
+      "LC_ENCRYPTION_INFO", "LC_REEXPORT_DYLIB", "LC_TWOLEVEL_HINTS", "LC_PREBOUND_DYLIB"}
+# Ignored by old dyld (no LC_REQ_DYLD bit) but not produced by a 2009 toolchain.
+WARN = {"LC_VERSION_MIN_IPHONEOS", "LC_FUNCTION_STARTS", "LC_DATA_IN_CODE", "LC_SOURCE_VERSION",
+        "LC_DYLIB_CODE_SIGN_DRS", "LC_LINKER_OPTION", "LC_LINKER_OPTIMIZATION_HINT", "LC_NOTE",
+        "LC_DYLD_INFO", "LC_LAZY_LOAD_DYLIB"}
+MH_TYPES = {2: "MH_EXECUTE", 6: "MH_DYLIB", 8: "MH_BUNDLE", 1: "MH_OBJECT"}
+CPU_ARM, SUB_V6 = 12, 6
+S_THREAD_LOCAL = {0x11, 0x12, 0x13, 0x14, 0x15}
+
+
+def armv6_slice(data):
+    magic = struct.unpack(">I", data[:4])[0]
+    if magic == 0xCAFEBABE:
+        n = struct.unpack(">I", data[4:8])[0]
+        for i in range(n):
+            cpu, sub, off, size, _ = struct.unpack(">iiIII", data[8 + 20 * i: 28 + 20 * i])
+            if cpu == CPU_ARM and (sub & 0xffffff) == SUB_V6:
+                return data[off:off + size]
+        return None
+    return data
+
+
+def parse(mach):
+    magic, cpu, sub, ftype, ncmds, sizeofcmds, flags = struct.unpack("<IiiIIII", mach[:28])
+    if magic != 0xFEEDFACE:
+        raise ValueError("not a 32-bit little-endian Mach-O (magic %#x)" % magic)
+    cmds, off = [], 28
+    for _ in range(ncmds):
+        cmd, size = struct.unpack("<II", mach[off:off + 8])
+        cmds.append((cmd, mach[off:off + size]))
+        off += size
+    return dict(cpu=cpu, sub=sub & 0xffffff, ftype=ftype, flags=flags, cmds=cmds)
+
+
+def dylib_info(body):
+    name_off, ts, cur, compat = struct.unpack("<IIII", body[8:24])
+    name = body[name_off:].split(b"\0")[0].decode()
+    return name, cur, compat
+
+
+def ver(v):
+    return "%d.%d.%d" % (v >> 16, (v >> 8) & 0xff, v & 0xff)
+
+
+def exports(path, cache={}):
+    if path not in cache:
+        out = subprocess.run([NM, "-arch", "armv6", "-gUj", path], capture_output=True, text=True)
+        if out.returncode != 0:  # thin non-armv6 / single-arch fallback
+            out = subprocess.run([NM, "-gUj", path], capture_output=True, text=True)
+        cache[path] = set(out.stdout.split())
+    return cache[path]
+
+
+def sdk_path(sdk, install_name):
+    p = os.path.join(sdk, install_name.lstrip("/"))
+    return p if os.path.exists(p) else None
+
+
+def check(path, sdk):
+    errs, warns = [], []
+    data = open(path, "rb").read()
+    mach = armv6_slice(data)
+    if mach is None:
+        return ["no armv6 slice"], []
+    h = parse(mach)
+    ft = MH_TYPES.get(h["ftype"], str(h["ftype"]))
+    print("%s: %s cputype=%d subtype=%d (%s) flags=%#x" % (path, ft, h["cpu"], h["sub"],
+          "armv6" if (h["cpu"], h["sub"]) == (CPU_ARM, SUB_V6) else "NOT armv6", h["flags"]))
+    if (h["cpu"], h["sub"]) != (CPU_ARM, SUB_V6):
+        errs.append("CPU is not armv6")
+    if h["flags"] & 0x200000:
+        errs.append("MH_PIE set (PIE needs iOS 4.3+)")
+    names = []
+    dylibs = []
+    for cmd, body in h["cmds"]:
+        n = LC.get(cmd, "LC_%#x" % cmd)
+        names.append(n)
+        if n in ("LC_LOAD_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB"):
+            dylibs.append((n,) + dylib_info(body))
+        if n == "LC_SEGMENT":
+            nsects = struct.unpack("<I", body[48:52])[0]
+            for i in range(nsects):
+                s = body[56 + 68 * i: 56 + 68 * (i + 1)]
+                flags = struct.unpack("<I", s[56:60])[0]
+                if flags & 0xff in S_THREAD_LOCAL:
+                    errs.append("thread-local section %s (TLV needs iOS 8 dyld)" % s[:16].rstrip(b"\0").decode())
+        if n == "LC_ENCRYPTION_INFO":
+            cryptid = struct.unpack("<I", body[16:20])[0]
+            if cryptid:
+                errs.append("LC_ENCRYPTION_INFO cryptid=%d (must be 0)" % cryptid)
+        if n not in OK:
+            (warns if n in WARN else errs).append("load command %s not in a 2009 toolchain's vocabulary" % n)
+    print("  load commands:", " ".join(names))
+    if ft == "MH_EXECUTE":
+        if "LC_UNIXTHREAD" not in names:
+            errs.append("executable without LC_UNIXTHREAD")
+        if "LC_LOAD_DYLINKER" not in names:
+            errs.append("executable without LC_LOAD_DYLINKER")
+    # dylibs
+    resolved = []
+    for kind, name, cur, compat in dylibs:
+        p = sdk_path(sdk, name) if sdk else None
+        status = "ok"
+        if sdk and not p:
+            status = "MISSING from SDK"
+            errs.append("%s %s not in SDK" % (kind, name))
+        elif p:
+            lib = parse(armv6_slice(open(p, "rb").read()) or b"")
+            for c, b in lib["cmds"]:
+                if c == 0xd:
+                    _, lcur, lcompat = dylib_info(b)
+                    if lcur < compat:
+                        errs.append("%s needs compat %s but SDK has %s" % (name, ver(compat), ver(lcur)))
+                        status = "TOO OLD in SDK"
+        print("  %-18s %s (compat %s) [%s]" % (kind, name, ver(compat), status))
+        resolved.append(p)
+    # undefined symbols, two-level namespace
+    if sdk and h["ftype"] != 1:
+        out = subprocess.run([NM, "-arch", "armv6", "-um", path], capture_output=True, text=True).stdout
+        if not out.strip():
+            out = subprocess.run([NM, "-um", path], capture_output=True, text=True).stdout
+        und = 0
+        for line in out.splitlines():
+            parts = line.split()
+            if "(undefined)" not in line and "(prebound undefined)" not in line:
+                continue
+            sym = [p for p in parts if not p.startswith("(") and p not in ("external", "weak", "non-external")]
+            sym = sym[0] if sym else parts[-1]
+            und += 1
+            lib = line.split("(from ")[-1].rstrip(")") if "(from " in line else None
+            cands = [r for r in resolved if r]
+            if lib:
+                cands = [r for (k, nm_, c, cp), r in zip(dylibs, resolved)
+                         if r and os.path.basename(nm_).split(".")[0] == lib.split(".")[0]] or cands
+            if not any(sym in exports(r) for r in cands):
+                if sym in ("dyld_stub_binder",):
+                    errs.append("%s referenced (compressed dyld info era)" % sym)
+                else:
+                    errs.append("undefined %s not exported by %s" % (sym, lib or "any linked dylib"))
+        print("  undefined symbols checked against SDK dylibs: %d" % und)
+    return errs, warns
+
+
+def main():
+    args = sys.argv[1:]
+    sdk = os.environ.get("IOS3_SDK")
+    if args[:1] == ["--sdk"]:
+        sdk, args = args[1], args[2:]
+    if not args:
+        print(__doc__)
+        return 2
+    bad = 0
+    for p in args:
+        errs, warns = check(p, sdk)
+        for w in warns:
+            print("  WARNING:", w)
+        for e in errs:
+            print("  ERROR:", e)
+        print("  =>", "FAIL" if errs else "PASS")
+        bad |= bool(errs)
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

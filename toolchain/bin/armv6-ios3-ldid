@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Fake-sign for iPhone OS 3: SHA-1 only CodeDirectory, version 0x20001, 4 KiB pages.
+# Usage: armv6-ios3-ldid -S[ents.xml] binary...
+TC_BIN="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+LDID_CD_VERSION=${LDID_CD_VERSION:-0x20001} exec "$TC_BIN/ldid" -Hsha1 "$@"

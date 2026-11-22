@@ -1,0 +1,113 @@
+Host start-up objects linked into every x86-64 ELF in the tarball: licence notices
+==================================================================================
+
+Not an upstream file. Assembled from the leading comment blocks of the upstream sources of
+the objects that Ubuntu's clang 18 links into each executable and shared library
+(Scrt1.o, crti.o, crtn.o from glibc; crtbeginS.o, crtendS.o from GCC's libgcc).
+glibc: https://github.com/bminor/glibc (mirror of sourceware.org/git/glibc.git) tag glibc-2.39
+GCC:   https://github.com/gcc-mirror/gcc (mirror of gcc.gnu.org/git/gcc.git) tag releases/gcc-13.3.0
+
+------------------------------------------------------------------------------
+glibc-2.39 sysdeps/x86_64/start.S  (-> Scrt1.o)
+------------------------------------------------------------------------------
+/* Startup code compliant to the ELF x86-64 ABI.
+   Copyright (C) 2001-2024 Free Software Foundation, Inc.
+   This file is part of the GNU C Library.
+
+   The GNU C Library is free software; you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public
+   License as published by the Free Software Foundation; either
+   version 2.1 of the License, or (at your option) any later version.
+
+   In addition to the permissions in the GNU Lesser General Public
+   License, the Free Software Foundation gives you unlimited
+   permission to link the compiled version of this file with other
+   programs, and to distribute those programs without any restriction
+   coming from the use of this file. (The GNU Lesser General Public
+   License restrictions do apply in other respects; for example, they
+   cover modification of the file, and distribution when not linked
+   into another program.)
+
+   Note that people who make modified versions of this file are not
+   obligated to grant this special exception for their modified
+   versions; it is their choice whether to do so. The GNU Lesser
+   General Public License gives permission to release a modified
+   version without this exception; this exception also makes it
+   possible to release a modified version which carries forward this
+   exception.
+
+   The GNU C Library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public
+   License along with the GNU C Library; if not, see
+   <https://www.gnu.org/licenses/>.  */
+
+------------------------------------------------------------------------------
+glibc-2.39 sysdeps/x86_64/crti.S  (-> crti.o; crtn.S carries the same terms)
+------------------------------------------------------------------------------
+/* Special .init and .fini section support for x86-64.
+   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   This file is part of the GNU C Library.
+
+   The GNU C Library is free software; you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public
+   License as published by the Free Software Foundation; either
+   version 2.1 of the License, or (at your option) any later version.
+
+   In addition to the permissions in the GNU Lesser General Public
+   License, the Free Software Foundation gives you unlimited
+   permission to link the compiled version of this file with other
+   programs, and to distribute those programs without any restriction
+   coming from the use of this file. (The GNU Lesser General Public
+   License restrictions do apply in other respects; for example, they
+   cover modification of the file, and distribution when not linked
+   into another program.)
+
+   Note that people who make modified versions of this file are not
+   obligated to grant this special exception for their modified
+   versions; it is their choice whether to do so. The GNU Lesser
+   General Public License gives permission to release a modified
+   version without this exception; this exception also makes it
+   possible to release a modified version which carries forward this
+   exception.
+
+   The GNU C Library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public
+   License along with the GNU C Library; if not, see
+   <https://www.gnu.org/licenses/>.  */
+
+------------------------------------------------------------------------------
+gcc-13.3.0 libgcc/crtstuff.c  (-> crtbeginS.o, crtendS.o)
+------------------------------------------------------------------------------
+/* Specialized bits of code needed to support construction and
+   destruction of file-scope objects in C++ code.
+   Copyright (C) 1991-2023 Free Software Foundation, Inc.
+   Contributed by Ron Guilmette (rfg@monkeys.com).
+
+This file is part of GCC.
+
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
+
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
+
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
+
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */

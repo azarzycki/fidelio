@@ -15,6 +15,8 @@
 #   deps/mbedtls             Mbed-TLS @ MBEDTLS_TAG (with its framework submodule)
 #   host/{mbedtls,sysroot}   host build + install of mbedTLS      host/{audiod,airplay,cspot}  host builds
 #   arm/{mbedtls,sysroot}    ARMv6 build + install of mbedTLS     arm/{audiod,airplay,cspot,nowplaying,lockplugin,dockremote}
+#   arm/maps/<step>/*.map    ld64 link maps, one per linked output, written by the toolchain wrapper
+#                            (IOS3_LINK_MAP_DIR); build-arm.sh reads them in its verification step
 #   tools/nanopb-py/python3  -> a python3 whose protobuf module still has reflection.MakeClass (see below)
 #   logs/                    build logs (overwritten per run)
 
@@ -35,6 +37,16 @@ MBEDTLS_COMMIT="068ff080b369adfac81509f9b57b2afabaf82dc5"
 # 1794744000 = 2026-11-15 12:00 UTC = "Nov 15 2026", the date already inside the published
 # cspot-ios3 of B1.18 (sha256 2979aedd...), so that file stays byte-identical to a fresh build.
 CSPOT_SOURCE_DATE_EPOCH=1794744000
+# The toolchain's start-up objects, <toolchain>/armv6-ios3/lib/startfiles/{crt1.o,dylib1.o,bundle1.o}:
+# one of them is the first object of every executable, dylib and bundle. They are built from Apple's
+# open-source Csu release (tag Csu-79) by toolchain/startfiles/build-startfiles.sh, which pins the same
+# three sha256 values; build-arm.sh checks the installed files against them. dylib1.o and bundle1.o
+# are the same bytes. Binaries linked with these objects are byte-identical to ones linked with the
+# SDK's copies, so a change here is a change of the toolchain, never a way to make a build pass.
+STARTFILES_SHA256="\
+crt1.o c8cf212f744caaedc9480b5cc6e845e66611e0fc665ed1aece37352b2e1321b1
+dylib1.o df1c33d140278d47c3580c66264893f18bae11ba0cd7363ff119b834781b2b80
+bundle1.o df1c33d140278d47c3580c66264893f18bae11ba0cd7363ff119b834781b2b80"
 
 die()  { echo "ERROR: $*" >&2; exit 3; }
 note() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -88,6 +100,12 @@ stamp_dir() {  # DIR STAMP-TEXT
     rm -rf "$d"
   fi
   mkdir -p "$d"; printf '%s\n' "$want" > "$d/.source-stamp"
+}
+
+# The "# Object files:" table of an ld64 link map: every object file, archive member and dylib the
+# link read, one path per line (the "[  n] " index is removed; "linker synthesized" is entry 0).
+linkmap_objects() {  # MAP
+  awk '/^# Object files:/ { t = 1; next }  /^# / { t = 0 }  t { sub(/^\[ *[0-9]+\] /, ""); print }' "$1"
 }
 
 # --- upstream sources ----------------------------------------------------------------------------
