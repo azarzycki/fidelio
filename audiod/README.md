@@ -521,9 +521,45 @@ notification, and the owner heard the dock follow it (2026-11-22; `docs/HANDOFF.
   0), `deferred` (held), `unsupported` (no accessory takes the volume now), `query-failed`, or
   `unavailable`. Example: `hwvolume spotify 0.400 set 0.400 by 'spotify' slider 26214; dock=ok`. A held
   level that goes out logs `hwvolume: dock told 0.300, the latest of 2 held sets: dock=ok`.
-- **Tests:** `hosttest/test_dock_volume.py` (14 checks), with the mock dock `AUDIOD_MOCK_IAP=ok|unsupported|fail|query-fail`
+- **Tests:** `hosttest/test_dock_volume.py` (14 checks in B1.16.12, 25 since B1.16.14), with the mock dock `AUDIOD_MOCK_IAP=ok|unsupported|fail|query-fail`
   (unset = unavailable) and the window hook `AUDIOD_DOCK_FORWARD_MIN_MS`: a Spotify set is told with
   the same level; external changes are not; a drag sends the first and the latest level only; a held
   level is dropped by an external change; unsupported, query failure and no IAP each give their word and
   no call, a failed call gives `dock=failed`; Spotify in software mode tells nothing while AirPlay in
   absolute mode is told.
+
+## B1.16.14 (a source's echo of a reported level is not a user move)
+
+Device-found on the docked phone with a third-party AirPlay sender (2026-11-22; `docs/HANDOFF.md` §2.5).
+raop reports each outside change of the level (the dock's buttons) to the sender over DACP; that sender
+sends the same value straight back as a volume command, and raop passes it to audiod as a user move.
+An echo of an older report that arrived after newer button presses was applied and told to the dock,
+so the dock jumped back up; a second one was held by the 200 ms window and went out after a later press
+the poll had not seen yet; and the last one, equal to audiod's level, was skipped, which left the dock
+and the phone out of step.
+
+- **Echo filter** (`Server::applySlider`). audiod keeps, per client, the last 8 levels it reported to
+  that client and when (`Server::noteReport`, called from `sendWelcome` and `sendHwVolumeTo`, the only
+  two places a level is reported). A slider set from that client whose level is within one dock step
+  (1/255 of full scale) of a level reported in the last 3 s is an echo: no system-volume set, no dock
+  forward, no report. An echo of a report that newer reports have followed is still recognised, so a
+  burst of echoes arriving late and in order changes nothing. One trace line per echo, never an event:
+  `hwvolume: 'airplay' echoed 0.600 (reported 813 ms ago): ignored`. A request above `max_volume` is not
+  checked: the clamp and its report work as before.
+- **Accepted cost:** a genuine move on the sender that lands within one dock step of a level reported
+  in the last 3 s is ignored. A move to any other level is applied and forwarded at once.
+- **Held level** (`Server::flushDockForward`). Before a held level goes to the dock, the hardware level
+  is read again; if it is no longer the level audiod set (0.002 dead band), the level changed outside
+  (the dock's buttons) and the poll has not reported it yet. The held level is dropped:
+  `hwvolume: held dock level 0.450 dropped (1 held): the level changed outside (now 0.300, not yet
+  reported)`, and the poll reports the change as usual.
+- **What remains possible:** an echo more than 3 s late or more than one dock step off is applied; a dock
+  press that lands between audiod's set of the system volume and its call to iapd (the same pass of the
+  run loop) can leave the dock at the source's level and the phone at the press's level until the next
+  change. Neither window can be closed from audiod. raop is unchanged.
+- **Tests:** `hosttest/test_dock_volume.py` sections 5 and 6 (11 checks): an echo of an outside change;
+  three outside changes and their three late echoes; an echo 0.1 dB off; a different level right after a
+  report (applied, told to the dock); the reported level again after 3 s (applied); a held level whose
+  flush comes after an outside change the poll has not seen (dropped). The mock hardware volume now shows
+  a change-file value to `get()` at once and to `takeChange()` at the next poll; `AUDIOD_MOCK_HW_POLL_MS`
+  sets the poll interval.

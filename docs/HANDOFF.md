@@ -44,7 +44,7 @@ repo and is the one record of the project's state: **update it in the same commi
    - Builds and test runs go in subagents, one at a time (§6.1).
 3. **Prove the baseline:**
    - `tools/build-arm.sh` → `result: OK` with the hashes in §2.3.
-   - `tools/run-host-tests.sh` → `TOTAL host: 423 ok, 0 FAIL`, 25 suites, about 10 minutes. Run it alone
+   - `tools/run-host-tests.sh` → `TOTAL host: 434 ok, 0 FAIL`, 25 suites, about 10 minutes. Run it alone
      (§6.4).
 4. Then work through §3 in order.
 
@@ -107,8 +107,11 @@ The **dock**:
 - **B1.16.12** (2026-11-22, §3.1) is on `main` (e590ef1, marker `audiod-b11612`). Its device test on the
   phone passed the same day (§2.5). Only `fidelio-audiod` changed (§2.3).
 - **B1.16.13** (2026-11-22, §2.5, §3.2) is on the branch `b11613-remote-keys`, on top of B1.16.12, built and
-  host-tested, not yet on `main` and with no marker: it waits for the install on the phone. Only
+  host-tested; `main` is at its last commit, 8af19cb, since 2026-11-22. It waits for the install on the phone. Only
   `DockRemote.dylib` and `NowPlaying.app/NowPlaying` changed (§2.3).
+- **B1.16.14** (2026-11-22, §3.1) is on the branch `b11614-volume-echo`, on top of B1.16.13 (which is on
+  `main` now), built and host-tested, not on `main`, no marker: it waits for review and a device test.
+  Only `fidelio-audiod` changed (§2.3).
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
   - Earliest rounds: `audiod-b11`, `-b12`, `-b13`, `-b15` … `-b19`, `-b110` … `-b116`. There is no `-b14`.
@@ -147,15 +150,17 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | sysroot | 55d1a82, 926ea54, 831ac15, b5e3106 | none | the build without Apple's SDK: `toolchain/sysroot/` makes a sysroot from a symbol list (stub libraries), Apple's published open-source headers (pinned) and framework headers of our own; `tools/build-arm.sh` uses it by default; every binary keeps its sha256 (§6.3) | nothing to install |
 | B1.16.12 | e590ef1 | none | audiod tells the dock a source's volume: after a set of the system volume in absolute mode it calls `IAPAudioSetVolume` (IAP.framework, dlopen'ed) with the same level, while an accessory takes the volume; never for an external change; a drag is coalesced (one call per 200 ms, the latest level last); the `hwvolume` line ends `; dock=<result>`; host suite `dockvol` (§3.1, §10.4) | **phone PASS** 2026-11-22: the dock's loudness follows the Spotify slider (§2.5); installed on the phone; AirPlay and the iPad not tested |
 | B1.16.13 | branch `b11613-remote-keys` | none | DockRemote: the decode measured on the phone (the code in the word @56, down and up in the flags, next and previous as one event), a press taken or passed whole with one verb, and the key log `remote-keys.log`; NowPlaying 1.4.2 shows the last six presses in the Technical tab; host suites `remote_keys` and `keylog` (§2.5, §10.5) | built; install and swallow test pending (§3.2) |
+| B1.16.14 | branch `b11614-volume-echo` | none | audiod ignores a source's echo of a level it reported to that source (within 3 s and one dock step, 1/255): no set, no dock call; a held dock level is dropped at its flush when the hardware level changed outside meanwhile, even before the poll has seen it; host suite `dockvol` 14 → 25 checks (§2.5, §3.1, §10.4) | built; device test pending (§3.1) |
 
-### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee; audiod of B1.16.12; DockRemote and NowPlaying of B1.16.13)
+### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee; DockRemote and NowPlaying of B1.16.13; audiod of B1.16.14)
 
 The sources of each binary are those of the round named in the last column. Since c46beee only the
-toolchain changed, B1.16.12 changed audiod, and B1.16.13 changed DockRemote and NowPlaying.
+toolchain changed, B1.16.12 changed audiod, B1.16.13 changed DockRemote and NowPlaying, and B1.16.14
+changed audiod again.
 
 | Binary | Size | sha256 (toolchain revision 3) | Round |
 |---|---|---|---|
-| fidelio-audiod | 481,680 | `7c04dc0b61e15bd308a7a5f5c9d2071fca66007dc394cea6aed97086ad2f1923` | B1.16.12, e590ef1 (the dock forward); before it, B1.16.11 7330752: 464,960, `30eb78eb0f6edb919d8091a2793e7097e2b5bcaf68bb60a690c878b85b89afe1` |
+| fidelio-audiod | 481,856 | `a8de4d6c741e7efff581556e151bd912c3d426afca0a54608212a8ca18dd2ca1` | B1.16.14, branch `b11614-volume-echo` (the echo filter); before it, B1.16.12 e590ef1 (the dock forward, on the phone): 481,680, `7c04dc0b61e15bd308a7a5f5c9d2071fca66007dc394cea6aed97086ad2f1923`; before that, B1.16.11 7330752: 464,960, `30eb78eb0f6edb919d8091a2793e7097e2b5bcaf68bb60a690c878b85b89afe1` |
 | fidelio-lockctl | 163,024 | `704c799f8b15122d8921cbdd9609c0e8136a85d038cc1a9c019b2c929db1ed12` | B1.16.6, aeed5b1 |
 | fidelio-raop | 942,112 | `baf304f686d4bc63b8737942e935ba812746eb5b5451efe7c725daef3f07d132` | B1.16, a5ba534 (old id bf61abb; raop unchanged since) |
 | cspot-ios3 | 2,290,160 | `35de013e2141c6a26cf8fe6a429f2f75cf99f9a75576c38720a1e1918e4b74fb` | B1.18, 47d4760 |
@@ -175,6 +180,8 @@ toolchain changed, B1.16.12 changed audiod, and B1.16.13 changed DockRemote and 
   127,296). Neither imports a symbol that was not in the stub manifest already; the manifest's
   "imported by" fields were brought up to date (`imports.py update`, no symbol added). Every other
   binary kept its sha256.
+- **B1.16.14:** audiod grew by 176 bytes (481,680 to 481,856). No new import. Every other binary kept its
+  sha256.
 - **Built without Apple's SDK since `b5e3106`** (§6.3): the same nine files, byte for byte, as the build
   against the SDK.
 - **What differs from the revision 2 build of the same sources:** one more section in each binary,
@@ -330,6 +337,23 @@ identical bytes. They are what the cloud session published and what was installe
     (notifyApp=1) and showed as five `external` lines in audiod: the 1 s poll merges fast presses.
   - Not tested: AirPlay volume on the dock, and the iPad. Whether the iPad's IAP.framework has the two
     functions is still unknown: run `voltest iap` there before installing this audiod on it.
+- **AirPlay volume on the dock with B1.16.12** (phone, 2026-11-22, audiod `7c04dc0b`; the owner cast from
+  an Android phone with a third-party AirPlay sender app, not sure which; it presents itself as
+  `iTunes/12.12` and supports DACP). B1.16.14 fixes what went wrong (§3.1).
+  - Going up with the sender's control worked: the dock followed, 15 % to 42 % in four steps. The
+    sender's own steps were 2 dB (AirPlay dB to level is linear, `db/30 + 1`). The first volume of a
+    session is deliberately not applied (B1.13), so the sender starts from the dock's current level.
+  - **The sender echoes the phone's level back.** raop reports each outside change to the sender over
+    DACP (`dmcp.device-volume`); this sender accepts it and at once sends the same value back as an RTSP
+    `SET_PARAMETER volume`. raop takes that as a user move and passes it to audiod.
+  - **The dock jumped back up twice** when the owner turned it down with the dock's own buttons. An echo
+    of an older report arrived after newer presses: audiod set the system volume back up and told the
+    dock, 80 to 88 of 255 (undoing a press). A second echo was held by the 200 ms window
+    (`dock=deferred`) and went out after a later press, 76 to 84: the rule "an outside change drops a held
+    level" did not help, because the 1 s poll had not yet seen that press.
+  - **The two ended out of step:** the last echo equalled audiod's level, which follows the phone's
+    system volume, so it was skipped as "already there", and the dock stayed at 84 of 255 while the phone
+    was at 76.
 - **Dock keys as GraphicsServices events** (phone, DockRemote 4ed6a5a observing, 2026-11-22; two key
   passes, each compared with iapd's own log of the same presses: `SimpleRemoteEventHandler got evKeyDown
   ... key:N` and the dock's `Acc: lingo=0x02 ...` packets). B1.16.13 decodes with this (§10.5).
@@ -377,7 +401,7 @@ identical bytes. They are what the cloud session published and what was installe
 
 ## 3. Open work, in order
 
-### 3.1 B1.16.12: the phone's volume must move the dock (phone PASS for Spotify; AirPlay, iPad and the relabel open)
+### 3.1 B1.16.12: the phone's volume must move the dock (phone PASS for Spotify; AirPlay reaches the dock, its echo fix B1.16.14 untested; iPad and the relabel open)
 - **Report:** phone docked, `spotify_volume=absolute`. The Spotify slider moves NowPlaying's display and
   audiod logs `hwvolume: 'spotify' -> X (set X by 'spotify' slider Y)`, but the loudness doesn't change.
   The dock buttons work and show up as `hwvolume: 'external'`.
@@ -393,9 +417,28 @@ identical bytes. They are what the cloud session published and what was installe
     per 200 ms at most, the latest level last. The `hwvolume` line ends `; dock=ok` when the dock was told.
   - The device test on the phone: the loudness follows the slider; 35 calls, every one matched in iapd's
     log; the dock's buttons still give `external` lines with no `dock=` (§2.5).
+  - **AirPlay absolute volume reaches the dock** (phone, 2026-11-22, §2.5): the dock followed a
+    third-party sender's control. With that sender the dock's own buttons then made the dock jump back
+    up and left dock and phone out of step: the sender echoes every level raop reports to it back as a
+    volume command, and audiod applied a late echo as a user move and told the dock.
+  - **B1.16.14** (branch `b11614-volume-echo`, audiod only, §10.4) fixes that:
+    - audiod keeps the last 8 levels it reported to each source (WELCOME, HWVOLUME) with their times. A
+      slider set from that source within 3 s of a report and within one dock step (1/255) of the
+      reported level is its echo: no set, no dock call, no new report, one trace line.
+    - A held dock level is dropped at its flush if the hardware level is no longer the one audiod set
+      (read again at that moment), even when the poll has not yet seen the change.
+    - Accepted cost: a genuine move on the sender that lands within one dock step of a level reported in
+      the last 3 s is ignored.
+    - **Device test pending:** the same sender, up with its control, down with the dock's buttons; the
+      dock must not jump back, and the phone's and the dock's levels must end equal (iapd's log).
+  - **What cannot be changed from audiod:** a third-party sender's own scale and steps (here 2 dB), and
+    what it does with a DACP report. An echo that arrives more than 3 s late, or more than one dock step
+    off, is still applied. A dock press that lands between audiod's set of the system volume and its
+    call to iapd (the same run-loop pass, two MIG round trips) can still leave the dock at the source's
+    level and the phone at the press's level until the next change.
   - **Still open:**
     - The relabel of the settings below.
-    - AirPlay volume on the dock (absolute mode, the sender's slider): not tested.
+    - The device test of B1.16.14 with the AirPlay sender.
     - The iPad: run `voltest iap` there first (does its IAP.framework have the two functions?), then
       install this audiod and check the start-up line.
 
@@ -1045,10 +1088,10 @@ the suites are timing-sensitive.
 | settings | 23 | wake | 11 | volume | 11 |
 | settings_dmn | 29 | unlock | 23 | layout | 30 |
 | control | 8 | arbiter | 13 | lock_layout | 10 |
-| cover_url | 6 | dockvol | 14 | keylog | 17 |
+| cover_url | 6 | dockvol | 25 | keylog | 17 |
 | remote_keys | 52 | | | | |
 
-- **Baseline: 423 ok, 0 FAIL** (354 before B1.16.13 added `keylog` and `remote_keys`; 340 before B1.16.12
+- **Baseline: 434 ok, 0 FAIL** (423 before B1.16.14 extended `dockvol`; 354 before B1.16.13 added `keylog` and `remote_keys`; 340 before B1.16.12
   added `dockvol`).
 - **It needs `cc` and `c++`** (apt `g++`): the plain tests call them by name, and they are CMake's default
   compilers. Since `6721da9` the script checks for both.
@@ -1079,7 +1122,9 @@ the suites are timing-sensitive.
     as on the real iPad.
   - `AUDIOD_MOCK_SB_RESTART_MS`: SpringBoard's pid changes from 100 to 200.
 - **Mock hardware volume:** `AUDIOD_MOCK_HW_VOLUME`, `AUDIOD_MOCK_HW_CHANGE_FILE`. Test hook:
-  `AUDIOD_STALL_ACTIVE_MS`.
+  `AUDIOD_STALL_ACTIVE_MS`. Since B1.16.14 a new value in the change file is seen by `get()` at once and
+  reported by `takeChange()` at the next poll, as on the device; `AUDIOD_MOCK_HW_POLL_MS` sets the poll
+  interval (default 100 ms).
 - **Mock dock** (B1.16.12, `audiod/src/HardwareVolume.*`): `AUDIOD_MOCK_IAP=ok|unsupported|fail|query-fail`
   (unset = IAP unavailable); each call it "makes" is logged as `mock iap: IAPAudioSetVolume(L) -> R`.
   Test hook: `AUDIOD_DOCK_FORWARD_MIN_MS` (the coalescing window, default 200 ms).
@@ -1087,6 +1132,8 @@ the suites are timing-sensitive.
   - A new test must be shown to **fail against the previous binary**. Build the old commit in a temporary
     `git worktree`, as B1.16.6 did: 6 FAILs against b051bfc. B1.16.12's `dockvol`: 11 FAILs against
     1a6ce9e (the other 3 are the "never told" checks, which the old binary passes by doing nothing).
+    B1.16.14's new checks: 6 FAILs against the code before the fix (its first commit, which only changes
+    the mock).
   - Plain-C layout cores have host tests that pin the device-proven frames: `nowplaying/src/NPLayout.c` with
     `layout_test.c`, and `nowplaying/lockplugin/LPLayout.c` with `lock_layout_test.c`.
   - B1.16.13: device code that can be plain C or C++ is kept apart from the Objective-C so the host can
@@ -1270,7 +1317,18 @@ Defaults are in brackets.
     band) and stop there, since an external change is never forwarded.
   - Both calls are synchronous MIG round trips to iapd on audiod's run-loop thread. A drag is coalesced:
     at most one forward per 200 ms; a set inside that window is held, and the latest held level goes
-    out from the run loop when the window ends. An external change drops a held level.
+    out from the run loop when the window ends. An external change drops a held level, and so does
+    (B1.16.14) a hardware level read again at the flush that is no longer the one audiod set: the poll
+    may not have seen a dock press yet. That logs `hwvolume: held dock level 0.450 dropped (1 held): the
+    level changed outside (now 0.300, not yet reported)`, and the poll reports the change as usual.
+  - **Echoes (B1.16.14).** A source may send a level audiod reported to it straight back as a volume
+    command (an AirPlay sender does, §2.5). `Server::noteReport` keeps the last 8 levels reported to each
+    client (in `sendWelcome` and `sendHwVolumeTo`, the only two places a level is reported) with their
+    times. `applySlider` ignores a set within 3 s of such a report and within one dock step (1/255) of
+    its level: no system-volume set, no dock call, no report. It logs one trace line, not an event:
+    `hwvolume: 'airplay' echoed 0.600 (reported 813 ms ago): ignored`. A clamped request (above
+    `max_volume`) is not checked, so the clamp and its report work as before. Accepted cost: a genuine
+    move to within one dock step of a level reported in the last 3 s is ignored.
   - Logging: the event's reason ends `; dock=<result>`, one of `ok`, `failed` (the call returned 0),
     `deferred` (held), `unsupported`, `query-failed`, `unavailable`. Example:
     `hwvolume: 'spotify' -> '0.400' (set 0.400 by 'spotify' slider 26214; dock=ok)`. A held level that
@@ -1376,9 +1434,13 @@ Defaults are in brackets.
 ## 12. Appendix
 
 ### 12.1 `main`, newest first (subjects shortened)
-On the branch `b11613-remote-keys`, not yet on `main`: `B1.16.13: the dock keys' measured decode, a key
-log, the presses in NowPlaying's Technical tab`, on top of e590ef1.
+On the branch `b11614-volume-echo`, not yet on `main`, on top of 8af19cb:
+`B1.16.14 (1/2): mock hardware volume: get() sees an outside change at once, AUDIOD_MOCK_HW_POLL_MS` and
+`B1.16.14 (2/2): audiod ignores a source's echo of a reported level; a held dock level checks the
+hardware first`.
 ```
+8af19cb B1.16.13 the build's hashes in the handoff; the stub manifest's importer fields
+619c552 B1.16.13 the dock keys' measured decode, a key log, the presses in NowPlaying's Technical tab
 e590ef1 B1.16.12 tell the dock a source's volume (IAPAudioSetVolume)   (marker audiod-b11612)
 1a6ce9e docs: what the logs rule out for the phone's reboot after the respring
 945ffc1 docs: toolchain published; the phone on the revision 3 builds; first packet log of the dock

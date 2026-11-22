@@ -124,7 +124,10 @@ void Server::sendWelcome(Client& c) {
   w.flags = abs ? AUDIOD_VOL_ABSOLUTE : 0;
   w.slider = abs ? levelToSlider(hwLevel) : 0;
   sendToClient(c, AUDIOD_MSG_WELCOME, &w, sizeof w);
-  if (abs) arbiter.noteVolumeReport(c.id, nowMs());  // the connect-time level counts as a report
+  if (abs) {
+    arbiter.noteVolumeReport(c.id, nowMs());  // the connect-time level counts as a report
+    noteReport(c, hwLevel, nowMs());          // B1.16.14: and its echo is recognised
+  }
 }
 
 // B1.10: send the current hardware level to ONE source (on takeover, or the active source on a
@@ -136,6 +139,29 @@ void Server::sendHwVolumeTo(Client& c) {
   AudiodHwVolume v = { levelToSlider(hwLevel), AUDIOD_VOL_ABSOLUTE };
   sendToClient(c, AUDIOD_MSG_HWVOLUME, &v, sizeof v);
   arbiter.noteVolumeReport(c.id, nowMs());
+  noteReport(c, hwLevel, nowMs());  // B1.16.14
+}
+
+// B1.16.14: a sender may send a reported level straight back as a volume command (device-found: an
+// AirPlay sender echoes each DACP dmcp.device-volume as SET_PARAMETER volume). Several reports can go
+// out in quick succession and their echoes come back in order, later, possibly after newer reports or
+// changes, so a few are kept, each with its time.
+void Server::noteReport(Client& c, float level, uint64_t now) {
+  if (!(level >= 0)) return;
+  c.reports[c.reportNext % (sizeof c.reports / sizeof c.reports[0])] = Client::Report{level, now};
+  c.reportNext++;
+}
+
+static const float kEchoTolerance = 1.0f / 255.0f + 0.00001f;  // one dock step (the dock's 0..255 scale)
+
+long Server::echoAge(const Client& c, float level, uint64_t now) const {
+  long best = -1;
+  for (const Client::Report& r : c.reports) {
+    if (r.ms == 0 || now - r.ms > kEchoWindowMs || fabsf(level - r.level) > kEchoTolerance) continue;
+    long age = (long)(now - r.ms);
+    if (best < 0 || age < best) best = age;
+  }
+  return best;
 }
 
 void Server::broadcastHwVolume() {
@@ -151,6 +177,16 @@ void Server::applySlider(Client& c, uint16_t slider) {
   float ceiling = opts.maxVolumePct / 100.f;
   float level = want > ceiling ? ceiling : want;
   bool clamped = want > ceiling + 0.0005f;
+  // B1.16.14: the echo of a level we reported to this source is not a user move: applying a late one
+  // would undo a newer change (the dock's own buttons) and send that old level to the dock. A clamped
+  // request is left to the clamp path (its report is what snaps the controller back to the ceiling).
+  if (!clamped) {
+    long age = echoAge(c, want, nowMs());
+    if (age >= 0) {
+      IOS3_TRACE("hwvolume: '%s' echoed %.3f (reported %ld ms ago): ignored", c.name.c_str(), want, age);
+      return;
+    }
+  }
   if (hwLevel >= 0 && fabsf(level - hwLevel) < 0.002f && !clamped) return;  // already there (the controller echoing our report)
   bool ok = hw->set(level);
   if (ok) hwLevel = level;
@@ -215,6 +251,16 @@ void Server::flushDockForward(uint64_t now) {
   if (!dockPending || now - lastDockMs < dockMinMs) return;
   float level = dockPendingLevel;
   int held = dockHeld;
+  // B1.16.14: the level may have changed outside since the set (the dock's buttons) without the poll
+  // having seen it yet: read it again, and never send a held level older than that change. The normal
+  // external path (pollHardwareVolume) reports the new level.
+  float cur = -1;
+  if (hwLevel >= 0 && hw->get(cur) && cur >= 0 && fabsf(cur - hwLevel) >= 0.002f) {
+    IOS3_TRACE("hwvolume: held dock level %.3f dropped (%d held): the level changed outside (now %.3f, not yet reported)", level, held, cur);
+    dockPending = false;
+    dockHeld = 0;
+    return;
+  }
   HardwareVolume::DockResult r = sendToDock(level, now);
   IOS3_TRACE("hwvolume: dock told %.3f, the latest of %d held set%s: dock=%s", level, held, held == 1 ? "" : "s", HardwareVolume::dockResultName(r));
 }

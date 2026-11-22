@@ -107,6 +107,11 @@ class Server {
     bool controller = false;    // B1.16: a non-producing "control" client (sends CONTROL, never AUDIO)
     uint64_t preemptDueMs = 0;      // B1.12: send PREEMPTED to this client at/after this time (0 = none pending)
     std::string preemptBy;          // ... naming the source that took over
+    // B1.16.14: the levels last REPORTED to this client (WELCOME / HWVOLUME) and when, newest overwrites
+    // oldest. A slider set that comes back with one of them within kEchoWindowMs is that report's echo.
+    struct Report { float level; uint64_t ms; };
+    Report reports[8] = {};
+    unsigned reportNext = 0;
   };
   static const size_t kRingFrames = 88200;  // 2 s: an inactive source's lead (up to SocketSink's cap) plus slack
   static const size_t kStagingFrames = 1764;  // 40 ms: with backpressure the active source's ring is only a staging area
@@ -136,7 +141,8 @@ class Server {
   // B1.16.12: after a SOURCE's set (applySlider only; never an external change), tell the dock the
   // same level (HardwareVolume::tellDock). At most one call per dockMinMs; a set inside that window is
   // held, and the latest held level goes out from the run loop (flushDockForward) when the window ends.
-  // An external change drops a held level: the dock set it, or another app did after our set.
+  // An external change drops a held level: the dock set it, or another app did after our set. B1.16.14:
+  // so does a hardware level, read again at the flush, that is no longer the one we set (not yet polled).
   const char* forwardToDock(float level, uint64_t now);  // returns the log word (ok, deferred, ...)
   HardwareVolume::DockResult sendToDock(float level, uint64_t now);
   void flushDockForward(uint64_t now);
@@ -144,6 +150,11 @@ class Server {
   void sendWelcome(Client& c);
   void sendHwVolumeTo(Client& c);   // B1.10: current hardware level to one (active) source; arms the grace
   void broadcastHwVolume();
+  // B1.16.14: remember a level reported to a source; and find the report a slider set echoes (the
+  // newest one within kEchoWindowMs and one dock step, 1/255, of `level`; returns its age, or -1).
+  void noteReport(Client& c, float level, uint64_t now);
+  long echoAge(const Client& c, float level, uint64_t now) const;
+  static const uint64_t kEchoWindowMs = 3000;
   // B1.9 B wake + B1.16.4 unlock + B1.11 lock plugin, for a playback start from nothing
   enum WakeResult { WAKE_NOT_RUN, WAKE_DONE, WAKE_UNLOCKED };
   void onStartFromNone(const Event& e);
