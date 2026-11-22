@@ -1,8 +1,9 @@
 # Third-party notices: armv6-ios3 cross toolchain (Linux x86_64 host)
 
-For `armv6-ios3-toolchain-linux-x86_64.tar.xz`, toolchain revision 2 (the file `VERSION`). Written
-2026-11-21. This file states facts: what each part of the tarball is, which licence its upstream
-states for it, and where its source is. It is not legal advice and has not had a legal review.
+For `armv6-ios3-toolchain-linux-x86_64.tar.xz`, toolchain revision 3 (the file `VERSION`). Written
+2026-11-21 for revision 2; §9 and §10 changed on 2026-11-22 for revision 3. This file states facts:
+what each part of the tarball is, which licence its upstream states for it, and where its source is.
+It is not legal advice and has not had a legal review.
 
 This toolchain contains software from the projects listed below. Each entry gives the version or
 commit that was built, the licence, the file in `LICENSES/` that holds the licence text, where the
@@ -102,12 +103,17 @@ The Apple iPhoneOS SDK and the host clang are not part of this tarball.
   `crt1.o` is built from all three; `dylib1.o` and `bundle1.o` are built from `dyld_glue.s` alone. The release has no licence file of its own.
 - Licence texts: `LICENSES/APSL-1.1.txt` (version 1.1) and `LICENSES/cctools-port.APSL-2.0.txt` (version 2.0). Copies of both are next to the build script, as `share/armv6-ios3/src/startfiles/APSL-1.1.txt` and `APSL-2.0.txt`.
 - Source: the source code of these three files is available, under the licences named above, at https://github.com/apple-oss-distributions/Csu (tag `Csu-79`, the commit above). The tarball holds the three object files and not the source files; the build script fetches them from that address.
-- How they are built: `share/armv6-ios3/src/startfiles/build-startfiles.sh` (in the repository: `toolchain/startfiles/build-startfiles.sh`) fetches that commit, checks the sha256 of the three source files, compiles them with the host clang and checks the sha256 of the three objects. The source files are used as published. The build differs from the release's own Makefile in three points, which the script's header explains: the objects are not merged with `ld -r` (`crt1.o` is assembled as one unit instead), `crt.c` is compiled with `-fno-zero-initialized-in-bss`, and the deployment target is 3.0.
+- How they are built: `share/armv6-ios3/src/startfiles/build-startfiles.sh` (in the repository: `toolchain/startfiles/build-startfiles.sh`) fetches that commit, checks the sha256 of the three source files, compiles them with the host clang and checks the sha256 of the three objects. The source files are used as published. The build differs from the release's own Makefile in four points, which the script's header explains: the objects are not merged with `ld -r` (`crt1.o` is assembled as one unit instead), `crt.c` is compiled with `-fno-zero-initialized-in-bss`, the deployment target is 3.0, and the notice described below is assembled into each object after the Csu sources.
 - Patch: none.
-- The three object files hold code, data and symbol names only; they contain no notice text.
+- Notice in the code: since revision 3 each of the three objects contains a notice of source availability, and with it every executable, dylib and bundle that is linked with this toolchain, because the linker copies the start-up object into the binary.
+  - Where: the section `__TEXT,__csu_notice` of the object and of the linked binary. It holds one NUL-terminated ASCII string. `strings -a FILE | grep Csu-79` prints it.
+  - In `crt1.o`, and so in every executable: "This program contains start-up code built from Apple's open-source Csu release, tag Csu-79: start.s and crt.c under the Apple Public Source License version 1.1, dyld_glue.s under the Apple Public Source License version 2.0. The source code is available under the terms of those licenses at https://github.com/apple-oss-distributions/Csu (commit fd4097d7a8b07792f55d74271d09adedb4748b94)."
+  - In `dylib1.o` and `bundle1.o`, and so in every dylib and bundle: "This library contains glue code built from Apple's open-source Csu release, tag Csu-79: dyld_glue.s under the Apple Public Source License version 2.0. The source code is available under the terms of that license at https://github.com/apple-oss-distributions/Csu (commit fd4097d7a8b07792f55d74271d09adedb4748b94)."
+  - Its source is `share/armv6-ios3/src/startfiles/notice.s` (in the repository: `toolchain/startfiles/notice.s`), a file of this project (§10), not of Csu. The section is marked so that the linker keeps it with `-dead_strip`, and `strip -x` leaves it in place. It adds no code.
+  - Apart from that section and its local symbol, `__csu_source_notice`, the three objects hold code, data and symbol names only.
 
 ## 10. This project's own files
 
-- Files: `bin/armv6-ios3-clang`, `bin/armv6-ios3-ldid`, `bin/armv6-ios3-check`, `share/armv6-ios3/toolchain.cmake`, `share/armv6-ios3/src/ios3compat/ios3compat.c` and `ios3compat.h`, `armv6-ios3/include/ios3compat.h`, `armv6-ios3/include/ios3_tls.hpp`, the object `ios3compat.o` in `libios3compat.a`, `share/armv6-ios3/src/startfiles/build-startfiles.sh`, `share/armv6-ios3/BUILD.md`, `README.txt`, `VERSION`, and this file.
+- Files: `bin/armv6-ios3-clang`, `bin/armv6-ios3-ldid`, `bin/armv6-ios3-check`, `share/armv6-ios3/toolchain.cmake`, `share/armv6-ios3/src/ios3compat/ios3compat.c` and `ios3compat.h`, `armv6-ios3/include/ios3compat.h`, `armv6-ios3/include/ios3_tls.hpp`, the object `ios3compat.o` in `libios3compat.a`, `share/armv6-ios3/src/startfiles/build-startfiles.sh` and `notice.s`, the notice text that `notice.s` puts into the three start-up objects (§9), `share/armv6-ios3/BUILD.md`, `README.txt`, `VERSION`, and this file.
 - Licence: MIT. The text is in `LICENSE`, a copy of the `LICENSE` file at the root of the project repository, where these files are kept under `toolchain/` (`BUILD.md` under `spotify/`).
 - The three files in `share/armv6-ios3/patches/` are changes to third-party sources and fall under the licence of the files they change.

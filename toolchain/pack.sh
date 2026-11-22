@@ -24,7 +24,8 @@
 #   toolchain/src/ios3compat/ios3compat.h   -> armv6-ios3/include/       (the header lives in both places)
 #   toolchain/include/ios3_tls.hpp          -> armv6-ios3/include/
 #   toolchain/startfiles/build-startfiles.sh, run here -> armv6-ios3/lib/startfiles/{crt1,dylib1,bundle1}.o
-#   toolchain/startfiles/build-startfiles.sh + the APSL 1.1 and 2.0 texts -> share/armv6-ios3/src/startfiles/
+#   toolchain/startfiles/build-startfiles.sh, notice.s (the notice the script assembles into the objects)
+#                                           + the APSL 1.1 and 2.0 texts -> share/armv6-ios3/src/startfiles/
 #   spotify/BUILD.md                        -> share/armv6-ios3/BUILD.md
 #   spotify/patches/{cctools-port,ldid,llvm-project}-*.patch -> share/armv6-ios3/patches/   (not the cspot patch)
 #   toolchain/licenses/*                    -> LICENSES/                 (with MANIFEST.tsv)
@@ -51,7 +52,7 @@ export LC_ALL=C
 
 NAME="armv6-ios3-toolchain"
 TARBALL="$NAME-linux-x86_64.tar.xz"
-PACK_MTIME=1795219200   # 2026-11-21 00:00:00 UTC, the day revision 2 was put together
+PACK_MTIME=1795305600   # 2026-11-22 00:00:00 UTC, the day revision 3 was put together (revision 2: 1795219200, the day before)
 FORBIDDEN=("drive.google" "drive.usercontent" "archive.org")
 CCTOOLS_LINKS="ar codesign_allocate install_name_tool ld libtool lipo nm nmedit otool ranlib size strings strip"
 HOST_LIBS="libdispatch.so libBlocksRuntime.so libplist-2.0.so.4"
@@ -137,6 +138,7 @@ put "$T/include/ios3_tls.hpp"             "$S/armv6-ios3/include/ios3_tls.hpp"
 put "$REPO/spotify/BUILD.md"              "$S/share/armv6-ios3/BUILD.md"
 for p in $TC_PATCHES; do put "$REPO/spotify/patches/$p" "$S/share/armv6-ios3/patches/$p"; done
 put "$T/startfiles/build-startfiles.sh"   "$S/share/armv6-ios3/src/startfiles/build-startfiles.sh"
+put "$T/startfiles/notice.s"              "$S/share/armv6-ios3/src/startfiles/notice.s"   # the script reads it from its own directory
 put "$T/licenses/APSL-1.1.txt"            "$S/share/armv6-ios3/src/startfiles/APSL-1.1.txt"
 put "$T/licenses/cctools-port.APSL-2.0.txt" "$S/share/armv6-ios3/src/startfiles/APSL-2.0.txt"
 for f in "$T"/licenses/*; do put "$f" "$S/LICENSES/$(basename "$f")"; done

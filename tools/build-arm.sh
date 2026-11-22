@@ -7,11 +7,15 @@
 #   binaries the entitlement keys (armv6-ios3-ldid -e) against common/fidelio-springboard.entitlements.plist;
 #   the binary's link map: no .o file and no archive member under $IOS3_SDK was linked, and exactly one
 #   start-up object, the one for its file type, from the toolchain's armv6-ios3/lib/startfiles;
-#   tools/startcheck.py: the start-up code inside the binary (its linked literals and __DATA,__dyld).
+#   tools/startcheck.py: the start-up code inside the binary (its linked literals and __DATA,__dyld),
+#   and the source-availability notice of the start-up object: the section __TEXT,__csu_notice must
+#   hold the text that fits the file type. A binary without it fails the verification.
 # It also checks the toolchain's three start-up objects against the sha256 pins in _common.sh.
 #
-# Toolchain: revision 2 or later (toolchain/README.md). The script stops before building anything if
-# the toolchain has no armv6-ios3/lib/startfiles: revision 1 links the SDK's start-up objects.
+# Toolchain: revision 3 or later (toolchain/README.md; TOOLCHAIN_MIN_REVISION in _common.sh). The
+# script stops before building anything if the toolchain is older: revision 1 has no
+# armv6-ios3/lib/startfiles and links the SDK's start-up objects; the start-up objects of revision 2
+# carry no notice, so every binary would lack it.
 # Link maps: every ARM build step runs with IOS3_LINK_MAP_DIR=$BUILD_ROOT/arm/maps/<step>, so the
 # toolchain wrapper writes <output name>.map there for each link (a directory per step, because both
 # lock bundles link an output named "Fidelio"). A binary without its map fails the verification.
@@ -70,11 +74,15 @@ export PYTHONDONTWRITEBYTECODE=1
 case "$BUILD_ROOT$REPO$ARM_OUT" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
 [ -f "$IOS3_SDK/usr/lib/libSystem.B.dylib" ] || die "IOS3_SDK=$IOS3_SDK is not the iPhoneOS3.1.2 SDK"
 [ -f "$TCFILE" ] || die "toolchain not found at $TC"
-[ -d "$STARTFILES" ] || die "the toolchain at $TC is revision 1: it has no armv6-ios3/lib/startfiles, so its links take the start-up objects from the SDK. Install revision 2 or later (toolchain/README.md)"
+[ -d "$STARTFILES" ] || die "the toolchain at $TC is revision 1: it has no armv6-ios3/lib/startfiles, so its links take the start-up objects from the SDK. Install revision $TOOLCHAIN_MIN_REVISION or later (toolchain/README.md)"
 for f in crt1.o dylib1.o bundle1.o; do
   [ -f "$STARTFILES/$f" ] || die "the toolchain at $TC is incomplete: $STARTFILES/$f is missing"
 done
 TC_REV="$(head -n 1 "$TC/VERSION" 2>/dev/null || true)"; TC_REV="${TC_REV:-unknown}"
+case "$TC_REV" in
+  ''|*[!0-9]*) die "the toolchain at $TC has no VERSION file with a revision number (got '$TC_REV'). Install revision $TOOLCHAIN_MIN_REVISION or later (toolchain/README.md)" ;;
+esac
+[ "$TC_REV" -ge "$TOOLCHAIN_MIN_REVISION" ] || die "the toolchain at $TC is revision $TC_REV: its start-up objects carry no source-availability notice (the section __TEXT,__csu_notice), so every binary would be built without it. Install revision $TOOLCHAIN_MIN_REVISION or later (toolchain/README.md)"
 export PATH="$TC/bin:$PATH"
 need_tools cmake ninja git protoc python3 llvm-objdump-18 armv6-ios3-clang armv6-ios3-strip armv6-ios3-ldid armv6-ios3-check
 exec 9>"$BUILD_ROOT/.build-arm.lock"
@@ -193,7 +201,7 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
   echo "repo:      $(repo_describe "$REPO")"
   echo "toolchain: $TC (revision $TC_REV)   SDK: $IOS3_SDK   host clang: $(clang-18 --version 2>/dev/null | head -1)"
   echo
-  printf '%-34s %8s  %-64s  %-18s %8s  %-10s %-9s %s\n' binary size sha256 check post-v6 link-map start-up entitlements
+  printf '%-34s %8s  %-64s  %-18s %8s  %-10s %-9s %-8s %s\n' binary size sha256 check post-v6 link-map start-up notice entitlements
   for b in $BINARIES; do
     f="$ARM_OUT/$b"; tag="$(echo "$b" | tr '/' '_')"
     [ -f "$f" ] || { echo "$b: MISSING"; bad=1; continue; }
@@ -212,7 +220,7 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
     isa="$(sed -n '1s/.*: \([0-9][0-9]*\) post-ARMv6.*/\1/p' "$ARM_OUT/verify/$tag.isa.txt")"
     [ "$irc" = 2 ] || [ -z "$isa" ] && isa="ERR"
     [ "$isa" = 0 ] || bad=1
-    # start-up code: tools/startcheck.py on the binary itself (exit 1 = a check failed, 2 = could not check)
+    # start-up code and notice: tools/startcheck.py on the binary itself (exit 1 = a check failed, 2 = could not check)
     src=0; python3 -I "$STARTCHECK" "$f" > "$ARM_OUT/verify/$tag.startcheck.txt" 2>&1 || src=$?
     if [ "$src" = 0 ] && grep -q '=> START-UP CODE OK' "$ARM_OUT/verify/$tag.startcheck.txt"; then startup="PASS"
     else
@@ -220,6 +228,10 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
       bad=1
       grep -E '^  FAIL|CANNOT CHECK|Traceback' "$ARM_OUT/verify/$tag.startcheck.txt" | sed "s|^ *|$b: startcheck: |" >> "$FAILS" || true
     fi
+    # the notice: startcheck's "ok   notice:" line names the text it found in __TEXT,__csu_notice. No such
+    # line means the section is missing or holds something else (the FAIL line is in the list above).
+    notice="$(sed -n 's/^  ok   notice: .* the text for a \(program\|library\): ".*"$/\1/p' "$ARM_OUT/verify/$tag.startcheck.txt" | head -n 1)"
+    [ -n "$notice" ] || { notice="FAIL"; bad=1; }
     case "$(sed -n '1s/^.*: \(MH_[A-Z]*\) .*/\1/p' "$ARM_OUT/verify/$tag.startcheck.txt")" in
       MH_EXECUTE) want_start=crt1.o ;; MH_DYLIB) want_start=dylib1.o ;; MH_BUNDLE) want_start=bundle1.o ;; *) want_start="?" ;;
     esac
@@ -254,7 +266,7 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
       ents="$(echo $got | wc -w) keys: $(echo $got | sed 's/com\.apple\.springboard\.//g')"
       [ -n "$got" ] && [ "$got" = "$want_ents" ] || { ents="$ents  != expected"; bad=1; } ;;
     esac
-    printf '%-34s %8s  %-64s  %-18s %8s  %-10s %-9s %s\n' "$b" "$size" "$sha" "$check" "$isa" "$linkmap" "$startup" "$ents"
+    printf '%-34s %8s  %-64s  %-18s %8s  %-10s %-9s %-8s %s\n' "$b" "$size" "$sha" "$check" "$isa" "$linkmap" "$startup" "$notice" "$ents"
     echo "$sha  $b" >> "$ARM_OUT/SHA256SUMS"
   done
   echo
@@ -283,7 +295,16 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
   echo "  no .o file and no archive member under \$IOS3_SDK was linked, and exactly one start-up object, from the toolchain's"
   echo "  startfiles directory (shown: crt1.o for an executable, dylib1.o for a dylib, bundle1.o for a bundle)."
   echo "start-up = tools/startcheck.py: start, dyld_stub_binding_helper and __dyld_func_lookup inside the binary, their linked"
-  echo "  literals and the __DATA,__dyld section (details: verify/*.startcheck.txt)"
+  echo "  literals and the __DATA,__dyld section, and the notice (details: verify/*.startcheck.txt)"
+  echo "notice  = tools/startcheck.py: the section __TEXT,__csu_notice of the binary holds, byte for byte, the source-availability"
+  echo "  notice of its start-up object (toolchain/startfiles/notice.s): \"program\" = the text of crt1.o, required in an executable;"
+  echo "  \"library\" = the text of dylib1.o and bundle1.o, required in a dylib and in a bundle. FAIL = no such section, or another text."
+  echo "  The texts as read from the binaries above (verify/*.startcheck.txt):"
+  for k in program library; do
+    n="$( { grep -l "^  ok   notice: .* the text for a $k: \"" "$ARM_OUT"/verify/*.startcheck.txt 2>/dev/null || true; } | wc -l)"
+    t="$( { sed -n "s/^  ok   notice: .* the text for a $k: \"\(.*\)\"\$/\1/p" "$ARM_OUT"/verify/*.startcheck.txt 2>/dev/null || true; } | sort -u)"
+    echo "  $k, in $n of them: ${t:-(in none)}"
+  done
   echo
   STATUS_AFTER="$(git -C "$REPO" status --short --ignored 2>/dev/null || true)"
   echo "repo after the build: $(git -C "$REPO" status --short 2>/dev/null | wc -l) entries in 'git status --short'$( [ "$STATUS_BEFORE" = "$STATUS_AFTER" ] || echo '  ** git status (incl. ignored) CHANGED during the build **' )"

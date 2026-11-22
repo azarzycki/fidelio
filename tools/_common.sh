@@ -40,13 +40,19 @@ CSPOT_SOURCE_DATE_EPOCH=1794744000
 # The toolchain's start-up objects, <toolchain>/armv6-ios3/lib/startfiles/{crt1.o,dylib1.o,bundle1.o}:
 # one of them is the first object of every executable, dylib and bundle. They are built from Apple's
 # open-source Csu release (tag Csu-79) by toolchain/startfiles/build-startfiles.sh, which pins the same
-# three sha256 values; build-arm.sh checks the installed files against them. dylib1.o and bundle1.o
-# are the same bytes. Binaries linked with these objects are byte-identical to ones linked with the
-# SDK's copies, so a change here is a change of the toolchain, never a way to make a build pass.
+# three sha256 values; build-arm.sh checks the installed files against them. These are the objects of
+# toolchain revision 3: each carries the source-availability notice of toolchain/startfiles/notice.s
+# in its section __TEXT,__csu_notice, and the linker copies it into every binary (tools/startcheck.py
+# checks that). dylib1.o and bundle1.o are the same bytes. A change here is a change of the
+# toolchain, never a way to make a build pass.
 STARTFILES_SHA256="\
-crt1.o c8cf212f744caaedc9480b5cc6e845e66611e0fc665ed1aece37352b2e1321b1
-dylib1.o df1c33d140278d47c3580c66264893f18bae11ba0cd7363ff119b834781b2b80
-bundle1.o df1c33d140278d47c3580c66264893f18bae11ba0cd7363ff119b834781b2b80"
+crt1.o 29699d8ee4516b27a81ea29691f3e9592a50774976e3dfb746f046c541cbff05
+dylib1.o e07e529bd57b927624b4ecfeadd053ea6974eea053238c40b54fb123ac6570fe
+bundle1.o e07e529bd57b927624b4ecfeadd053ea6974eea053238c40b54fb123ac6570fe"
+# The oldest toolchain revision (the number in <toolchain>/VERSION) build-arm.sh accepts: the first
+# one whose start-up objects carry the notice. Revision 1 has no start-up objects of its own, and
+# revision 2 has them without the notice.
+TOOLCHAIN_MIN_REVISION=3
 
 die()  { echo "ERROR: $*" >&2; exit 3; }
 note() { echo "[$(date +%H:%M:%S)] $*"; }

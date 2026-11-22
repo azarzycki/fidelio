@@ -6,7 +6,7 @@ a signer, a C++17 runtime and start-up objects for the target. Every ARM binary 
 built with it (`tools/build-arm.sh`).
 
 This directory holds the toolchain's own source files and the script that packs the release tarball,
-`armv6-ios3-toolchain-linux-x86_64.tar.xz`. The file `VERSION` holds the toolchain revision: **2**.
+`armv6-ios3-toolchain-linux-x86_64.tar.xz`. The file `VERSION` holds the toolchain revision: **3**.
 
 Apple's iPhone SDK is **not** part of the toolchain, of the tarball or of this repository. To compile
 and link you supply your own copy of `iPhoneOS3.1.2.sdk` and point `IOS3_SDK` at it. `spotify/BUILD.md`
@@ -33,7 +33,11 @@ Start-up objects (armv6-ios3/lib/startfiles/crt1.o, dylib1.o, bundle1.o): built 
              open-source Csu release, tag Csu-79. Their source code is available under the Apple
              Public Source License (version 1.1 for start.s and crt.c, version 2.0 for dyld_glue.s)
              at https://github.com/apple-oss-distributions/Csu
-             share/armv6-ios3/src/startfiles/ has the script that builds them and both licence texts.
+             Each of the three objects carries a notice that says so, as a text in its section
+             __TEXT,__csu_notice, and the linker copies that section into every executable, dylib
+             and bundle built with this toolchain ("strings -a FILE | grep Csu-79" prints it).
+             share/armv6-ios3/src/startfiles/ has the script that builds them, the source of the
+             notice (notice.s) and both licence texts.
 ```
 
 ## Layout of the tarball
@@ -53,29 +57,38 @@ armv6-ios3-toolchain/
   lib/libdispatch.so, libBlocksRuntime.so, libplist-2.0.so.4   what the host tools load ($ORIGIN/../lib)
   armv6-ios3/lib/libc++.a, libc++abi.a, libc++experimental.a   static LLVM 18.1.3 C++ runtime for the target
   armv6-ios3/lib/libios3compat.a             functions iPhone OS 3 lacks; linked last by the wrapper
-  armv6-ios3/lib/startfiles/crt1.o, dylib1.o, bundle1.o        start-up objects, built from Apple's Csu
+  armv6-ios3/lib/startfiles/crt1.o, dylib1.o, bundle1.o        start-up objects, built from Apple's Csu,
+                                             each with the source-availability notice inside
   armv6-ios3/include/c++/v1/                 libc++ headers (1,017 files)
   armv6-ios3/include/ios3compat.h, ios3_tls.hpp
   share/armv6-ios3/toolchain.cmake           CMake toolchain file
   share/armv6-ios3/BUILD.md                  the build notes (spotify/BUILD.md of this repo)
   share/armv6-ios3/patches/                  the three patches to cctools-port, ldid and LLVM
   share/armv6-ios3/src/ios3compat/           ios3compat.c, ios3compat.h
-  share/armv6-ios3/src/startfiles/           build-startfiles.sh, APSL-1.1.txt, APSL-2.0.txt
+  share/armv6-ios3/src/startfiles/           build-startfiles.sh, notice.s, APSL-1.1.txt, APSL-2.0.txt
 ```
 
 ## Where each part comes from
 
-| Part | Source | In this round (revision 2) |
+| Part | Source | By revision |
 |---|---|---|
-| Host tools: `bin/arm-apple-darwin9-*`, `bin/ldid`, `lib/*.so*` | Built from pinned upstream commits of cctools-port, apple-libdispatch and ldid, with the patches in `spotify/patches/`, as `spotify/BUILD.md` §2 documents. libplist is Ubuntu's library, copied. | Carried over from revision 1, unchanged. |
-| C++ runtime: `libc++.a`, `libc++abi.a`, `libc++experimental.a`, the libc++ headers | Built from LLVM `llvmorg-18.1.3` with `spotify/patches/llvm-project-18.1.3-0001-libcxx-libcxxabi-ios3.patch`, as `spotify/BUILD.md` §3c documents. | Carried over from revision 1, unchanged. |
-| `libios3compat.a` | `src/ios3compat/ios3compat.c` here, plus builtins from LLVM compiler-rt 18.1.3 (`spotify/BUILD.md`, "libios3compat.a"). | Carried over from revision 1, not rebuilt. `ios3compat.c`, `ios3compat.h` and `ios3_tls.hpp` here are byte-identical to revision 1's. |
-| Wrappers, CMake file, headers: `bin/`, `share/`, `src/`, `include/` here | This project. | `bin/armv6-ios3-clang` changed (start-up objects, link maps); the rest is byte-identical to revision 1. |
-| Start-up objects | Apple's open-source Csu release, built by `startfiles/build-startfiles.sh`. | New. Revision 1 had none: its links took `crt1.o`, `dylib1.o` and `bundle1.o` from the SDK. |
-| `LICENSES/`, `THIRD-PARTY-NOTICES.md`, `LICENSE` | `licenses/` and `THIRD-PARTY-NOTICES.md` here; the repo's top-level `LICENSE`. | New. |
+| Host tools: `bin/arm-apple-darwin9-*`, `bin/ldid`, `lib/*.so*` | Built from pinned upstream commits of cctools-port, apple-libdispatch and ldid, with the patches in `spotify/patches/`, as `spotify/BUILD.md` §2 documents. libplist is Ubuntu's library, copied. | The files of revision 1, unchanged in revisions 2 and 3. |
+| C++ runtime: `libc++.a`, `libc++abi.a`, `libc++experimental.a`, the libc++ headers | Built from LLVM `llvmorg-18.1.3` with `spotify/patches/llvm-project-18.1.3-0001-libcxx-libcxxabi-ios3.patch`, as `spotify/BUILD.md` §3c documents. | The files of revision 1, unchanged in revisions 2 and 3. |
+| `libios3compat.a` | `src/ios3compat/ios3compat.c` here, plus builtins from LLVM compiler-rt 18.1.3 (`spotify/BUILD.md`, "libios3compat.a"). | The file of revision 1, not rebuilt. `ios3compat.c`, `ios3compat.h` and `ios3_tls.hpp` here are byte-identical to revision 1's. |
+| Wrappers, CMake file, headers: `bin/`, `share/`, `src/`, `include/` here | This project. | Revision 2 changed `bin/armv6-ios3-clang` (start-up objects, link maps); the rest is byte-identical to revision 1. Revision 3 changed none of them. |
+| Start-up objects | Apple's open-source Csu release, built by `startfiles/build-startfiles.sh`; the notice inside them is `startfiles/notice.s`, this project's file. | New in revision 2. Revision 1 had none: its links took `crt1.o`, `dylib1.o` and `bundle1.o` from the SDK. Since revision 3 each object carries the source-availability notice. |
+| `LICENSES/`, `THIRD-PARTY-NOTICES.md`, `LICENSE` | `licenses/` and `THIRD-PARTY-NOTICES.md` here; the repo's top-level `LICENSE`. | New in revision 2. Revision 3 changed `THIRD-PARTY-NOTICES.md` (§9 and §10: the notice); the licence texts are the same. |
 
-Revision 1 (2026-11-06) is the tarball the project was built with until this round. It is not meant
-for publication: it has no licence texts and carries an older copy of the build notes.
+- **Revision 1** (2026-11-06) is the tarball the project was built with until 2026-11-21. It is not
+  meant for publication: it has no licence texts and carries an older copy of the build notes.
+- **Revision 2** (2026-11-21) added the start-up objects, the licence texts and the pack script. Its
+  start-up objects carry no notice text, and `tools/build-arm.sh` no longer accepts it.
+- **Revision 3** (2026-11-22) puts the source-availability notice into the three start-up objects.
+  Against revision 2 the tarball differs in those three objects, in the new `notice.s` next to their
+  build script, and in the texts that describe them (`README.txt`, `VERSION`,
+  `THIRD-PARTY-NOTICES.md`, `BUILD.md`, `build-startfiles.sh`). Every other file is the same bytes.
+  Every binary linked with revision 3 differs from the same binary linked with revision 2: it
+  contains the notice.
 
 ## Start-up objects
 
@@ -92,17 +105,55 @@ directories before the SDK. The wrapper refuses to link if one of the three file
   https://github.com/apple-oss-distributions/Csu. The source is not kept in this repository.
 - It checks the sha256 of `start.s`, `crt.c` and `dyld_glue.s`, compiles them with the host clang 18,
   and checks the sha256 of the three objects. It needs no SDK and runs no linker.
+- It assembles `startfiles/notice.s` into each object, as the last part of the same assembly unit.
+  The Csu sources are used as published.
 - The script's header explains the recipe, and why the `ld -r` step of the release's Makefile must not
   be used with this toolchain's linker.
-
-Binaries linked with these objects are byte-identical to binaries linked with the SDK's copies.
-`tools/build-arm.sh` reads the link map of every binary it builds and fails if an object file of the
-SDK was linked, checks the three objects against pinned hashes, and runs `tools/startcheck.py` on the
-start-up code inside every binary.
 
 The three source files state their licences in their headers: Apple Public Source License 1.1
 (`start.s`, `crt.c`) and 2.0 (`dyld_glue.s`). Both texts are in `licenses/`, and
 `THIRD-PARTY-NOTICES.md` §9 has the details.
+
+### The notice inside the objects (since revision 3)
+
+For code that is distributed in object form, both licences ask for "a prominent notice, in the code
+itself as well as in related documentation, stating that Source Code of the Covered Code is available
+under the terms of this License with information on how and where to obtain such Source Code" (APSL
+1.1 §2.2(d), APSL 2.0 §2.3). The documentation part is `THIRD-PARTY-NOTICES.md` §9 and `README.txt`.
+The part in the code is `startfiles/notice.s`:
+
+- It defines one NUL-terminated ASCII string in a section of its own, `__TEXT,__csu_notice`, with a
+  local symbol, `__csu_source_notice`. It is this project's own file (MIT), not part of Csu, and
+  defines no code.
+- There are two texts, because the objects differ in what they contain. `crt1.o` says "This program
+  contains start-up code built from Apple's open-source Csu release, tag Csu-79: start.s and crt.c
+  under the Apple Public Source License version 1.1, dyld_glue.s under the Apple Public Source
+  License version 2.0. ..."; `dylib1.o` and `bundle1.o` say "This library contains glue code built
+  from Apple's open-source Csu release, tag Csu-79: dyld_glue.s under the Apple Public Source License
+  version 2.0. ...". Both end with the address of the source and the commit.
+  `THIRD-PARTY-NOTICES.md` §9 quotes them in full.
+- The linker copies the section into every executable, dylib and bundle, because the start-up object
+  is part of every link. The section is marked `no_dead_strip`, and so is the symbol: a link with
+  `-dead_strip` keeps the text although nothing refers to it (without the marks it is removed;
+  tested). `strip -x` removes the local symbol and leaves the text.
+- In a linked binary: `strings -a FILE | grep Csu-79` prints the text, `armv6-ios3-otool -l FILE`
+  lists the section, and the link map lists the symbol.
+
+A binary linked with revision 3 is therefore not the same bytes as one linked with revision 2 or
+with the SDK's copies of these objects: it has one more section in `__TEXT`, and the addresses
+around it move. Revision 2's objects, which had no notice, gave binaries that were byte-identical
+to ones linked with the SDK's copies; in the revision 3 objects everything that comes from the Csu
+sources (sections, contents, relocations, symbols) is the same as in revision 2's.
+
+### What `tools/build-arm.sh` checks
+
+- The toolchain is revision 3 or later; it refuses to build with an older one.
+- The three installed objects have the sha256 values pinned in `tools/_common.sh`.
+- The link map of every binary: no object file of the SDK was linked, and exactly one start-up
+  object, the toolchain's, of the kind that fits the file type.
+- `tools/startcheck.py` on every binary: the start-up code inside it, and the notice. The section
+  `__TEXT,__csu_notice` must hold, byte for byte, the text for a program (in an executable) or the
+  text for a library (in a dylib or a bundle). A binary without it fails.
 
 ## Licences
 

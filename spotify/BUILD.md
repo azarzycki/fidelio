@@ -7,11 +7,11 @@ Built on 2026-11-06 in an Ubuntu 24.04.5 x86_64 container. The host compiler is 
 
 ---
 
-## 0. Contents of the toolchain tarball (`armv6-ios3-toolchain-linux-x86_64.tar.xz`, revision 2)
+## 0. Contents of the toolchain tarball (`armv6-ios3-toolchain-linux-x86_64.tar.xz`, revision 3)
 
 ```
 armv6-ios3-toolchain/
-  README.txt, VERSION                        quick start; the toolchain revision (2)
+  README.txt, VERSION                        quick start; the toolchain revision (3)
   LICENSE                                    MIT, for this project's own files
   THIRD-PARTY-NOTICES.md, LICENSES/          the third-party components and their licence texts (§6b)
   bin/armv6-ios3-clang, armv6-ios3-clang++   compiler wrappers (target, sysroot and flags baked in)
@@ -24,17 +24,17 @@ armv6-ios3-toolchain/
   armv6-ios3/lib/libc++.a, libc++abi.a       static LLVM 18.1.3 libc++ / libc++abi for armv6 iOS 3 (C++17/20, incl. <fstream>/<filesystem>)
   armv6-ios3/lib/libc++experimental.a        installed by the libc++ build (one placeholder object)
   armv6-ios3/lib/libios3compat.a             functions iOS 3 lacks (clock_gettime, getentropy, emutls, atomics, ...)
-  armv6-ios3/lib/startfiles/crt1.o, dylib1.o, bundle1.o   start-up objects, built from Apple's open-source Csu (§6a)
+  armv6-ios3/lib/startfiles/crt1.o, dylib1.o, bundle1.o   start-up objects, built from Apple's open-source Csu (§6a), with a source-availability notice inside (§6d)
   armv6-ios3/include/c++/v1                  libc++ headers
   armv6-ios3/include/ios3compat.h, ios3_tls.hpp
   share/armv6-ios3/toolchain.cmake           CMake toolchain file
   share/armv6-ios3/BUILD.md                  this file
   share/armv6-ios3/patches/*.patch           every source change made to the toolchain's upstream code (three patches)
   share/armv6-ios3/src/ios3compat/           source of libios3compat
-  share/armv6-ios3/src/startfiles/           the script that builds the start-up objects, and the APSL 1.1 and 2.0 texts
+  share/armv6-ios3/src/startfiles/           the script that builds the start-up objects, the notice it puts into them (notice.s), and the APSL 1.1 and 2.0 texts
 ```
 
-The tarball does not include the SDK or a host clang. The toolchain's own files are in this repository under `toolchain/`, and `toolchain/pack.sh` assembles the tarball (§6c). Revision 1 was the tarball of 2026-11-06: no start-up objects, no licence texts, and an older copy of this file.
+The tarball does not include the SDK or a host clang. The toolchain's own files are in this repository under `toolchain/`, and `toolchain/pack.sh` assembles the tarball (§6c). Revision 1 was the tarball of 2026-11-06: no start-up objects, no licence texts, and an older copy of this file. Revision 2 (2026-11-21) added the start-up objects, without a notice inside them, and the licence texts. Revision 3 (2026-11-22) puts the notice into the start-up objects (§6d).
 
 **Host requirements** (Ubuntu 24.04 / WSL):
 - `apt install clang-18` (the stock Ubuntu `clang`)
@@ -273,9 +273,11 @@ To deploy: `scp hello_* root@phone:/var/mobile/` then `chmod +x`. If a binary di
 - 16 KB segment alignment on the iOS 3 loader: it should be fine as argued in §3d, but it is untested.
 - Behaviour of `hello_audio` (actual sound output, Bonjour results).
 
-## 6. Toolchain revision 2 (2026-11-21): start-up objects, licences, packing
+## 6. Toolchain revisions 2 (2026-11-21) and 3 (2026-11-22): start-up objects, licences, packing, the notice
 
 Revision 2 changes no compiler flag and no host tool. It adds the toolchain's own start-up objects, the licence texts of everything in the tarball, and a script that packs the tarball from this repository. The host tools, the C++ runtime and `libios3compat.a` are the files of revision 1, byte for byte.
+
+Revision 3 changes the three start-up objects and nothing else that takes part in a build: each object now carries a notice that says where its source code is available (§6d). §6a to §6c describe the toolchain as of revision 3 and say where revision 2 differed.
 
 ### 6a. Start-up objects
 
@@ -293,24 +295,28 @@ Csu-79 needs no SDK header: the only `#include` is `<stddef.h>`, which clang pro
 
 **The recipe** (`toolchain/startfiles/build-startfiles.sh OUTDIR`; `$CC` is the host clang 18 with the wrapper's target flags and no sysroot: `clang-18 -target armv6-apple-ios3.0 -miphoneos-version-min=3.0 -mfloat-abi=softfp -mfpu=vfpv2 -marm -nostdlibinc`):
 ```sh
+cp <dir of the script>/notice.s obj/notice.s
 $CC -S -Os -DCRT -fno-zero-initialized-in-bss crt.c -o obj/crt.crt.s
-printf '#include "start.s"\n#include "crt.crt.s"\n#include "dyld_glue.s"\n' > obj/crt1-unit.S
+printf '#include "start.s"\n#include "crt.crt.s"\n#include "dyld_glue.s"\n#include "notice.s"\n' > obj/crt1-unit.S
 $CC -c -Os -DCRT -I<src> -Iobj obj/crt1-unit.S -o crt1.o
-$CC -c -Os -DCFM_GLUE dyld_glue.s -o dylib1.o
-$CC -c -Os            dyld_glue.s -o bundle1.o
+printf '#include "dyld_glue.s"\n#include "notice.s"\n' > obj/glue-unit.S
+$CC -c -Os -DCFM_GLUE -I<src> -Iobj obj/glue-unit.S -o dylib1.o
+$CC -c -Os            -I<src> -Iobj obj/glue-unit.S -o bundle1.o
 ```
+`notice.s` is this project's own file and is new in revision 3 (§6d). Revision 2 had the same recipe without it: `crt1-unit.S` had the first three lines only, and `dylib1.o` and `bundle1.o` were assembled from `dyld_glue.s` directly.
+
 The script checks the three sources and the three outputs against sha256 values pinned inside it:
 
-| Object | Bytes | sha256 |
-|---|---|---|
-| `crt1.o` | 1052 | `c8cf212f744caaedc9480b5cc6e845e66611e0fc665ed1aece37352b2e1321b1` |
-| `dylib1.o` | 648 | `df1c33d140278d47c3580c66264893f18bae11ba0cd7363ff119b834781b2b80` |
-| `bundle1.o` | 648 | `df1c33d140278d47c3580c66264893f18bae11ba0cd7363ff119b834781b2b80` |
+| Object | Bytes | sha256 (revision 3) | Revision 2, without the notice |
+|---|---|---|---|
+| `crt1.o` | 1540 | `29699d8ee4516b27a81ea29691f3e9592a50774976e3dfb746f046c541cbff05` | 1052 bytes, `c8cf212f…1321b1` |
+| `dylib1.o` | 1064 | `e07e529bd57b927624b4ecfeadd053ea6974eea053238c40b54fb123ac6570fe` | 648 bytes, `df1c33d1…1b2b80` |
+| `bundle1.o` | 1064 | `e07e529bd57b927624b4ecfeadd053ea6974eea053238c40b54fb123ac6570fe` | 648 bytes, `df1c33d1…1b2b80` |
 
-`dylib1.o` and `bundle1.o` are the same bytes, because `-DCFM_GLUE` only selects PowerPC code.
+`dylib1.o` and `bundle1.o` are the same bytes, in revision 3 as in revision 2: `-DCFM_GLUE` only selects PowerPC code, and both get the same text of the notice.
 
-It follows the release's Makefile (sources, order, `-Os`, the `-D` flags). The deployment target is the toolchain's 3.0 where the Makefile has 2.0; none of the three files tests it. Two differences matter:
-- **`-fno-zero-initialized-in-bss` for `crt.c`.** Its four zero-initialised globals (`NXArgc`, `NXArgv`, `environ`, `__progname`) then stay in `__DATA,__data`, where the SDK's `crt1.o` has them. Without the flag clang 18 puts them in the zero-fill section `__DATA,__common`, and a linked executable is no longer the same bytes.
+It follows the release's Makefile (sources, order, `-Os`, the `-D` flags). The deployment target is the toolchain's 3.0 where the Makefile has 2.0; none of the three files tests it. The notice is one more input, after the Csu sources (§6d). Two differences matter for the code:
+- **`-fno-zero-initialized-in-bss` for `crt.c`.** Its four zero-initialised globals (`NXArgc`, `NXArgv`, `environ`, `__progname`) then stay in `__DATA,__data`, where the SDK's `crt1.o` has them. Without the flag clang 18 puts them in the zero-fill section `__DATA,__common`.
 - **No `ld -r`.** The Makefile compiles and merges each object in one `$(CC) -r` command. Do not do that with this toolchain's linker (ld64-956.6):
   - The ARM code reaches its data through literals of the form `label - (base + 8)`. The assembler stores each as a SECTDIFF relocation with a PAIR entry that holds the address of `base`.
   - `ld -r` writes them back with the `+ 8` folded into the PAIR address. For the literal of `__dyld_func_lookup`, the last routine, that address is the first byte past the end of `__TEXT,__text`.
@@ -318,20 +324,20 @@ It follows the release's Makefile (sources, order, `-Os`, the `-D` flags). The d
   - Such an object links, and the binary passes `armv6-ios3-check` and `tools/isa_scan.py`. Only a check of the linked literals finds it; that is what `tools/startcheck.py` is for.
   - So `crt1.o` is assembled as one unit (the three sources in the Makefile's order), and nothing is merged by a linker.
 
-**Linked outputs are byte-identical.** A binary linked with these objects has the same bytes as one linked with the SDK's copies. All eight binaries of this repository keep, with revision 2, the sha256 they had with revision 1 (`tools/build-arm.sh`, 2026-11-21), so nothing new reaches a device.
+**Linked outputs.** With revision 2, whose objects had no notice, a binary had the same bytes as one linked with the SDK's copies: all eight binaries of this repository kept the sha256 they had with revision 1 (`tools/build-arm.sh`, 2026-11-21). That is no longer true. From revision 3 on, every binary differs from those by the notice (§6d): it has one more section, and a new sha256.
 
 **In the wrapper.** `armv6-ios3-clang` puts `-L<toolchain>/armv6-ios3/lib/startfiles` before the caller's arguments on every link. ld64 searches the `-L` directories before the SDK's `usr/lib`, so the driver's `-lcrt1.o` finds the toolchain's file. The wrapper refuses to link if one of the three files is missing. With `IOS3_MIN_VERSION=3.1` the driver would ask for `crt1.3.1.o`, which the toolchain does not have, and the link would take the SDK's: one more reason to leave the deployment target at 3.0.
 
-**In `tools/build-arm.sh`.** The script refuses to run with a toolchain that has no `startfiles` directory. It sets `IOS3_LINK_MAP_DIR` for every ARM build, and for every binary it then
+**In `tools/build-arm.sh`.** The script refuses to run with a toolchain that has no `startfiles` directory (revision 1) or whose `VERSION` is below 3 (revision 2: no notice in the objects). It sets `IOS3_LINK_MAP_DIR` for every ARM build, and for every binary it then
 - reads the binary's link map and fails if the object table lists a `.o` file or an archive member under `$IOS3_SDK` (dylibs and frameworks of the SDK are linked dynamically and are expected there),
 - requires exactly one start-up object, from the toolchain's `startfiles` directory, and the right one for the file type,
-- runs `tools/startcheck.py` on the binary.
+- runs `tools/startcheck.py` on the binary: the start-up code, and the notice (§6d).
 
 It also compares the three installed objects with the sha256 values pinned in `tools/_common.sh`.
 
 ### 6b. Licence bundle
 
-- `LICENSE` is the MIT licence of this project's own files: the wrapper scripts, `toolchain.cmake`, `ios3compat`, `ios3_tls.hpp`, the build script of the start-up objects and this file. It is the `LICENSE` at the root of the repository.
+- `LICENSE` is the MIT licence of this project's own files: the wrapper scripts, `toolchain.cmake`, `ios3compat`, `ios3_tls.hpp`, the build script of the start-up objects, the notice it puts into them (`notice.s`) and this file. It is the `LICENSE` at the root of the repository.
 - `THIRD-PARTY-NOTICES.md` lists every third-party component of the tarball: the version or commit that was built, the licence its upstream states, where the source is, and the patch applied. §9 of it covers the start-up objects.
 - `LICENSES/` holds 25 licence texts and `MANIFEST.tsv`, which records for each text where it came from, its size and its sha256.
 - In the repository these are `toolchain/THIRD-PARTY-NOTICES.md` and `toolchain/licenses/`.
@@ -341,8 +347,33 @@ It also compares the three installed objects with the sha256 values pinned in `t
 ```sh
 toolchain/pack.sh --base /path/to/an/unpacked/armv6-ios3-toolchain [--out DIR]
 ```
-- **From `--base`**, unchanged: the parts built from upstream sources as §2 and §3c describe. These are the ELF host tools and their three shared libraries, the libc++ headers, and the four ARMv6 archives. Revision 2 was packed with revision 1 as its base.
+- **From `--base`**, unchanged: the parts built from upstream sources as §2 and §3c describe. These are the ELF host tools and their three shared libraries, the libc++ headers, and the four ARMv6 archives. Revision 2 was packed with revision 1 as its base, revision 3 with revision 2.
 - **From the repository:** the files under `toolchain/`, this file, the three toolchain patches from `spotify/patches/` (the cspot patch is not part of the toolchain), the top-level `LICENSE`. The `bin/armv6-ios3-*` symlinks are made by the script. The start-up objects are built on the spot (§6a).
 - **Self-check.** Before writing the tarball the script stops if a start-up object is missing, if a licence file named in the manifest is missing or differs from it, if a staged file contains a string on the script's deny list, or, with `IOS3_SDK` set, if a staged file has the sha256 of any file of the SDK.
 - **Deterministic.** Sorted names, one fixed mtime, owner and group 0, fixed modes, ustar format, `xz -9` on one thread. Two runs give the same sha256, which the script prints with the size.
 - The tarball lands in `toolchain-dist/` next to the repository unless `--out` says otherwise.
+
+### 6d. Revision 3 (2026-11-22): the notice inside the start-up objects
+
+**Why.** `start.s` and `crt.c` are under the Apple Public Source License 1.1 and `dyld_glue.s` is under 2.0 (§6a), and the code built from them is part of every binary. For code distributed in object form both licences ask for "a prominent notice, in the code itself as well as in related documentation, stating that Source Code of the Covered Code is available under the terms of this License with information on how and where to obtain such Source Code" (APSL 1.1 §2.2(d), APSL 2.0 §2.3). Revision 2 had that notice in the documentation only (`THIRD-PARTY-NOTICES.md` §9, `README.txt`). Revision 3 puts it into the code as well.
+
+**What.** `toolchain/startfiles/notice.s`, a file of this project (MIT), defines one NUL-terminated ASCII string in a section of its own, `__TEXT,__csu_notice`, with a local symbol, `__csu_source_notice`. `build-startfiles.sh` assembles it into each object as the last part of the assembly unit (§6a). The Csu sources are used as published. There are two texts, because the objects differ in what they contain; the preprocessor selects one with `CRT`, the macro that the Csu Makefile defines for `crt1.o` only:
+- `crt1.o` (387 characters and the NUL): "This program contains start-up code built from Apple's open-source Csu release, tag Csu-79: start.s and crt.c under the Apple Public Source License version 1.1, dyld_glue.s under the Apple Public Source License version 2.0. The source code is available under the terms of those licenses at https://github.com/apple-oss-distributions/Csu (commit fd4097d7a8b07792f55d74271d09adedb4748b94)."
+- `dylib1.o` and `bundle1.o` (312 characters and the NUL): "This library contains glue code built from Apple's open-source Csu release, tag Csu-79: dyld_glue.s under the Apple Public Source License version 2.0. The source code is available under the terms of that license at https://github.com/apple-oss-distributions/Csu (commit fd4097d7a8b07792f55d74271d09adedb4748b94)."
+
+**In the objects.** Compared with the objects of revision 2, the sections that come from the Csu sources have the same order, addresses, sizes, contents and relocations, and the symbols are the same. The notice is one more section, the last one, and one more local symbol.
+
+**In a linked binary.**
+- The linker copies the section into the output with the rest of the start-up object. ld64 places it in `__TEXT` after `__text` and the stub section.
+- It stays with `-dead_strip`: the section has the attribute `no_dead_strip`, and the symbol is marked `.no_dead_strip`. Without both marks `-dead_strip` removes the text; either mark alone keeps it (tested with an executable, a dylib and a bundle).
+- `strip -x` removes the local symbol and leaves the text.
+- `strings -a FILE | grep Csu-79` prints the text, `armv6-ios3-otool -l FILE` lists the section, and the link map lists the symbol with its address and size.
+- The section holds no code and nothing refers to it. `tools/isa_scan.py` decodes the same number of words as before: it does not take the text for code.
+
+**The project's binaries** (`tools/build-arm.sh`, 2026-11-22, against the revision 2 build of the same sources at the same paths). Each of the eight binaries has exactly one section more, `__TEXT,__csu_notice`, and every other section has the size it had. No file size changed: `__TEXT` is padded to a multiple of 16 KB (§3d), and in each of them the notice and its section header fit into that padding, so `__text` and the stubs start at a lower address than before. Every sha256 is new.
+
+**Checks.**
+- `tools/startcheck.py` requires the section in every binary and compares its contents, byte for byte, with the text for the file type: the program text in an executable, the library text in a dylib or a bundle.
+- `tools/build-arm.sh` shows the result in the `notice` column of `report.txt` and prints the texts it read from the binaries. A binary without the section, or with another text in it, fails the verification. The script refuses a toolchain older than revision 3 before it builds anything, and it compares the installed objects with the pinned sha256 values of revision 3.
+
+**Not verified.** As of 2026-11-22 no binary linked with revision 3 has been run on a device.

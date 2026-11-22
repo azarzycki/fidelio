@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Andy Zarzycki. Part of this repository's original work; see LICENSE at its root.
-"""Static check of the start-up code inside a LINKED ARMv6 Mach-O of this repo (thin, 32-bit, little-endian).
+"""Static check of what the start-up object put into a LINKED ARMv6 Mach-O of this repo (thin, 32-bit,
+little-endian): the start-up code, and the source-availability notice that comes with it.
 
 Every executable, dylib and bundle begins with one start-up object: crt1.o, dylib1.o or bundle1.o. The
 toolchain builds them from Apple's open-source Csu release (toolchain/startfiles/build-startfiles.sh).
@@ -15,21 +16,48 @@ pc-relative literal the linker resolved points where the Csu source says it must
   __DATA,__dyld              executables: 7 words, words 2..6 = mach_header, &NXArgc, &NXArgv, &environ,
                              &__progname; dylibs and bundles: the 2 dyld words only
 
+It also checks the source-availability notice that the start-up objects carry since toolchain revision 3
+(toolchain/startfiles/notice.s): the file must have a section __TEXT,__csu_notice whose contents are,
+byte for byte, one NUL-terminated string:
+
+  executables                the text of crt1.o ("This program contains start-up code ...")
+  dylibs and bundles         the text of dylib1.o and bundle1.o ("This library contains glue code ...")
+
+A file without the section, or with another text in it, fails. The two texts are NOTICE_PROGRAM and
+NOTICE_LIBRARY below; they must stay the same as the strings in notice.s.
+
 Why it exists: start-up objects merged with "ld -r" (the Csu Makefile's own recipe) link with this
 toolchain's ld64, and the result passes armv6-ios3-check and tools/isa_scan.py, but the literal of
-__dyld_func_lookup is wrong. Only a check of the linked literals sees that.
+__dyld_func_lookup is wrong. Only a check of the linked literals sees that. And a binary linked with
+start-up objects that lack the notice looks like any other: only a check of the section sees that.
 
 Needs no SDK, no toolchain and no other file: python3's standard library only.
 
 Usage: startcheck.py FILE...
 Exit:  0 every check passed in every file, 1 at least one check failed, 2 a file could not be checked.
 Each file prints "FILE: MH_... ..." first, one "ok"/"FAIL" line per check, and "=> START-UP CODE OK" or
-"=> N FAILURE(S)" last, so scripts can read the verdict from the last line.
+"=> N FAILURE(S)" last, so scripts can read the verdict from the last line. The line of the notice
+check starts with "ok   notice:" or "FAIL notice:"; the ok line names the text ("the text for a
+program" or "the text for a library") and ends with the text as found, in double quotes.
 """
 import struct
 import sys
 
 NUL = bytes(1)
+# The notice inside the start-up objects: toolchain/startfiles/notice.s defines these two strings.
+NOTICE_SECT = "__TEXT,__csu_notice"
+NOTICE_PROGRAM = (
+    "This program contains start-up code built from Apple's open-source Csu release, tag Csu-79: "
+    "start.s and crt.c under the Apple Public Source License version 1.1, "
+    "dyld_glue.s under the Apple Public Source License version 2.0. "
+    "The source code is available under the terms of those licenses at "
+    "https://github.com/apple-oss-distributions/Csu (commit fd4097d7a8b07792f55d74271d09adedb4748b94).")
+NOTICE_LIBRARY = (
+    "This library contains glue code built from Apple's open-source Csu release, tag Csu-79: "
+    "dyld_glue.s under the Apple Public Source License version 2.0. "
+    "The source code is available under the terms of that license at "
+    "https://github.com/apple-oss-distributions/Csu (commit fd4097d7a8b07792f55d74271d09adedb4748b94).")
+NOTICES = {"program": NOTICE_PROGRAM.encode("ascii") + NUL, "library": NOTICE_LIBRARY.encode("ascii") + NUL}
 # The ARM instructions of the three routines, up to their literal words (Csu-79: start.s, dyld_glue.s).
 START = bytes.fromhex("00009de504108de2014080e2042181e007d0cde30230a0e1044093e4000054e3fcffff1a"
                       "18c09fe50cc08fe000c09ce53cff2fe10cc09fe50cc08fe000c09ce51cff2fe1")
@@ -131,6 +159,33 @@ def hx(v):
     return "%#x" % v if v is not None else "nothing"
 
 
+def check_notice(m, res):
+    """__TEXT,__csu_notice must hold exactly the notice for this file type (see the module docstring)."""
+    want = "program" if m["ftype"] == 2 else "library"
+    s = m["sects"].get(NOTICE_SECT)
+    if s is None:
+        res(False, "notice: no %s section: the file does not carry the source-availability notice of the start-up "
+                   "objects (toolchain revision 3 or later puts it into every binary)" % NOTICE_SECT)
+        return
+    if (s["flags"] & 0xff) in (1, 12):
+        res(False, "notice: %s is a zero-fill section, it holds no text" % NOTICE_SECT)
+        return
+    got = m["d"][s["off"]:s["off"] + s["size"]]
+    if got == NOTICES[want]:
+        res(True, 'notice: %s at %#x, %d bytes, the text for a %s: "%s"'
+            % (NOTICE_SECT, s["addr"], s["size"], want, got[:-1].decode("ascii")))
+        return
+    other = [k for k, v in NOTICES.items() if v == got]
+    if other:
+        res(False, "notice: %s holds the text for a %s, but the file is %s and needs the text for a %s"
+            % (NOTICE_SECT, other[0], KINDS[m["ftype"]], want))
+    else:
+        exp = NOTICES[want]
+        n = next((i for i, (x, y) in enumerate(zip(got, exp)) if x != y), min(len(got), len(exp)))
+        res(False, "notice: %s (%d bytes) does not hold the text for a %s (%d bytes): the first difference is at byte %d, "
+                   "where the section has %r" % (NOTICE_SECT, s["size"], want, len(exp), n, got[max(0, n - 12):n + 12]))
+
+
 def check(path):
     m = parse(path)
     kind = KINDS[m["ftype"]]
@@ -150,6 +205,7 @@ def check(path):
 
     if dyld is None:
         res(False, "no __DATA,__dyld section")
+        check_notice(m, res)
         print("  => %d FAILURE(S)" % bad)
         return bad
     w0, w1 = rd32(m, dyld["addr"]), rd32(m, dyld["addr"] + 4)
@@ -226,6 +282,9 @@ def check(path):
         lit = struct.unpack("<I", code[f + 8:f + 12])[0]
         p = (a + 4 + 8 + lit) & 0xffffffff
         res(p == dyld["addr"] + 4, "__dyld_func_lookup literal -> %#x (expect __dyld+4 = %#x)" % (p, dyld["addr"] + 4))
+
+    # ---- the source-availability notice of the start-up object
+    check_notice(m, res)
     print("  => %s" % ("START-UP CODE OK" if not bad else "%d FAILURE(S)" % bad))
     return bad
 
