@@ -37,8 +37,8 @@ repo and is the one record of the project's state: **update it in the same commi
 
 1. **The repo:** the Windows clone is `C:\code\fidelio\github\fidelio`; its `origin` is GitHub
    (`azarzycki/fidelio`). Run `git fetch` first and compare with `origin/main` (§2.1).
-2. **The build environment** is a WSL2 distro on the same PC (§6.1): toolchain, SDK, a second clone and
-   `BUILD_ROOT` at the reference paths.
+2. **The build environment** is a WSL2 distro on the same PC (§6.1): toolchain, a second clone and
+   `BUILD_ROOT` at the reference paths. Apple's SDK is no longer needed to build (§6.3).
    - Bring the WSL clone up to date: fetch and fast-forward on the Windows side first, then `git pull` in
      WSL.
    - Builds and test runs go in subagents, one at a time (§6.1).
@@ -60,7 +60,8 @@ A headless audio receiver for two jailbroken devices docked in a **Philips Fidel
 | the **phone** | iPhone 2G (iPhone1,1) | iPhone OS 3.1.3 | ARMv6 (ARM1176) | MobileSubstrate present (stub + libsubstrate); **no cycript**; has syslog |
 | the **iPad** | iPad1,1 | iOS 5.1.1 | ARMv7 (A4); runs our armv6 binaries | **no MobileSubstrate** (deliberately; the install was stopped); **has cycript**; **no syslog** (use file traces); ~13 MB free RAM; lacks head/tail/tr/cut/sort/awk/nohup |
 
-**Components** (one monorepo, everything built ARMv6 against the iPhoneOS 3.1.2 SDK):
+**Components** (one monorepo, everything built ARMv6 for iPhone OS 3.1; since 2026-11-22 against the
+project's own sysroot, before that against Apple's iPhoneOS 3.1.2 SDK, with identical binaries; §6.3):
 - **`fidelio-audiod`** (`audiod/`): the arbiter daemon.
   - It owns the AudioQueue output. Sources stream PCM to it over the Unix socket `/var/mobile/fidelio/audiod.sock`.
   - It picks the active source, applies volume, wakes and unlocks the display on play, enables the lock
@@ -98,14 +99,16 @@ The **dock**:
   - No source of a binary that is installed on a device changed since `5dc865f`.
   - Since `c46beee` every binary builds to a new sha256, because the toolchain puts a notice into it
     (§2.3). Those builds are on the iPad since 2026-11-22 and not yet on the phone (§2.4).
+  - `55d1a82`, `926ea54`, `831ac15` and `b5e3106` (2026-11-22): the build no longer needs Apple's SDK
+    (§6.3). No binary changed.
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
   - Earliest rounds: `audiod-b11`, `-b12`, `-b13`, `-b15` … `-b19`, `-b110` … `-b116`. There is no `-b14`.
   - `audiod-b1161` (32af243), `-b116dr` (272c7e5), `-b116lp` (0b90521).
   - The second cloud session's: `-b1164` (ab0c7aa), `-b118`, `-b1165`, `-b1166`, `-b1167`, `-b1168`,
     `-b1169`, `-b11610`, `-b11611`.
-  - voltest (5dc865f, b8d8976) and the tools and toolchain commits (6721da9, 5a2283c, c46beee) have no
-    marker. Check with `git ls-remote --heads origin`.
+  - voltest (5dc865f, b8d8976) and the tools and toolchain commits (6721da9, 5a2283c, c46beee, and the
+    four sysroot commits 55d1a82, 926ea54, 831ac15, b5e3106) have no marker. Check with `git ls-remote --heads origin`.
 - The old cloud session branch `ccr-afef93fb-x0jdve` is history, at `5dc865f`.
 - **Patches:** the series `diffs/fidelio-0001…0049`, one per commit, existed only in the retired private
   store. The commits are the record.
@@ -132,8 +135,9 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | voltest | b8d8976 | none | the probe also shows iapd's side of the volume and can call `IAPAudioSetVolume` (§3.1) | not run on a device yet |
 | toolchain r2 | 5a2283c | none | toolchain revision 2: start-up objects built from Apple's open-source Csu, licence texts, `toolchain/pack.sh`, the toolchain's own sources in the repo under MIT, link-map and start-up checks in `build-arm.sh`; every binary keeps its sha256 | nothing to install |
 | toolchain r3 | c46beee | none | toolchain revision 3: the start-up objects carry a notice that says where their source is (Apple's open-source licence asks for it "in the code itself"), so every binary carries it in a section `__TEXT,__csu_notice`; `build-arm.sh` requires revision 3 and checks the notice; every binary has the same size and a new sha256 (§2.3) | iPad, 2026-11-22: smoke test PASS and the suite installed; the phone is open (§2.4, §3.2) |
+| sysroot | 55d1a82, 926ea54, 831ac15, b5e3106 | none | the build without Apple's SDK: `toolchain/sysroot/` makes a sysroot from a symbol list (stub libraries), Apple's published open-source headers (pinned) and framework headers of our own; `tools/build-arm.sh` uses it by default; every binary keeps its sha256 (§6.3) | nothing to install |
 
-### 2.3 Current builds: `tools/build-arm.sh` at c46beee, toolchain revision 3
+### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee, unchanged)
 
 The sources of each binary are those of the round named in the last column. Only the toolchain changed.
 
@@ -152,6 +156,8 @@ The sources of each binary are those of the round named in the last column. Only
   on 2026-11-22 gave the same nine files. cspot-ios3's and DockRemote.dylib's hashes depend on those
   paths (§6.3).
 - After a build the same list is in `$BUILD_ROOT/arm-out/SHA256SUMS`.
+- **Built without Apple's SDK since `b5e3106`** (§6.3): the same nine files, byte for byte, as the build
+  against the SDK.
 - **What differs from the revision 2 build of the same sources:** one more section in each binary,
   `__TEXT,__csu_notice` (388 bytes in an executable, 313 in a dylib or a bundle), which holds the notice
   of the start-up object (§6.3).
@@ -458,7 +464,8 @@ of §2.3's first table is installed, and so before the packages of §3.5 are bui
   Nothing has been published yet.
 - The toolchain tarball of a release is the pack at the release commit (§6.1): the tarball recorded
   there was packed at `c46beee`, before the last change to `LICENSE`.
-- How CI gets Apple's SDK is open (§4).
+- Apple's SDK is no longer needed (§6.3), so the whole build can run on GitHub's runners (the owner
+  chose this way on 2026-11-22, §5.2). Open for CI: where the runner gets the toolchain (§4).
 
 ---
 
@@ -487,26 +494,37 @@ of §2.3's first table is installed, and so before the packages of §3.5 are bui
    - Open: the notices for the third-party code that is linked into the device binaries (the Spotify
      library and what it bundles, mbedTLS, the C++ runtime) have not been drawn up. The packages need
      them.
-4. **How release CI gets Apple's SDK** (§3.7). The owner wants no exposure to Apple (§5.2). The repo is
-   public, and so are its Actions logs. Proposed, not decided:
-   - the host suites on GitHub's runners (they need no SDK);
-   - the ARM build and the release on a runner on the owner's PC, so the SDK never leaves it.
+4. **Release CI** (§3.7). Settled on 2026-11-22: the build needs no SDK any more (§6.3), so nothing of
+   Apple's has to reach GitHub, and no runner on the owner's PC is needed. Open:
+   - **Where the runner gets the toolchain.** `tools/build-arm.sh` needs the toolchain tarball (the
+     host tools and the ARMv6 C++ runtime). Either the tarball is published first, as a release asset,
+     which needs the owner's word, or the workflow builds it from source (`spotify/BUILD.md` §2, §3c).
+     Building the C++ runtime against the project's own sysroot has not been tried: that build reads
+     more headers than the sysroot's allow-list holds today.
+   - On a runner: Ubuntu 24.04 with the packages of §6.1. The first build fetches the pinned upstreams
+     and Apple's published releases from GitHub.
+5. **The project's own framework headers: a licence judgement for the owner** (2026-11-22; facts
+   gathered, not judged). `toolchain/sysroot/frameworks/` declares the part of Apple's UIKit, Foundation,
+   CoreGraphics, QuartzCore, AudioToolbox, CoreAudio and AVFoundation interfaces that the sources use.
+   The text and its arrangement are the project's own, and the work log of that stage records no
+   look-up in an SDK header. Three things necessarily mirror Apple's interface:
+   - the names and types of the classes, methods, functions and constants in use, because the device's
+     libraries export exactly those; parameter names follow Apple's documentation;
+   - seven protocols declared in full (NSObject, UIApplicationDelegate, UIScrollViewDelegate,
+     UITableViewDataSource, UITableViewDelegate, UIAlertViewDelegate, UITextFieldDelegate): the compiler
+     writes the whole method list of an adopted protocol into the binary, and the lists were read from
+     the project's own objects;
+   - three instance sizes (UIApplication, UIWindow, UIViewController), declared as reserved storage.
 
-   **What needs the SDK** (the owner asked on 2026-11-22 what cannot run on GitHub's runners):
-   - One stage: every compile and link for ARM, which is all of `tools/build-arm.sh`. The wrapper
-     compiles against the SDK's headers and links against its libraries, and `armv6-ios3-check` reads
-     the SDK to check the imports.
-   - Also the rare rebuild of the toolchain's two target libraries, libc++ and `libios3compat.a`
-     (`spotify/BUILD.md` §3c).
-   - Everything else needs no SDK: the host suites, the start-up objects, `toolchain/pack.sh` from a
-     base toolchain (its comparison with the SDK's files is then skipped), `tools/startcheck.py` and
-     `tools/isa_scan.py` on finished binaries, building the packages from finished binaries, the
-     version bump and publishing the release.
-   - So without a runner on the PC, the alternative is to build the ARM binaries on the PC and hand them
-     to the workflow. A third way would be to stop using the SDK: own declarations for the framework
-     calls the sources make (UIKit, Foundation, AudioToolbox, QuartzCore, AVFoundation have no
-     open-source headers; the C library, Mach, the Objective-C runtime and CoreFoundation do) and link
-     stubs made from symbol lists. That is a project of its own and has not been scoped.
+   A mechanical comparison with the SDK's headers on 2026-11-22 (counts only) shows where the text
+   coincides: single declaration lines throughout, as the first point says, and three longer runs of
+   identical lines, each a list that the interface fixes: 18 lines (the NSObject protocol's methods),
+   10 (the fields of the audio stream description) and 9 (the three geometry structures). Elsewhere
+   the longest run is 4 lines.
+
+   The headers under `usr/include` and CoreFoundation's are Apple's published open-source files,
+   fetched at build time and not kept in the repo, plus eight small patches of the project
+   (`toolchain/sysroot/README.md`).
 
 The volume default is no longer a question: the owner decided on 2026-11-18 (§3.1, §5.2).
 
@@ -584,6 +602,11 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
     (`docs/RENAME-PLAN.md` §6).
   - "Deploy to the dock": the go-ahead for the queued installs. Done on the iPad that day; the phone was
     not reachable (§2.4).
+  - The build without Apple's SDK: "#3 make our own, do that if it'll be functionally equivalent"
+    (the third of three ways to get the ARM build onto GitHub's runners). Done the same day under one
+    test: the switch is made only if every binary stays byte-identical. It did (§6.3).
+  - Iterative build, compare and fix work is delegated to subagents on smaller models; the session
+    plans, reviews the diffs and pushes (§6.1).
 - **Naming** (from before): the app is "NowPlaying"; new components get neutral names; the advertised device
   names stay. The full rename is B1.17 only.
 
@@ -604,7 +627,7 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   | What | Path |
   |---|---|
   | toolchain | `/home/user/opt/armv6-ios3-toolchain` |
-  | SDK | `/home/user/sdk/iPhoneOS3.1.2.sdk` |
+  | Apple's SDK (optional since `b5e3106`, §6.3) | `/home/user/sdk/iPhoneOS3.1.2.sdk` |
   | repo | `/home/user/fidelio` |
   | `BUILD_ROOT` (left unset) | `/home/user/build` |
 
@@ -613,11 +636,14 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   in WSL.
 - **Build only inside the distro's own filesystem,** never under `/mnt/c`.
 - **Builds and test runs go in subagents, one at a time** (the owner's wish; the scripts share one
-  `BUILD_ROOT`).
+  `BUILD_ROOT`). Since 2026-11-22 the iterative build, compare and fix work goes to subagents on
+  smaller models, and the session plans, reviews the diffs and pushes (also the owner's wish).
 - **Packages:**
-  `apt-get install clang-18 llvm-18 cmake ninja-build protobuf-compiler python3-protobuf libavahi-client-dev g++`.
+  `apt-get install clang-18 llvm-18 cmake ninja-build protobuf-compiler python3-protobuf libavahi-client-dev g++ unifdef flex bison`.
   - `g++` gives the host suite its `cc` and `c++`.
-  - `tools/_common.sh` prints exactly this list if something is missing.
+  - `unifdef`, `flex` and `bison` are needed when `tools/build-arm.sh` makes the sysroot itself (§6.3).
+    Ubuntu 24.04's flex 2.6.4 and bison 3.8.2 were tested.
+  - `tools/_common.sh` prints the list if something is missing.
   - The host clang is Ubuntu 24.04's `clang-18` (18.1.3).
 - **The toolchain's own files are in the repo** (`toolchain/`, since `5a2283c`); its tarball and the SDK
   are not.
@@ -656,12 +682,13 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   - **SDK tarball** `iPhoneOS3.1.2.sdk.tar.xz`: 97,995,312 bytes, sha256
     `d5122c3bd2ddd217de918ff3635c590261424dc7f3a5e63d4cbd8417bec2d5e2` (verified identical to Apple's DMG).
     It is kept at `C:\code\fidelio\`. It is Apple's: never commit it, and never publish it or a link to a
-    copy (§5.2). `spotify/BUILD.md` §1 says how it was checked.
+    copy (§5.2). `spotify/BUILD.md` §1 says how it was checked. Since `b5e3106` the build does not
+    need it; it is kept to confirm additions to the sysroot (§6.3).
   - Unpacking, if the distro has to be set up again:
     ```sh
     mkdir -p /home/user/opt && tar xf armv6-ios3-toolchain-linux-x86_64.tar.xz -C /home/user/opt
-    # extract the SDK so that /home/user/sdk/iPhoneOS3.1.2.sdk/usr/lib/libSystem.B.dylib exists
-    export IOS3_SDK=/home/user/sdk/iPhoneOS3.1.2.sdk
+    # No SDK is needed to build. To build against Apple's SDK (§6.3), extract it so that
+    # /home/user/sdk/iPhoneOS3.1.2.sdk/usr/lib/libSystem.B.dylib exists and set IOS3_SDK to that directory.
     ```
 - **Running WSL from the PC session:**
   - Pipe a single-quoted heredoc into `wsl -d Ubuntu2404 -u root -- bash -s`. Multi-line commands passed
@@ -683,6 +710,13 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   - `tools/build-arm.sh` from nothing, twice at the same path (91 s and 87 s): `result: OK` and the same
     `SHA256SUMS` both times. Warm at `c46beee`: 16 s, the same hashes (§2.3).
   - `tools/run-host-tests.sh`: `TOTAL host: 340 ok, 0 FAIL`, 22 of 22 suites on the first run, 580 s.
+- **Baseline without Apple's SDK, 2026-11-22** (`b5e3106`; the SDK directory was hidden from every run):
+  - `tools/build-arm.sh` from nothing, twice at the same path (100 s and 102 s, every fetch included):
+    `result: OK` and the nine hashes of §2.3 both times; all 405 object files are identical between
+    the two runs and to the build against the SDK. Warm: 14 s, with no network.
+  - `tools/run-host-tests.sh`: `TOTAL host: 340 ok, 0 FAIL`, 22 of 22 suites on the first run, 576 s.
+  - Trees kept in WSL: `/home/user/build.r3-sdk` is the last tree built against Apple's SDK,
+    `/home/user/build.own-a` the first of the two built without it, and `/home/user/build` the second.
 - **BUILD.md** (`spotify/BUILD.md`) documents the toolchain in full: the tarball contents, the wrapper
   flags, the float ABI, `libios3compat`, the patches, and what was verified.
 - **cspot's nanopb generator** needs a python3 whose protobuf still has `reflection.MakeClass`.
@@ -737,7 +771,45 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   there**, or both ends silently drop it.
 
 ### 6.3 tools/build-arm.sh (the ARM build and verification)
-`IOS3_SDK` is required; the toolchain comes from `PATH` or `IOS3_TOOLCHAIN`.
+The toolchain comes from `PATH` or `IOS3_TOOLCHAIN`. **No SDK is needed** (since `b5e3106`, 2026-11-22):
+- **The sysroot.** The wrapper compiles and links against the directory in `IOS3_SDK`.
+  - `IOS3_SDK` unset: `tools/build-arm.sh` makes the project's own sysroot in `$BUILD_ROOT/sysroot/root`
+    with `toolchain/sysroot/build-sysroot.sh` and uses it. This is the normal build.
+  - `IOS3_SDK` set: that directory is used as it is, Apple's `iPhoneOS3.1.2.sdk` or a sysroot made
+    earlier by `build-sysroot.sh`. Apple's SDK is needed for one thing only: to confirm an addition to
+    the sysroot against the real libraries and headers.
+  - `report.txt` names the sysroot in its second line. The project's own is identified by the first 16
+    hex digits of the sha256 of `$BUILD_ROOT/sysroot/CONTENTS`; on 2026-11-22: `8ee9290184708740`.
+  - `arm/sysroot` under `BUILD_ROOT` is something else: the install prefix of the ARMv6 mbedTLS.
+- **What the project's own sysroot is** (`toolchain/sysroot/README.md` has the detail):
+  - Link libraries: 11 stub libraries generated from `stubs/manifest.tsv`, the list of the 426 symbols
+    that the binaries and the toolchain's archives import, with each library's install name and versions.
+  - `usr/include` and CoreFoundation: 264 headers. 240 are files of Apple's published open-source
+    releases (xnu, Libc, CF and others, pinned by commit and sha256 in `headers/sources.tsv`), as
+    published or with the release's own install processing; 10 carry one of eight small patches of
+    the project; 13 are generated by Apple's `mig`, which the script builds from source; 1 is our own.
+  - The other frameworks: nine headers of our own (`frameworks/`), declaring only what the sources use.
+  - The releases are fetched once into `$BUILD_ROOT/deps/apple-oss` and checked against their pins on
+    every use. A warm build reads nothing from the network.
+- **Each of the three parts is an allow-list.** A symbol, a header or a declaration that is not there
+  was not needed so far. How to add one is in `toolchain/sysroot/README.md`. The rule: confirm it
+  against Apple's SDK (`IOS3_SDK=…`) or on a device first.
+- **Proof of equivalence** (2026-11-22): against the project's own sysroot, with the SDK directory hidden
+  from the build, all 409 compiles give byte-identical objects and the nine binaries have the hashes of
+  §2.3. Each of the four stages was held to that test.
+- **What a future source could notice** is listed in `toolchain/sysroot/README.md` ("What differs and
+  does not matter today"). The main points:
+  - there is no `usr/include/stdint.h`: clang's own is used, so `__WORDSIZE` is undefined;
+  - the ARM machine headers come from a 2017 release;
+  - the framework headers declare only today's usage.
+- **Objective-C:** the four component build scripts compile with `-Werror=objc-method-access`. With
+  allow-list headers a message to an undeclared method would otherwise compile, with only a warning,
+  to wrong code.
+- **A local tool, not in the repo:** `/root/sdkfree/harness/replay.sh --sysroot DIR` in WSL replays all
+  409 compiles against a sysroot and reports the objects that differ (about 50 s). It was the test
+  bench of this work and is the quick check for a change to the sysroot.
+
+About the script itself:
 - **It builds:** mbedTLS; audiod and lockctl (CMake); raop; cspot (deps); NowPlaying, both lock bundles,
   DockRemote and voltest (their `build.sh`).
 - It collects everything into `$BUILD_ROOT/arm-out`, then verifies each binary: size, sha256,
@@ -1051,6 +1123,17 @@ Defaults are in brackets.
   - WSL appends the Windows `PATH`: set a clean one.
   - Build only inside the distro's own filesystem, never under `/mnt/c`.
   - One build or test run at a time: the scripts share one `BUILD_ROOT`.
+- **The sysroot's allow-lists** (§6.3):
+  - CMake's configure probes (`check_function_exists` and the like) link against the stub libraries. A
+    function that is missing from `stubs/manifest.tsv` is reported as absent, without any error, and the
+    build then takes another code path. After adding a dependency or a probe, read
+    `CMakeConfigureLog.yaml` (`toolchain/sysroot/README.md` has the grep).
+  - `armv6-ios3-check` against the project's own sysroot only confirms that an import is in the
+    manifest. That iPhone OS 3.1 really has the symbol is confirmed when the row is added.
+  - The stub tree must never contain `usr/lib/libstdc++.dylib`: clang would then link it by name.
+  - The toolchain's wrapper still says "SDK" in its messages, and its default C++ runtime
+    (`IOS3_CXX_RUNTIME` unset) needs the SDK's libstdc++ headers, which the project's own sysroot does
+    not have. The build always uses libc++. Both are for the next toolchain revision.
 
 ---
 
@@ -1058,6 +1141,10 @@ Defaults are in brackets.
 
 ### 12.1 `main`, newest first (subjects shortened)
 ```
+b5e3106 tools: build against the project's own sysroot by default; IOS3_SDK optional
+831ac15 toolchain: framework headers of our own, build-sysroot.sh (sysroot stage 3)
+926ea54 toolchain: sysroot headers from Apple's open-source releases (sysroot stage 2)
+55d1a82 toolchain: stub link libraries from a symbol manifest (sysroot stage 1)
 d1b20a9 LICENSE: the Spotify receiver binary as a whole is GPL-3.0-or-later
 c46beee toolchain: revision 3 (the source notice inside the start-up objects; every binary a new sha256)
 5a2283c toolchain: revision 2 (own start-up objects, licence texts, pack script), sources in the repo, MIT

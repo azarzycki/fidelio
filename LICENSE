@@ -21,9 +21,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 NOTE: This license covers the original work in this repository. Files under
-spotify/patches/ are derivative works of their respective upstream projects
-(cctools-port, ldid, LLVM, cspot/bell) and are governed by those projects'
-licenses. The license texts under toolchain/licenses/ belong to the
+spotify/patches/ and toolchain/sysroot/headers/patches/ are derivative works
+of their respective upstream projects (cctools-port, ldid, LLVM, cspot/bell;
+Apple's open-source releases) and are governed by those projects' licenses. The license texts under toolchain/licenses/ belong to the
 third-party components listed in toolchain/THIRD-PARTY-NOTICES.md.
 
 The Spotify receiver (cspot-ios3) statically links this repository's code
