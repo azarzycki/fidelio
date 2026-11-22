@@ -53,17 +53,20 @@ class HardwareVolume {
 
 // Host / test double. Available iff env AUDIOD_MOCK_HW_VOLUME is set (its value = initial level).
 // AUDIOD_MOCK_HW_CHANGE_FILE=<path>: a file whose single float content, when it changes, is taken as an
-// external (button) change — lets a test push a "phone button" event.
+// external (button) change — lets a test push a "phone button" event. B1.16.14: get() sees a new value at
+// once (the hardware changed), takeChange() reports it at the next poll (the notification);
+// AUDIOD_MOCK_HW_POLL_MS overrides the poll interval (default 100 ms), so a test can open the window in
+// which the level has changed but audiod has not yet noticed.
 // B1.16.12: AUDIOD_MOCK_IAP=ok|unsupported|fail|query-fail makes the mock dock available in that state
 // (unset = unavailable); every IAPAudioSetVolume it "makes" is logged as `mock iap: IAPAudioSetVolume(L) -> R`.
 class MockHardwareVolume : public HardwareVolume {
  public:
   MockHardwareVolume();
   bool available() override { return avail; }
-  bool get(float& level) override { if (!avail) return false; level = lvl; return true; }
+  bool get(float& level) override { if (!avail) return false; syncChangeFile(); level = lvl; return true; }
   bool set(float level) override;
   bool takeChange(float& level) override;
-  unsigned pollIntervalMs() override { return 100; }
+  unsigned pollIntervalMs() override { return pollMs; }
   std::string describe() override { return avail ? "mock hardware volume (AUDIOD_MOCK_HW_VOLUME)" : "mock hardware volume: unavailable (AUDIOD_MOCK_HW_VOLUME unset)"; }
   bool dockAvailable() override { return !iapMode.empty(); }
   DockResult tellDock(float level) override;
@@ -76,6 +79,10 @@ class MockHardwareVolume : public HardwareVolume {
   std::string changeFile;
   std::string lastChangeContent;
   std::string iapMode;  // B1.16.12: AUDIOD_MOCK_IAP
+  unsigned pollMs = 100;       // B1.16.14: AUDIOD_MOCK_HW_POLL_MS
+  bool changePending = false;  // a change-file value taken into lvl, not yet reported by takeChange
+  float changeLevel = 0;
+  void syncChangeFile();
 };
 
 #ifdef __APPLE__

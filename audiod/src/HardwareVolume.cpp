@@ -12,6 +12,8 @@ MockHardwareVolume::MockHardwareVolume() {
   if (f && *f) changeFile = f;
   const char* i = getenv("AUDIOD_MOCK_IAP");
   if (i && *i) iapMode = i;
+  const char* pm = getenv("AUDIOD_MOCK_HW_POLL_MS");
+  if (pm && *pm && atoi(pm) > 0) pollMs = (unsigned)atoi(pm);
 }
 
 // B1.16.12: the host stand-in for IAP.framework (see HardwareVolume.h).
@@ -35,22 +37,32 @@ bool MockHardwareVolume::set(float level) {
   return true;
 }
 
-bool MockHardwareVolume::takeChange(float& level) {
-  if (!avail || changeFile.empty()) return false;
+// B1.16.14: a new value in the change file is the hardware changing: get() sees it at once, takeChange()
+// reports it once (the notification), at the next poll.
+void MockHardwareVolume::syncChangeFile() {
+  if (!avail || changeFile.empty()) return;
   FILE* fp = fopen(changeFile.c_str(), "r");
-  if (!fp) return false;
+  if (!fp) return;
   char buf[64] = {0};
   size_t n = fread(buf, 1, sizeof buf - 1, fp);
   fclose(fp);
   buf[n] = 0;
   std::string content(buf);
-  if (content.empty() || content == lastChangeContent) return false;
+  if (content.empty() || content == lastChangeContent) return;
   lastChangeContent = content;
   float v = (float)atof(buf);
   if (v < 0) v = 0;
   if (v > 1) v = 1;
-  if (v == lvl) return false;
+  if (v == lvl) return;
   lvl = v;
-  level = v;
+  changePending = true;
+  changeLevel = v;
+}
+
+bool MockHardwareVolume::takeChange(float& level) {
+  syncChangeFile();
+  if (!changePending) return false;
+  changePending = false;
+  level = changeLevel;
   return true;
 }
