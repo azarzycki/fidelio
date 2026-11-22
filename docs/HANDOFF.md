@@ -1,4 +1,4 @@
-# HANDOFF — the dock-receiver stack (`azarzycki/fidelio`), state as of 2026-11-22
+# HANDOFF — the dock-receiver stack (`azarzycki/fidelio`), state as of 2026-11-22, evening
 
 This file is written for a fresh session that has none of the conversation behind it. It lives in the
 repo and is the one record of the project's state: **update it in the same commit as each round**
@@ -42,6 +42,8 @@ repo and is the one record of the project's state: **update it in the same commi
    - Bring the WSL clone up to date: fetch and fast-forward on the Windows side first, then `git pull` in
      WSL.
    - Builds and test runs go in subagents, one at a time (§6.1).
+   - Since 2026-11-22 all work goes to background subagents, device work and log analysis included; the
+     session plans, briefs, reviews and talks with the owner, and ends its turns at once (§5.2, §6.1).
 3. **Prove the baseline:**
    - `tools/build-arm.sh` → `result: OK` with the hashes in §2.3.
    - `tools/run-host-tests.sh` → `TOTAL host: 447 ok, 0 FAIL`, 25 suites, about 10 minutes. Run it alone
@@ -95,25 +97,27 @@ The **dock**:
 - `main`: see `git log`. Since 2026-11-18 it gained `6721da9` (tools only), `dfbbc3d` (this record moved
   into the repo), `b8d8976` (the volume probe extended), `5a2283c` (toolchain revision 2), `c46beee`
   (toolchain revision 3, §6.1), `d1b20a9` (the licence note for the Spotify receiver, §5.2) and the docs
-  commits around them, and `e590ef1` (B1.16.12).
+  commits around them, `e590ef1` (B1.16.12), `619c552` and `8af19cb` (B1.16.13), `5f519ec` and `23f407d`
+  (B1.16.14), and `86ce0b7` (B1.16.15). **`main` is at `86ce0b7`** since 2026-11-22.
   - No source of a binary that is installed on a device changed since `5dc865f`, until B1.16.12 (audiod,
     e590ef1, below).
   - Since `c46beee` every binary builds to a new sha256, because the toolchain puts a notice into it
-    (§2.3). Those builds are on the iPad since 2026-11-22 and not yet on the phone (§2.4).
+    (§2.3). Those builds are on both devices since 2026-11-22: the iPad has those of the morning, the
+    phone those of B1.16.12 … B1.16.15 as well (§2.4).
   - `55d1a82`, `926ea54`, `831ac15` and `b5e3106` (2026-11-22): the build no longer needs Apple's SDK
     (§6.3). No binary changed.
   - `b2a8ee3` (2026-11-22): the docs name where the toolchain is published. The tag **`toolchain-r3`**
     points at it, and the release of that name holds the toolchain tarball (§6.1).
 - **B1.16.12** (2026-11-22, §3.1) is on `main` (e590ef1, marker `audiod-b11612`). Its device test on the
   phone passed the same day (§2.5). Only `fidelio-audiod` changed (§2.3).
-- **B1.16.13** (2026-11-22, §2.5, §3.2) is on the branch `b11613-remote-keys`, on top of B1.16.12, built and
-  host-tested; `main` is at its last commit, 8af19cb, since 2026-11-22. It waits for the install on the phone. Only
-  `DockRemote.dylib` and `NowPlaying.app/NowPlaying` changed (§2.3).
-- **B1.16.14** (2026-11-22, §3.1) is on the branch `b11614-volume-echo`, on top of B1.16.13 (which is on
-  `main` now), built and host-tested, not on `main`, no marker: it waits for review and a device test.
-  Only `fidelio-audiod` changed (§2.3).
-- **B1.16.15** (2026-11-22, §2.5, §3.2) is on the branch `b11615-remote-prev`, on top of B1.16.14, built and
-  host-tested, not on `main`, no marker: it waits for review and the install on the phone. Only
+- **B1.16.13** (2026-11-22, §2.5, §3.2) is on `main` (619c552, 8af19cb, marker `audiod-b11613` at
+  8af19cb). Installed on the phone that day. Only `DockRemote.dylib` and `NowPlaying.app/NowPlaying`
+  changed (§2.3).
+- **B1.16.14** (2026-11-22, §3.1) is on `main` (5f519ec, 23f407d, marker `audiod-b11614` at 23f407d).
+  Installed on the phone that evening; its AirPlay device test is still owed. Only `fidelio-audiod`
+  changed (§2.3).
+- **B1.16.15** (2026-11-22, §2.5, §3.2) is on `main` (86ce0b7, marker `audiod-b11615`). Installed on the
+  phone that evening; the first swallow test passed for previous and next (§2.5). Only
   `DockRemote.dylib` changed (§2.3).
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
@@ -121,7 +125,7 @@ The **dock**:
   - `audiod-b1161` (32af243), `-b116dr` (272c7e5), `-b116lp` (0b90521).
   - The second cloud session's: `-b1164` (ab0c7aa), `-b118`, `-b1165`, `-b1166`, `-b1167`, `-b1168`,
     `-b1169`, `-b11610`, `-b11611`.
-  - This session's: `-b11612` (e590ef1).
+  - This session's: `-b11612` (e590ef1), `-b11613` (8af19cb), `-b11614` (23f407d), `-b11615` (86ce0b7).
   - voltest (5dc865f, b8d8976) and the tools and toolchain commits (6721da9, 5a2283c, c46beee, and the
     four sysroot commits 55d1a82, 926ea54, 831ac15, b5e3106) have no marker. Check with `git ls-remote --heads origin`.
 - The old cloud session branch `ccr-afef93fb-x0jdve` is history, at `5dc865f`.
@@ -141,20 +145,20 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | B1.16.5 | b051bfc | 0042 | DockRemote finds `MSHookMessageEx` in libsubstrate | bound on the phone, but on the wrong method |
 | B1.16.6 | aeed5b1 | 0043 | 4 entitlement keys; the accepted unlock request is the result (no launch probe); keep-lit (`restartDimTimer`) | **iPad unlock PASS**; installed on both |
 | B1.16.7 | e3e448e | 0044 | lock plugin: phone layout (`LPLayout.c`) and 3.1.3 keep-lit fallback (`restartDimTimer:` float) | **phone PASS, iPad PASS**; installed on both |
-| B1.16.8 | 4ed6a5a | 0045 | DockRemote hooks GraphicsServices `GSSendEvent` (observe-first) | the revision 3 build is in place on the phone since 2026-11-22 and loaded into iapd (load line seen); the observe run is open (§3.2) |
-| B1.16.9 | 8eec470 | 0046 | NowPlaying 1.4.1: the iPad dock remote as a staged media-controller prototype | installed on both devices 2026-11-22 (revision 3 build); not exercised on the iPad |
+| B1.16.8 | 4ed6a5a | 0045 | DockRemote hooks GraphicsServices `GSSendEvent` (observe-first) | the revision 3 build was loaded into iapd on the phone 2026-11-22; its observe run (two passes) gave the decode of §2.5; superseded on the phone that day by B1.16.13, then B1.16.15 |
+| B1.16.9 | 8eec470 | 0046 | NowPlaying 1.4.1: the iPad dock remote as a staged media-controller prototype | installed on both devices 2026-11-22 (revision 3 build); on the phone replaced by 1.4.2 (B1.16.13) that day; not exercised on the iPad |
 | B1.16.10 | 4158342 | 0047 | `wake_mode` launch\|screen (the lock plugin as backstop) | its audiod is superseded by B1.16.11's |
-| B1.16.11 | 7330752 | 0048 | lock plugin follows a live setting change and a SpringBoard restart | installed on both devices 2026-11-22 (revision 3 build); not exercised on the iPad |
+| B1.16.11 | 7330752 | 0048 | lock plugin follows a live setting change and a SpringBoard restart | installed on both devices 2026-11-22 (revision 3 build); not exercised on the iPad; on the phone its audiod was replaced that day by B1.16.12's, then B1.16.14's, which contain it |
 | voltest | 5dc865f | 0049 | the volume probe (no marker) | ran on the phone once (paused) |
 | tools | 6721da9 | none | cspot build date pinned (§6.3), host compiler check (§6.4); no binary changed | nothing to install |
 | voltest | b8d8976 | none | the probe also shows iapd's side of the volume and can call `IAPAudioSetVolume` (§3.1) | on the phone since 2026-11-22; first readings in §2.5 and §3.1 |
 | toolchain r2 | 5a2283c | none | toolchain revision 2: start-up objects built from Apple's open-source Csu, licence texts, `toolchain/pack.sh`, the toolchain's own sources in the repo under MIT, link-map and start-up checks in `build-arm.sh`; every binary keeps its sha256 | nothing to install |
 | toolchain r3 | c46beee | none | toolchain revision 3: the start-up objects carry a notice that says where their source is (Apple's open-source licence asks for it "in the code itself"), so every binary carries it in a section `__TEXT,__csu_notice`; `build-arm.sh` requires revision 3 and checks the notice; every binary has the same size and a new sha256 (§2.3) | 2026-11-22: smoke test PASS and the suite installed on both devices (§2.4, §3.2) |
 | sysroot | 55d1a82, 926ea54, 831ac15, b5e3106 | none | the build without Apple's SDK: `toolchain/sysroot/` makes a sysroot from a symbol list (stub libraries), Apple's published open-source headers (pinned) and framework headers of our own; `tools/build-arm.sh` uses it by default; every binary keeps its sha256 (§6.3) | nothing to install |
-| B1.16.12 | e590ef1 | none | audiod tells the dock a source's volume: after a set of the system volume in absolute mode it calls `IAPAudioSetVolume` (IAP.framework, dlopen'ed) with the same level, while an accessory takes the volume; never for an external change; a drag is coalesced (one call per 200 ms, the latest level last); the `hwvolume` line ends `; dock=<result>`; host suite `dockvol` (§3.1, §10.4) | **phone PASS** 2026-11-22: the dock's loudness follows the Spotify slider (§2.5); installed on the phone; AirPlay and the iPad not tested |
-| B1.16.13 | branch `b11613-remote-keys` | none | DockRemote: the decode measured on the phone (the code in the word @56, down and up in the flags, next and previous as one event), a press taken or passed whole with one verb, and the key log `remote-keys.log`; NowPlaying 1.4.2 shows the last six presses in the Technical tab; host suites `remote_keys` and `keylog` (§2.5, §10.5) | installed on the phone 2026-11-22; its key passes are in §2.5; superseded by B1.16.15 before the swallow test |
-| B1.16.14 | branch `b11614-volume-echo` | none | audiod ignores a source's echo of a level it reported to that source (within 3 s and one dock step, 1/255): no set, no dock call; a held dock level is dropped at its flush when the hardware level changed outside meanwhile, even before the poll has seen it; host suite `dockvol` 14 → 25 checks (§2.5, §3.1, §10.4) | built; device test pending (§3.1) |
-| B1.16.15 | branch `b11615-remote-prev` | none | DockRemote: codes 4 (the left key, measured) and 3 (the right key, assumed by symmetry) are previous and next as well: taken like 21 and 20 under swallow, logged as `previous` and `next` (the names `rewind` and `seek-forward` are gone); host suite `remote_keys` 52 → 65 checks (§2.5, §10.5) | built; install and swallow test pending (§3.2) |
+| B1.16.12 | e590ef1 | none | audiod tells the dock a source's volume: after a set of the system volume in absolute mode it calls `IAPAudioSetVolume` (IAP.framework, dlopen'ed) with the same level, while an accessory takes the volume; never for an external change; a drag is coalesced (one call per 200 ms, the latest level last); the `hwvolume` line ends `; dock=<result>`; host suite `dockvol` (§3.1, §10.4) | **phone PASS** 2026-11-22: the dock's loudness follows the Spotify slider (§2.5); AirPlay reaches the dock, with the echo problem B1.16.14 fixes (§2.5); on the phone replaced that evening by B1.16.14's audiod, which contains it; the iPad not installed, not tested |
+| B1.16.13 | 619c552, 8af19cb | none | DockRemote: the decode measured on the phone (the code in the word @56, down and up in the flags, next and previous as one event), a press taken or passed whole with one verb, and the key log `remote-keys.log`; NowPlaying 1.4.2 shows the last six presses in the Technical tab; host suites `remote_keys` and `keylog` (§2.5, §10.5) | installed on the phone 2026-11-22 (DockRemote loaded 18:08:49 phone time; NowPlaying 1.4.2 stays); its key passes are in §2.5; its DockRemote superseded by B1.16.15 at 18:35:49, before the swallow test |
+| B1.16.14 | 5f519ec, 23f407d | none | audiod ignores a source's echo of a level it reported to that source (within 3 s and one dock step, 1/255): no set, no dock call; a held dock level is dropped at its flush when the hardware level changed outside meanwhile, even before the poll has seen it; host suite `dockvol` 14 → 25 checks (§2.5, §3.1, §10.4) | installed on the phone 2026-11-22 evening; Spotify played through it without a problem; the AirPlay echo test is still owed (§3.1) |
+| B1.16.15 | 86ce0b7 | none | DockRemote: codes 4 (the left key, measured) and 3 (the right key, assumed by symmetry when built; measured since, §2.5) are previous and next as well: taken like 21 and 20 under swallow, logged as `previous` and `next` (the names `rewind` and `seek-forward` are gone); host suite `remote_keys` 52 → 65 checks (§2.5, §10.5) | installed on the phone 2026-11-22, loaded 18:35:49; first swallow test 18:42: previous and next taken and sent to Spotify (§2.5); what was heard not yet reported; play/pause, AirPlay, no source active not yet tested (§3.2) |
 
 ### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee; NowPlaying of B1.16.13; audiod of B1.16.14; DockRemote of B1.16.15)
 
@@ -164,13 +168,13 @@ changed audiod again, and B1.16.15 changed DockRemote again.
 
 | Binary | Size | sha256 (toolchain revision 3) | Round |
 |---|---|---|---|
-| fidelio-audiod | 481,856 | `a8de4d6c741e7efff581556e151bd912c3d426afca0a54608212a8ca18dd2ca1` | B1.16.14, branch `b11614-volume-echo` (the echo filter); before it, B1.16.12 e590ef1 (the dock forward, on the phone): 481,680, `7c04dc0b61e15bd308a7a5f5c9d2071fca66007dc394cea6aed97086ad2f1923`; before that, B1.16.11 7330752: 464,960, `30eb78eb0f6edb919d8091a2793e7097e2b5bcaf68bb60a690c878b85b89afe1` |
+| fidelio-audiod | 481,856 | `a8de4d6c741e7efff581556e151bd912c3d426afca0a54608212a8ca18dd2ca1` | B1.16.14, 23f407d (the echo filter; on the phone); before it, B1.16.12 e590ef1 (the dock forward): 481,680, `7c04dc0b61e15bd308a7a5f5c9d2071fca66007dc394cea6aed97086ad2f1923`; before that, B1.16.11 7330752 (on the iPad): 464,960, `30eb78eb0f6edb919d8091a2793e7097e2b5bcaf68bb60a690c878b85b89afe1` |
 | fidelio-lockctl | 163,024 | `704c799f8b15122d8921cbdd9609c0e8136a85d038cc1a9c019b2c929db1ed12` | B1.16.6, aeed5b1 |
 | fidelio-raop | 942,112 | `baf304f686d4bc63b8737942e935ba812746eb5b5451efe7c725daef3f07d132` | B1.16, a5ba534 (old id bf61abb; raop unchanged since) |
 | cspot-ios3 | 2,290,160 | `35de013e2141c6a26cf8fe6a429f2f75cf99f9a75576c38720a1e1918e4b74fb` | B1.18, 47d4760 |
-| NowPlaying.app/NowPlaying | 127,296 | `09a4d05821cea611a87f00ddc0812721d41757a6733fe84571a7eba8cb732cad` | B1.16.13, branch `b11613-remote-keys` (1.4.2); before it, B1.16.9 8eec470 (1.4.1): 109,856, `35bfa2294eca5fe00cb9d5e08a0056fc0b839f6831ce6b411191b4cd9e4ef256` |
+| NowPlaying.app/NowPlaying | 127,296 | `09a4d05821cea611a87f00ddc0812721d41757a6733fe84571a7eba8cb732cad` | B1.16.13, 619c552 (1.4.2; on the phone); before it, B1.16.9 8eec470 (1.4.1; on the iPad): 109,856, `35bfa2294eca5fe00cb9d5e08a0056fc0b839f6831ce6b411191b4cd9e4ef256` |
 | Fidelio.lockbundle/Fidelio = Fidelio.bundle/Fidelio | 56,304 | `e708fab07b256ab3ae39f19eff40d1ddfbf7f245bd42a04435ea2b2c728a2df6` | B1.16.7, e3e448e |
-| DockRemote.dylib | 35,104 | `66d34a6e5db58e8b7b0392082fa90ff436b68b8c9b023b563ad913d89e075537` | B1.16.15, branch `b11615-remote-prev`; before it, B1.16.13 (on the phone): 35,104, `6206f01478499936b815ecce6924abcd3375ef3531a84c2c55b3aa8a4c81da5b`; before that, B1.16.8 4ed6a5a: 34,640, `8427742ca0e70a20c03c7d09884c47467169cb44d9c3efa0fedbb4981483621b` |
+| DockRemote.dylib | 35,104 | `66d34a6e5db58e8b7b0392082fa90ff436b68b8c9b023b563ad913d89e075537` | B1.16.15, 86ce0b7 (on the phone); before it, B1.16.13 619c552: 35,104, `6206f01478499936b815ecce6924abcd3375ef3531a84c2c55b3aa8a4c81da5b`; before that, B1.16.8 4ed6a5a: 34,640, `8427742ca0e70a20c03c7d09884c47467169cb44d9c3efa0fedbb4981483621b` |
 | voltest | 51,200 | `c4d1c4246bfed1c829a7b21f1c7df804b60b7c61f0b6110b8eeb3bbe116e111d` | probe, b8d8976 |
 
 - All eight reproduce from nothing, on any day, at the reference paths of §6.1. Two builds from nothing
@@ -196,8 +200,12 @@ changed audiod again, and B1.16.15 changed DockRemote again.
   - No file size changed: the notice fits into the padding of `__TEXT`.
   - `__text` and the stubs start at a lower address, so address-dependent bytes differ. Every other
     section has the size it had.
-- **On both devices** these builds run since 2026-11-22 (§2.4): the iPad has all but DockRemote and
-  voltest, the phone has all eight.
+- **Which builds are on which device** (2026-11-22, evening; §2.4):
+  - The phone has all eight files of the table above, each the one in its sha256 column: audiod of
+    B1.16.14, NowPlaying 1.4.2, DockRemote of B1.16.15, and the rest unchanged since the morning.
+  - The iPad has the revision 3 builds installed that morning: lockctl, raop, cspot and the lock bundle as
+    in the table, audiod of B1.16.11 (`30eb78eb`) and NowPlaying 1.4.1 (`35bfa229`), the earlier hashes
+    in the last column. It has none of B1.16.12 … B1.16.15, and no DockRemote or voltest.
 
 **The earlier hashes** are the ones the same sources gave with toolchain revisions 1 and 2, which built
 identical bytes. They are what the cloud session published and what was installed on the devices until
@@ -215,29 +223,45 @@ identical bytes. They are what the cloud session published and what was installe
 | voltest | `8c9f1f0372f05643f34d088fc4d6b16538dbf5eefd2fb8354d16e851754299f1` (the 5dc865f one was 51,056, `bb956992…f956b9`) |
 
 ### 2.4 What runs on each device (the last device reports)
-- **Phone** (installed by this session on 2026-11-22, on the owner's "Update the iPhone and iPad"): the
-  whole suite as built with toolchain revision 3, the first table of §2.3.
-  - audiod `30eb78eb` (7330752), lockctl `704c799f`, raop `baf304f6`, cspot `35de013e` (47d4760), voltest
-    `c4d1c424` (b8d8976), NowPlaying 1.4.1 `35bfa229`, `Fidelio.bundle` `e708fab0`. Each sha256 was read
-    back on the device. The start-up smoke test passed first (§3.2).
-  - **audiod B1.16.12** replaced 7330752's later that day: `fidelio-audiod` 481,680 bytes, `7c04dc0b`
-    (e590ef1). The build before it is kept beside it as `fidelio-audiod.pre-b11612.bak`. Its start-up line
-    on the phone: `dock volume (B1.16.12): available (IAP.framework: IAPAudioSetVolume,
-    IAPAudioIsVolumeControlSupported)`.
-  - What was there before is kept beside each file: `<name>.pre-r3.bak` in `/var/mobile/fidelio/b1/`,
-    `/Applications/NowPlaying.app.pre-r3`, `Fidelio.bundle.pre-r3`, `settings.conf.pre-r3`. Before: audiod
-    `c23cd624` (aeed5b1), lockctl `45da7833`, raop `9edce5e5`, cspot `2979aedd`, NowPlaying 1.4.0, bundle
-    `559763a5`.
-  - Settings now: `dock_remote=on`, `wake_on_play=on` (was off), `wake_mode=launch` (the owner's choice),
-    `lock_plugin=on`, `keep_screen_on=on`; `lockplugin.debug` present.
-  - **DockRemote 4ed6a5a** (`8427742c`, the revision 3 build) is in
-    `/Library/MobileSubstrate/DynamicLibraries/` and loaded into iapd since an undocked iapd restart
-    that day; the load line reads `DockRemote B1.16.8: hooked GSSendEvent with MSHookFunction from
-    /usr/lib/libsubstrate.dylib`. `remote-tweak.observe` is set: it logs and passes every key through.
-    The build before it is kept as `DockRemote.dylib.pre-r3.bak` (b051bfc).
-  - **B1.16.13** (DockRemote `6206f014`, NowPlaying 1.4.2 `09a4d058`) replaced those later that day and
-    logged the key passes of §2.5 (observe only, no swallow).
-  - **iapd logs its packets** since the same restart: `PrintIapPackets`, `LogDeviceVolumeChanges` and
+- **Phone, as of the evening of 2026-11-22:** all eight files of §2.3's first table, each sha256 read back
+  on the device: audiod B1.16.14 `a8de4d6c`, lockctl `704c799f`, raop `baf304f6`, cspot `35de013e`
+  (47d4760), voltest `c4d1c424` (b8d8976), NowPlaying 1.4.2 `09a4d058`, `Fidelio.bundle` `e708fab0`,
+  DockRemote B1.16.15 `66d34a6e`. **`remote-tweak.observe` and `remote-tweak.swallow` are set**: the
+  takeover of play/pause, next and previous is on (§2.5, §3.2). How it got there:
+  - **Morning** (by this session, on the owner's "Update the iPhone and iPad"): the whole suite as built
+    with toolchain revision 3: audiod `30eb78eb` (7330752), NowPlaying 1.4.1 `35bfa229` and the rest as
+    above. The start-up smoke test passed first (§3.2). What was there before is kept beside each file:
+    `<name>.pre-r3.bak` in `/var/mobile/fidelio/b1/`, `/Applications/NowPlaying.app.pre-r3`,
+    `Fidelio.bundle.pre-r3`, `settings.conf.pre-r3`. Before: audiod `c23cd624` (aeed5b1), lockctl
+    `45da7833`, raop `9edce5e5`, cspot `2979aedd`, NowPlaying 1.4.0, bundle `559763a5`.
+  - **DockRemote 4ed6a5a** (`8427742c`, the revision 3 build) went into
+    `/Library/MobileSubstrate/DynamicLibraries/` the same morning and was loaded into iapd by an undocked
+    iapd restart; load line `DockRemote B1.16.8: hooked GSSendEvent with MSHookFunction from
+    /usr/lib/libsubstrate.dylib`. The build before it is kept as `DockRemote.dylib.pre-r3.bak` (b051bfc).
+    `remote-tweak.observe` was set then.
+  - **audiod B1.16.12** (`7c04dc0b`, e590ef1) replaced 7330752's later that day, backup
+    `fidelio-audiod.pre-b11612.bak`; then **audiod B1.16.14** (`a8de4d6c`, 23f407d) replaced it in the
+    evening, backup `fidelio-audiod.pre-b11614.bak`. The daemons were restarted for each. The start-up
+    line on the phone: `dock volume (B1.16.12): available (IAP.framework: IAPAudioSetVolume,
+    IAPAudioIsVolumeControlSupported)` (the tag in that line is fixed in `Server.cpp`; B1.16.14 prints
+    it too).
+  - **NowPlaying 1.4.2** (`09a4d058`, B1.16.13) replaced 1.4.1 in the evening: the bundle directory was
+    swapped (the old one is `/Applications/NowPlaying.app.pre-b11613`), without `uicache` and without a
+    SpringBoard restart, and it ran at once.
+  - **DockRemote B1.16.13** (`6206f014`) was loaded at 18:08:49 phone time, backup
+    `DockRemote.dylib.pre-b11613.bak`, and logged the key passes of §2.5 (observe only). **DockRemote
+    B1.16.15** (`66d34a6e`) replaced it and was loaded at 18:35:49, backup
+    `DockRemote.dylib.pre-b11615.bak`; load line `DockRemote B1.16.15: hooked GSSendEvent with
+    MSHookFunction from /usr/lib/libsubstrate.dylib`.
+    - Each load was an iapd restart with the phone lifted off the dock by the owner. A script on the
+      phone, `/var/mobile/fidelio/b1/redock.sh`, waits for the undock, restarts iapd only when the route
+      is neither USB nor LineOut, and waits for the re-dock (§8).
+  - **`remote-tweak.swallow`** was set at 18:41:17 on the owner's word ("yes turn on the takeover for
+    spotify/airplay").
+  - Settings (unchanged since the morning): `dock_remote=on`, `wake_on_play=on` (was off),
+    `wake_mode=launch` (the owner's choice), `lock_plugin=on`, `keep_screen_on=on`; `lockplugin.debug`
+    present.
+  - **iapd logs its packets** since the morning's restart, still on in the evening: `PrintIapPackets`, `LogDeviceVolumeChanges` and
     `LogLineOut` are set in `/var/mobile/Library/Preferences/com.apple.iapd.plist` (the file from before
     is `/var/mobile/fidelio/com.apple.iapd.plist.pre-r3`). The lines go to `/var/log/syslog`, which grows
     without rotation: every attach logs the dock's certificate. Remove the three keys when the volume
@@ -246,8 +270,10 @@ identical bytes. They are what the cloud session published and what was installe
     route (`USB`), Spotify played through it, and the wake brought NowPlaying up.
   - **The phone rebooted once that day**, about 20 s after a SpringBoard restart during playback
     (§2.5, §3.2). It came back by itself with everything running.
-- **iPad** (installed by this session on 2026-11-22, on the owner's "Deploy to the dock"): the whole
-  suite as built with toolchain revision 3, the first table of §2.3.
+- **iPad** (installed by this session on the morning of 2026-11-22, on the owner's "Deploy to the dock";
+  not touched in the evening): the whole suite as built with toolchain revision 3 at that time, so none
+  of B1.16.12 … B1.16.15 (§2.3). Before B1.16.12's audiod or a later one goes on the iPad, run `voltest
+  iap` there first (voltest is not installed there yet).
   - audiod `30eb78eb` (7330752, B1.16.10/11), lockctl `704c799f`, raop `baf304f6`, cspot `35de013e`
     (47d4760), NowPlaying 1.4.1 `35bfa229` (B1.16.9), `Fidelio.lockbundle` `e708fab0` (B1.16.7). Each
     sha256 was read back on the device.
@@ -343,11 +369,12 @@ identical bytes. They are what the cloud session published and what was installe
     0x09) with that level. The dock sent nothing back after any of them. No failure line.
   - Nine presses of the dock's own volume buttons in the same session arrived as command 0x0E
     (notifyApp=1) and showed as five `external` lines in audiod: the 1 s poll merges fast presses.
-  - Not tested: AirPlay volume on the dock, and the iPad. Whether the iPad's IAP.framework has the two
+  - Not tested in that session: AirPlay volume on the dock (tried later, next item), and the iPad. Whether the iPad's IAP.framework has the two
     functions is still unknown: run `voltest iap` there before installing this audiod on it.
 - **AirPlay volume on the dock with B1.16.12** (phone, 2026-11-22, audiod `7c04dc0b`; the owner cast from
   an Android phone with a third-party AirPlay sender app, not sure which; it presents itself as
-  `iTunes/12.12` and supports DACP). B1.16.14 fixes what went wrong (§3.1).
+  `iTunes/12.12` and supports DACP). B1.16.14 is built to fix what went wrong (§3.1); it is installed on
+  the phone and not yet tested with AirPlay.
   - Going up with the sender's control worked: the dock followed, 15 % to 42 % in four steps. The
     sender's own steps were 2 dB (AirPlay dB to level is linear, `db/30 + 1`). The first volume of a
     session is deliberately not applied (B1.13), so the sender starts from the dock's current level.
@@ -376,21 +403,62 @@ identical bytes. They are what the cloud session published and what was installe
     events each; these equal iapd's own key numbers 22 … 25).
   - **down** is verified (2026-11-22, B1.16.13 on the phone): dock packet `00000002`, iapd key 25, events
     (`0x400`, 25) and (`0x800`, 25), three presses.
-  - **right = next** (dock packet `08`, iapd key 3): ONE event, flags `0x800`, code 20, on every press so
-    far (three). Code 3 has not been seen; that it may come, like code 4 for the left key, is an assumption
-    by symmetry. B1.16.15 treats 3 as next.
+  - **right = next** (dock packet `08`, iapd key 3): ONE event, flags `0x800`, in two forms, both
+    measured: code 20 on the first press of a run, code 3 on the quick repeats after it (18:40:57–59: 20,
+    3, 3; B1.16.15 observing). Code 3 was assumed by symmetry when B1.16.15 was built; it is measured
+    now. B1.16.15 treats 20 and 3 as next.
   - **left = previous** (dock packet `10`, iapd key 4): ONE event, flags `0x800`, in two forms, measured:
-    code 21 on one press, and code 4 on the four presses since (17:04:21, 18:11:33, 18:12:25 and one
-    more), each compared with iapd's packet log. Code 4 had also come once in the second observe pass, when
-    a press's packet reached iapd twice. Why iapd picks one form or the other is not known. The earlier
-    guess that a hold gives code 4 is not confirmed: the four code-4 presses were ordinary taps as far as
-    the owner knows. B1.16.15 treats 4 as previous.
+    code 21 once (the first observation of the day), and code 4 on every press since (17:04:21, 18:11:33,
+    18:12:25 and all later ones), each compared with iapd's packet log. Code 4 had also come once in the
+    second observe pass, when a press's packet reached iapd twice. The single 21 fits next's pattern
+    (first press of a run 20/21, repeats 3/4), but it is one observation; why iapd picks one form or the
+    other is not established. The earlier guess that a hold gives code 4 is not confirmed. B1.16.15
+    treats 21 and 4 as previous.
+  - iapd logs `stoppting timer` (sic) after the releases of next and previous only.
   - **Presses the dock did not send:** up (packet `00000001`) came in one pass (code 24, two events) and
-    not at all in the latest pass, although the owner pressed it many times; some select presses were not
-    sent either. iapd's packet log has no packet for them, so nothing in the tweak can change that. Every
-    packet the dock did send was decoded and logged correctly. In the first observe pass four keys did not
-    arrive at all, for the same reason.
+    not at all in the next pass, although the owner pressed it many times; some select presses were not
+    sent either. iapd's packet log has no packet for them, so nothing in the tweak can change that. In the
+    first observe pass four keys did not arrive at all, for the same reason. The evening's figures are
+    below.
   - With no swallow, play/pause still reaches the built-in iPod app, as expected.
+- **Dock keys, the evening of 2026-11-22** (phone, DockRemote B1.16.13 from 18:08:49, then B1.16.15 from
+  18:35:49, observing; the owner pressed keys and watched NowPlaying 1.4.2's "Dock remote" section; the
+  session compared the dock's packets, iapd's `evKeyDown` lines and `remote-keys.log`):
+  - **Every packet the dock sent was handled at every stage:** 104 of 104 between 18:10 and 18:26, 58 of
+    58 between 18:26 and 18:38 (dock packet, iapd `evKeyDown`, a line in `remote-keys.log`).
+  - **The phone sends the dock nothing after the first 15 seconds of an attach:** no packet when the
+    front app changed, or when the built-in iPod app (the owner calls it the Music app) started, played or
+    paused. So nothing the phone reports can make the dock filter keys.
+  - All type-4001 events went to one receiving port, whichever app was in front. Only the built-in iPod
+    app acts on up, down, select and menu: the owner saw nothing move in Settings; in the iPod app up and
+    down moved the selection and menu went back to the song list.
+  - **The up key arrives unreliably:** 5 ups against 32 downs, 20 selects and 20 menus between 18:10 and
+    18:26 (0 ups against 16 downs while Settings was in front), yet runs of 10 and 7 ups arrived around
+    18:30–18:31. The loss is before the phone (the remote's key or the dock); the owner doubts the
+    remote's hardware.
+  - **Rapid repeats are thinned out before the phone, and a hold is not passed on as a hold.** The owner
+    pressed up ×1, down ×2, left ×3, right ×4 and then held OK (18:42:00–18:42:24); the dock sent 1, 1, 2
+    and 2 packets for the four keys and, for the hold, two ordinary press/release pairs a second apart.
+    Presses about a second apart all arrive (runs of 3, 7 and 10).
+  - The status bar's play icon shows only when the built-in iPod app plays, not for the project's sources
+    (the owner's observation). Whether a daemon can raise it on iPhone OS 3 is a backlog idea (§3.4).
+- **The takeover, first device test** (phone, 2026-11-22 18:42, DockRemote B1.16.15 with
+  `remote-tweak.swallow`, `dock_remote=on`, Spotify active):
+  - Two previous presses (code 4) and two next presses (code 3) were logged `taken`. The tweak logged
+    `TAKEN code=4 flags=0x800 -> audiod verb=5 (sent)` and `TAKEN code=3 ... verb=4 (sent)`; iapd's syslog
+    has `DockRemote: forward verb N to audiod -> sent`; audiod logged `control: prev -> 'spotify'` and
+    `control: next -> 'spotify'`.
+  - Up, down and select were `passed`.
+  - audiod logged no `audio interruption`, so the built-in iPod app did not take the audio.
+  - Not yet reported: what the owner heard (whether Spotify skipped). Not yet tested under the takeover:
+    play/pause; AirPlay as the active source; the keys with no source active (they must pass to the iPod
+    app).
+  - **Side effect in audiod's log:** after each skip the stream was silent for longer than the release
+    time; audiod logged `release: 'spotify' -> 'none' (quiet 1504 ms)` and about 2 s later `takeover:
+    'none' -> 'spotify'`, and that takeover ran wake on play again (NowPlaying launched, the lock plugin
+    enabled again). A track change that is silent for longer than `release_ms` counts as a new start
+    from nothing. This is not specific to the remote: any skip with a long enough gap does it. Open
+    (§3.3, §4).
 - **A SpringBoard restart during playback rebooted the phone** (2026-11-22, once): `killall SpringBoard`
   while Spotify played on the dock; SpringBoard came up and loaded its tweaks, and about 20 s later the
   phone restarted from the kernel up, with no line in the system log in between, no panic log, and the
@@ -419,7 +487,7 @@ identical bytes. They are what the cloud session published and what was installe
 
 ## 3. Open work, in order
 
-### 3.1 B1.16.12: the phone's volume must move the dock (phone PASS for Spotify; AirPlay reaches the dock, its echo fix B1.16.14 untested; iPad and the relabel open)
+### 3.1 B1.16.12: the phone's volume must move the dock (phone PASS for Spotify; AirPlay reaches the dock, its echo fix B1.16.14 installed on the phone and not yet tested with AirPlay; iPad and the relabel open)
 - **Report:** phone docked, `spotify_volume=absolute`. The Spotify slider moves NowPlaying's display and
   audiod logs `hwvolume: 'spotify' -> X (set X by 'spotify' slider Y)`, but the loudness doesn't change.
   The dock buttons work and show up as `hwvolume: 'external'`.
@@ -439,7 +507,9 @@ identical bytes. They are what the cloud session published and what was installe
     third-party sender's control. With that sender the dock's own buttons then made the dock jump back
     up and left dock and phone out of step: the sender echoes every level raop reports to it back as a
     volume command, and audiod applied a late echo as a user move and told the dock.
-  - **B1.16.14** (branch `b11614-volume-echo`, audiod only, §10.4) fixes that:
+  - **B1.16.14** (23f407d on `main`, marker `audiod-b11614`, audiod only, §10.4) is built to fix that.
+    It is installed on the phone since the evening of 2026-11-22 (§2.4); Spotify played through it
+    during the remote tests without a problem. It has not been tested with AirPlay yet.
     - audiod keeps the last 8 levels it reported to each source (WELCOME, HWVOLUME) with their times. A
       slider set from that source within 3 s of a report and within one dock step (1/255) of the
       reported level is its echo: no set, no dock call, no new report, one trace line.
@@ -447,18 +517,27 @@ identical bytes. They are what the cloud session published and what was installe
       (read again at that moment), even when the poll has not yet seen the change.
     - Accepted cost: a genuine move on the sender that lands within one dock step of a level reported in
       the last 3 s is ignored.
-    - **Device test pending:** the same sender, up with its control, down with the dock's buttons; the
-      dock must not jump back, and the phone's and the dock's levels must end equal (iapd's log).
+    - **Device test still owed** (B1.16.14 is installed): the same Android sender, up with its control,
+      down with the dock's buttons; the dock must not jump back, and the phone's and the dock's levels
+      must end equal (iapd's log). In audiod's log, look for `echoed ...: ignored` lines, and for `held
+      dock level ... dropped ... not yet reported` lines that have no real button press behind them
+      (that would be a false drop).
   - **What cannot be changed from audiod:** a third-party sender's own scale and steps (here 2 dB), and
     what it does with a DACP report. An echo that arrives more than 3 s late, or more than one dock step
     off, is still applied. A dock press that lands between audiod's set of the system volume and its
     call to iapd (the same run-loop pass, two MIG round trips) can still leave the dock at the source's
     level and the phone at the press's level until the next change.
+  - **AirPlay volume mode, an option the owner knows of (2026-11-22, not a decision):** the owner
+    suggested switching AirPlay to the proportional mode and back to re-align the levels. The session's
+    answer: nothing is stuck; the offset at the start of a session is by design (the first volume of a
+    session is not applied, B1.13); and "Software gain" for AirPlay alone (`airplay_volume_mode` is per
+    source; Spotify stays absolute) may suit a third-party sender with its own coarse scale. Nothing was
+    changed.
   - **Still open:**
     - The relabel of the settings below.
-    - The device test of B1.16.14 with the AirPlay sender.
-    - The iPad: run `voltest iap` there first (does its IAP.framework have the two functions?), then
-      install this audiod and check the start-up line.
+    - The device test of B1.16.14 with the AirPlay sender (installed on the phone; above).
+    - The iPad: run `voltest iap` there first (does its IAP.framework have the two functions? voltest
+      has to be copied there), then install this audiod and check the start-up line.
 
 The record of the investigation follows.
 - **The owner's requirement (2026-11-18): absolute volume on this dock unless it is absolutely not
@@ -621,28 +700,40 @@ extra section and that start-up and lazy binding work as before.
 3. **DockRemote** (phone).
    - The B1.16.8 observe run is done (2026-11-22, two passes): it gave the decode of §2.5. B1.16.13 is
      built on it.
-   - B1.16.13 is installed (DockRemote and NowPlaying 1.4.2) and logged the key passes of §2.5: the left key
-     also comes as code 4, which B1.16.13 names "rewind" and would not take over.
-   - **Next: install B1.16.15** (`DockRemote.dylib` with its plist; NowPlaying stays 1.4.2). The tweak goes
-     in with the phone **off the dock**, then `killall iapd`, then the phone goes back on the dock (§8).
-     Check the load line `DockRemote B1.16.15: hooked GSSendEvent ...` in `remote-events.log`.
-   - With `remote-tweak.observe` still set, press left and right a few times: the Technical tab should show
-     "previous" and "next" for every press (code 21 or 4, 20 or 3 in `remote-keys.log`), as "passed".
-   - **Then the swallow test:** `dock_remote=on`, Spotify playing through audiod, `touch
-     /var/mobile/fidelio/remote-tweak.swallow`. play/pause, next and previous should drive Spotify and
-     show "(taken)", and the iPod app must not start. With nothing playing they should show "passed" and
-     reach the iPod app as before.
-4. **B1.16.9** (iPad): NowPlaying 1.4.1, stages 1 → 2 → 3 via `remote-control.stage`.
+   - B1.16.13 was installed (DockRemote and NowPlaying 1.4.2) and logged the key passes of §2.5.
+   - **B1.16.15 is installed** (2026-11-22, loaded 18:35:49, §2.4). Observing, left came as code 4 and
+     right as 20 then 3, logged as "previous" and "next" (§2.5).
+   - **The swallow test, first part done** (18:42, Spotify active; §2.5): two previous and two next
+     presses were taken and reached Spotify through audiod as PREV and NEXT; up, down and select passed;
+     no audio interruption. `remote-tweak.swallow` stays set.
+   - **Still to do under the takeover:**
+     - Ask the owner what was heard: did Spotify skip back and forward?
+     - play/pause with Spotify active: it should pause and resume Spotify, show "taken", and the iPod app
+       must not start.
+     - The same keys with AirPlay as the active source.
+     - The same keys with no source active: they must show "passed" and reach the iPod app as before.
+   - Press about a second apart: the dock thins out rapid repeats (§2.5).
+4. **B1.16.14, AirPlay** (phone, installed): the echo test of §3.1.
+5. **B1.16.9** (iPad): NowPlaying 1.4.1, stages 1 → 2 → 3 via `remote-control.stage`.
    - Does `remote-control.log` fill from the dock keys, and with which subtypes?
    - Who gets the keys when the Music app was the last to play?
-5. Still never reported: iPad rotation and cover sharpness (sharp covers need cspot 47d4760 as well).
+6. Still never reported: iPad rotation and cover sharpness (sharp covers need cspot 47d4760 as well).
+
+The owner said on 2026-11-22 that installs may go ahead even while something is playing (§5.2). That
+word was about installs; it did not mention the SpringBoard restart of §2.5, which still waits for the
+owner's word on a playing device.
 
 ### 3.3 After those results
-- **DockRemote swallow:** do the swallow test of §3.2 on B1.16.15 (install it first: phone off the dock,
-  `killall iapd`, back on the dock), not on B1.16.13, which would pass the code-4 form of the left key to
-  the iPod app. If it passes, decide with the owner whether swallow stays a flag or becomes the default
-  under `dock_remote=on`; if a key's code differs from the table, fix the table first. Up and select
-  presses that the dock does not send (§2.5) are not the tweak's to fix.
+- **DockRemote swallow:** B1.16.15 is installed and took previous and next on its first test (§2.5).
+  Finish the rest of §3.2's item 3; if it passes, decide with the owner whether swallow stays a flag or
+  becomes the default under `dock_remote=on`. Every code seen so far is in the table (§10.5). Up and
+  select presses that the dock does not send, and the repeats it thins out (§2.5), are not the tweak's to
+  fix.
+- **A skip can count as a new start** (§2.5, seen at 18:42): when a track change is silent for longer
+  than `release_ms` (1500 ms by default), audiod releases the source and takes it again about 2 s later,
+  and that takeover runs wake on play again (NowPlaying launched, the lock plugin enabled again). Open:
+  decide whether a skip should wake the screen and relaunch the app (§4). Nothing is changed yet. It is
+  not specific to the remote: any skip with a long enough gap does it.
 - **iPad dock remote:**
   - If a stage works, make it the default and drop the others.
   - If none works, the now-playing role needs real non-mixable playback, which would interrupt audiod's own
@@ -656,6 +747,9 @@ extra section and that start-up and lazy binding work as before.
   could detect it. Very low priority.
 - **The iPad shows an "Application Not Installed" accessory prompt when docked** (only the iPad lacks the
   Philips app). Suppressing it needs the bundle id the dock declares and a stub app. Nothing built.
+- **The status bar's play icon** shows only when the built-in iPod app plays, not for the project's
+  sources (the owner's observation, 2026-11-22). Idea: find out whether a daemon can raise it on iPhone
+  OS 3. Nothing built, nothing investigated.
 - Old device reads, never reported: B1.13 AirPlay volume and `dmcp.device-volume`; B1.12 Spotify pausing
   on an AirPlay takeover; the B1.5 `--no-backpressure` A/B.
 
@@ -743,6 +837,12 @@ extra section and that start-up and lazy binding work as before.
    The headers under `usr/include` and CoreFoundation's are Apple's published open-source files,
    fetched at build time and not kept in the repo, plus eight small patches of the project
    (`toolchain/sysroot/README.md`).
+6. **A skip that wakes the device** (2026-11-22, §3.3): a track change silent for longer than
+   `release_ms` counts as a new start, so wake on play launches NowPlaying and enables the lock plugin
+   again. Should a skip wake the screen and relaunch the app, or should audiod treat such a gap as the
+   same playback? Not yet put to the owner.
+7. **DockRemote swallow as the default** under `dock_remote=on`, or a flag as now (§3.3): once the rest of
+   the swallow test is done.
 
 The volume default is no longer a question: the owner decided on 2026-11-18 (§3.1, §5.2).
 
@@ -829,6 +929,14 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
     (§6.1). This word covers the toolchain only; packages and anything else still wait for the owner.
   - "Update the iPhone and iPad and let's do some device tests": the go-ahead for the phone's install
     and for the tests of §3.1 and §3.2, with the owner at the dock (§2.4, §2.5).
+  - **Working rule:** all work, device work and log analysis included, is delegated to background
+    subagents. The session plans, briefs, reviews and talks with the owner, and ends its turns at once,
+    so that the owner's messages get through (they had been queuing behind long turns) (§6.1).
+  - Installs may go ahead even while something is playing (§3.2).
+  - "yes turn on the takeover for spotify/airplay" (18:41:17 phone time): `remote-tweak.swallow` was set
+    on the phone (§2.4, §3.2).
+  - AirPlay volume: the owner knows of "Software gain" for AirPlay alone as an option; nothing was
+    decided (§3.1).
 - **Naming** (from before): the app is "NowPlaying"; new components get neutral names; the advertised device
   names stay. The full rename is B1.17 only.
 
@@ -860,6 +968,9 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
 - **Builds and test runs go in subagents, one at a time** (the owner's wish; the scripts share one
   `BUILD_ROOT`). Since 2026-11-22 the iterative build, compare and fix work goes to subagents on
   smaller models, and the session plans, reviews the diffs and pushes (also the owner's wish).
+  - Since the evening of 2026-11-22 **all work** is delegated to background subagents, device work and
+    log analysis included. The session plans, briefs, reviews and talks with the owner, and ends its
+    turns at once so that the owner's messages get through (the owner's rule, §5.2).
 - **Packages:**
   `apt-get install clang-18 llvm-18 cmake ninja-build protobuf-compiler python3-protobuf libavahi-client-dev g++ unifdef flex bison`.
   - `g++` gives the host suite its `cc` and `c++`.
@@ -1166,7 +1277,9 @@ the suites are timing-sensitive.
 - **NowPlaying:** `nowplaying/src/build.sh` (the file list is inside). `gen_images.py` makes the icons,
   tab glyphs, placeholders and launch images, and the build fails if one is missing.
   - The version is in `FidelioStatus.h` and `Info.plist` (1.4.2).
-  - After installing on a device, run `su mobile -c uicache` (device family, icons, URL scheme).
+  - After installing on a device, run `su mobile -c uicache` (device family, icons, URL scheme). On
+    2026-11-22 the update from 1.4.1 to 1.4.2 on the phone was a swap of the bundle directory without
+    `uicache` and without a SpringBoard restart, and the new app ran at once (§2.4).
 - **Lock plugin:** `nowplaying/lockplugin/build.sh OUTDIR lockbundle|bundle`. The binary and Info.plist are
   the same for both.
 - **DockRemote:** `tweak/DockRemote/build.sh` (C++17/libc++ static, ObjC++). The decode and the press logic
@@ -1197,7 +1310,8 @@ the suites are timing-sensitive.
 7. **Install** from `/home/user/build/arm-out`, on the owner's go-ahead (§8).
    - The app: `su mobile -c uicache` afterwards.
    - The lock bundles need a respring.
-   - DockRemote is installed undocked, then `killall iapd`.
+   - DockRemote is installed undocked, then `killall iapd` (on the phone, `redock.sh` does the wait and
+     the restart, §8).
 8. **Tell the owner the outcome in plain words.**
 
 ---
@@ -1210,6 +1324,9 @@ the suites are timing-sensitive.
 - **cycript only standalone,** never `-p SpringBoard` (§2.5).
 - **Never restart iapd while the phone is docked.** It half-negotiates the accessory, and only reseating
   the phone fixes it.
+  - On the phone, `/var/mobile/fidelio/b1/redock.sh` (2026-11-22) does it safely with the owner at the
+    dock: it waits for the owner to lift the phone off, restarts iapd only when the route is neither
+    `USB` nor `LineOut`, and waits for the re-dock. Both DockRemote loads of that evening went this way.
 - **Only one audiod may run at a time.**
 - **A device observation is evidence, not truth:** verify it against the code (§5.1.4).
 - **Probes and traces available:** `voltest`, the plugin trace (`lockplugin.debug` → `lockplugin.log`),
@@ -1234,6 +1351,9 @@ the suites are timing-sensitive.
     <taken|passed>`, written by the tweak (as `mobile`, mode 0644) while `remote-tweak.observe` or
     `remote-tweak.swallow` is set; started afresh above 16 KB. NowPlaying 1.4.2's Technical tab shows the
     last six.
+  - On the phone, as of the evening of 2026-11-22, `remote-tweak.observe` and `remote-tweak.swallow` are
+    both set (§2.4).
+- **`b1/redock.sh`** (phone): the undock, iapd restart, re-dock helper of §8.
 - **NowPlaying 1.4.1 and later:** `remote-control.stage` (1–3), `remote-control.log`; and the old probe
   `remote-probe.on`, which logs to `remote-events.log` from the app.
 - **Installed elsewhere:**
@@ -1375,7 +1495,9 @@ Defaults are in brackets.
     included.
   - Codes: play/pause 0, next 20 and 3, previous 21 and 4, menu 22, select 23, up 24, down 25.
     play/pause, menu, select, up and down come as `0x400` + `0x800`; next and previous as one `0x800`.
-    Code 4 for the left key is measured; code 3 for the right key is assumed by symmetry (B1.16.15, §2.5).
+    All four forms are measured (§2.5): next came as 20 on the first press of a run and 3 on quick
+    repeats; previous came as 21 once and as 4 on every press since. Code 3 was assumed by symmetry when
+    B1.16.15 was built and seen on the phone the same evening.
     A two-event press of 3 or 4, should one come, is taken like play/pause: one verb, both events dropped.
   - Log names: `previous` for 21 and 4, `next` for 20 and 3 (the line's code tells the forms apart).
   - A press (an optional `0x400` and the `0x800` of the same code) is decided once, at its first event.
@@ -1430,6 +1552,13 @@ Defaults are in brackets.
 - **Installing over SSH:** never print the launcher scripts, `creds.env` or a process list with
   arguments: they hold the Spotify credentials. Check a process with `killall -0 NAME`.
 - **Phone:** no cycript, so ship a probe binary.
+- **`voltest`'s first line has two `route=` fields:** Audio/Video's and MediaPlayback's. On the dock they
+  normally read `USB` and `LineOut`. A script that reads the wrong one reports `LineOut` although nothing
+  is wrong. This happened once (2026-11-22, 18:30): iapd had not restarted and the dock had not
+  re-identified.
+- **Testing dock keys:** the dock thins out rapid repeats and does not pass a hold on as a hold, and its up
+  key arrives unreliably (§2.5). Press about a second apart and count the dock's packets in iapd's log,
+  not the presses.
 - **WSL** (§6.1):
   - Multi-line commands passed through PowerShell lose quotes and backslashes. Pipe a single-quoted heredoc
     into `wsl -d Ubuntu2404 -u root -- bash -s`.
@@ -1455,14 +1584,11 @@ Defaults are in brackets.
 ## 12. Appendix
 
 ### 12.1 `main`, newest first (subjects shortened)
-On the branch `b11614-volume-echo`, not yet on `main`, on top of 8af19cb:
-`B1.16.14 (1/2): mock hardware volume: get() sees an outside change at once, AUDIOD_MOCK_HW_POLL_MS` and
-`B1.16.14 (2/2): audiod ignores a source's echo of a reported level; a held dock level checks the
-hardware first`.
-On the branch `b11615-remote-prev`, on top of those: `B1.16.15: DockRemote takes code 4 as previous and
-code 3 as next; names previous/next`.
 ```
-8af19cb B1.16.13 the build's hashes in the handoff; the stub manifest's importer fields
+86ce0b7 B1.16.15 DockRemote takes code 4 as previous and code 3 as next   (marker audiod-b11615)
+23f407d B1.16.14 (2/2) audiod ignores a source's echo of a reported level   (marker audiod-b11614)
+5f519ec B1.16.14 (1/2) mock hardware volume: get() sees an outside change at once
+8af19cb B1.16.13 the build's hashes in the handoff; the stub manifest's importer fields   (marker audiod-b11613)
 619c552 B1.16.13 the dock keys' measured decode, a key log, the presses in NowPlaying's Technical tab
 e590ef1 B1.16.12 tell the dock a source's volume (IAPAudioSetVolume)   (marker audiod-b11612)
 1a6ce9e docs: what the logs rule out for the phone's reboot after the respring

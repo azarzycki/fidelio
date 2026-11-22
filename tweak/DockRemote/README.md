@@ -8,7 +8,15 @@ select, up, down) and the volume keys always fall through. Built for a Philips F
 app with `MRMediaRemoteSendCommand`. The iPad route is therefore NowPlaying acting as a media
 controller, an app feature rather than this tweak.
 
-## Status (B1.16.15): the measured decode, a key log for NowPlaying; swallow staged behind a flag
+## Status (B1.16.15): the measured decode, a key log for NowPlaying; swallow behind a flag, first device test passed for previous and next
+
+- **On the phone** since 2026-11-22 (loaded 18:35:49 phone time), with `remote-tweak.observe` and
+  `remote-tweak.swallow` set. The first swallow test (18:42, Spotify active): two previous presses (code
+  4) and two next presses (code 3) were taken and reached Spotify through audiod (`TAKEN ... (sent)`,
+  then audiod's `control: prev -> 'spotify'` and `control: next -> 'spotify'`); up, down and select
+  passed; audiod logged no audio interruption, so the iPod app did not take the audio. Not yet tested:
+  play/pause under the takeover, AirPlay as the active source, and the keys with no source active. What
+  the owner heard is not yet reported. `docs/HANDOFF.md` §2.5 has the details.
 
 - **The hook point (B1.16.8).** b051bfc bound to `-[SimpleRemote sendEventRecord:toApp:]`, but no key ever
   called it, asleep or awake; `remote-events.log` stayed empty.
@@ -34,7 +42,7 @@ controller, an app feature rather than this tweak.
   |---|---|---|---|
   | play/pause | 0 | `0x400`, `0x800` | both dropped; TOGGLE sent at the `0x400` |
   | next (right) | 20 | one, `0x800` | dropped; NEXT sent |
-  | next (right) | 3 (assumed, not seen) | one, `0x800` expected | dropped; NEXT sent |
+  | next (right) | 3 | one, `0x800` | dropped; NEXT sent |
   | previous (left) | 21 | one, `0x800` | dropped; PREV sent |
   | previous (left) | 4 | one, `0x800` | dropped; PREV sent |
   | menu | 22 | `0x400`, `0x800` | passes |
@@ -44,15 +52,19 @@ controller, an app feature rather than this tweak.
 
   - menu, select, up and down equal iapd's own key numbers 22 … 25 (down verified on 2026-11-22: three
     presses).
-  - The left key comes in two forms, both measured: code 21 (once) and code 4 (four presses since), one
-    `0x800` event each. 4 is iapd's own key number for previous. Why iapd picks one form or the other is
-    not known; that a hold gives code 4 is a guess, not confirmed (the code-4 presses were ordinary taps).
-  - The right key came as code 20 on every press so far. Code 3, iapd's key number for next, has not been
-    seen; B1.16.15 takes it as next by symmetry with the left key, an assumption.
+  - The right key comes in two forms, both measured: code 20 on the first press of a run and code 3 on
+    the quick repeats after it (2026-11-22, 18:40:57–59: 20, 3, 3), one `0x800` event each. 3 is iapd's
+    own key number for next. B1.16.15 was built with 3 assumed by symmetry; it has been seen since.
+  - The left key comes in two forms, both measured: code 21 (once, the first observation of the day) and
+    code 4 (every press since), one `0x800` event each. 4 is iapd's own key number for previous. The
+    single 21 fits the right key's pattern (first press 20/21, repeats 3/4), but it is one observation;
+    that a hold gives code 4 is not confirmed.
   - Should 3 or 4 ever come as two events (`0x400`, `0x800`), the press is handled like play/pause: one
     verb at the `0x400`, both events dropped.
-  - Some up and select presses were never sent by the dock (no packet in iapd's log). The tweak cannot
-    see those; every packet the dock did send was decoded and logged.
+  - Some up and select presses were never sent by the dock (no packet in iapd's log); the up key arrives
+    unreliably. The dock also thins out rapid repeats and passes a hold on as separate presses about a
+    second apart. The tweak cannot see what the dock does not send; every packet the dock did send was
+    decoded and logged (162 of 162 on the evening of 2026-11-22).
 - **Presses (`PressTracker`).** A press is an optional `0x400` event and a `0x800` event of the same code.
   It is decided at its first event, once, and the decision covers all its events: it is taken whole or
   passed whole, and the verb goes out once, at the first event. A `0x800` with no `0x400` before it is a
@@ -98,8 +110,11 @@ press, exactly one verb and one log line per press, and the 16 KB cap.
 - iapd: thin armv6 `MH_EXECUTE`. Its GraphicsServices imports include `_GSSendEvent`, `_GSSendSystemEvent`
   and `_GSGetPurpleSystemEventPort`.
 - Keys in iapd's own log (`SimpleRemoteEventHandler got evKeyDown ... key:N`): play/pause 0, next 3, prev 4,
-  menu 22, select 23, up 24, down 25. In the GraphicsServices event, next is code 20 and previous code 21
-  or 4 (the table above).
+  menu 22, select 23, up 24, down 25. In the GraphicsServices event, next is code 20 or 3 and previous
+  code 21 or 4 (the table above).
+- All type-4001 events go to one receiving port whichever app is in front; only the built-in iPod app
+  acts on menu, select, up and down. After the first 15 seconds of an attach the phone sends the dock
+  nothing, so nothing on the phone makes the dock filter keys (2026-11-22).
 - Substrate: `/Library/MobileSubstrate/MobileSubstrate.dylib` is only the injection stub. `MSHook*` live in
   CydiaSubstrate (`/usr/lib/libsubstrate.dylib`). `MSHookFunction` is looked up where it is exported:
   first the images already loaded, then `libsubstrate.dylib`, `CydiaSubstrate.framework/CydiaSubstrate`
