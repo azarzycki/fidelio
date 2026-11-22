@@ -55,7 +55,7 @@ socket timeouts to audiod.
 
 ## Build
 
-`IOS3_SDK=... PATH=<toolchain>/bin:$PATH ./build.sh [outdir]` produces `DockRemote.dylib` (ARMv6,
+`IOS3_SDK=<sysroot> PATH=<toolchain>/bin:$PATH ./build.sh [outdir]` produces `DockRemote.dylib` (ARMv6,
 fake-signed) and copies `DockRemote.plist` (the iapd filter). MobileSubstrate and `GSSendEvent` are
 resolved at run time.
 

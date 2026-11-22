@@ -95,7 +95,8 @@ If the icon does not appear after the respring: `uicache` (Cydia's) or `su mobil
 
 ## Build
 ```sh
-export IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH
+# IOS3_SDK: a sysroot (toolchain/sysroot/build-sysroot.sh, or ../build/sysroot/root after tools/build-arm.sh), or Apple's iPhoneOS3.1.2.sdk
+export IOS3_SDK=/path/to/sysroot PATH=<toolchain>/bin:$PATH
 ./build.sh            # -> build/NowPlaying.app (compiles, links, strips, ldid -S, armv6-ios3-check, images)
 ```
 `gen_images.py` draws `Icon.png` (57×57), `placeholder.png` (256×256) and `Default.png` (320×480) in pure Python; no PIL needed.

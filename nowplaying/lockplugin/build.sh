@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Build the SpringBoard lock-screen plugin (an MH_BUNDLE, ARMv6, iPhone OS 3.1.2 SDK).
-#   IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH ./build.sh [outdir] [ext]
+# Build the SpringBoard lock-screen plugin (an MH_BUNDLE, ARMv6, iPhone OS 3.1).
+#   IOS3_SDK=<sysroot> PATH=<toolchain>/bin:$PATH ./build.sh [outdir] [ext]
+# The sysroot: one made by toolchain/sysroot/build-sysroot.sh, or Apple's iPhoneOS3.1.2.sdk (tools/build-arm.sh).
 #   ext = lockbundle (iOS 5.1.1 iPad, default) or bundle (iPhone OS 3.1.3).
 # The principal class subclasses SpringBoard's private SBAwayViewPluginController; only that class's
-# two ObjC symbols are left undefined (-U), so every OTHER symbol is still validated against the SDK
-# dylibs at link time and SpringBoard resolves the base class when it loads the bundle.
+# two ObjC symbols are left undefined (-U), so every OTHER symbol is still validated against the sysroot's
+# libraries at link time and SpringBoard resolves the base class when it loads the bundle.
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT="${1:-build}"
@@ -18,7 +19,9 @@ mkdir -p "$BND"
 SUP1='_OBJC_CLASS_$_SBAwayViewPluginController'
 SUP2='_OBJC_METACLASS_$_SBAwayViewPluginController'
 
-CFLAGS="-O2 -Wall -Wno-unused -fno-objc-arc -fobjc-exceptions -x objective-c"
+# -Werror=objc-method-access: a message whose method no header declares stops the build. As a warning it
+# compiles, with the result taken to be id and the arguments promoted: wrong code (toolchain/sysroot/README.md).
+CFLAGS="-O2 -Wall -Wno-unused -Werror=objc-method-access -fno-objc-arc -fobjc-exceptions -x objective-c"
 armv6-ios3-clang $CFLAGS -c FidelioLockPluginController.m -o "$OUT/FidelioLockPluginController.o"
 # B1.16.7: the layout core is plain C, shared with the host test (nowplaying/hosttest/lock_layout_test.c).
 armv6-ios3-clang -O2 -Wall -std=c99 -c LPLayout.c -o "$OUT/LPLayout.o"

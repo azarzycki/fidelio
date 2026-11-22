@@ -19,8 +19,8 @@
  *   - the suspension behaviour is a CFIndex, and "deliver immediately" is 4 (drop 1, coalesce 2,
  *     hold 3).
  */
-#if !defined(FIDELIO_SYSROOT_CFNOTIFICATIONCENTER_H)
-#define FIDELIO_SYSROOT_CFNOTIFICATIONCENTER_H
+#if !defined(IOS3_SYSROOT_CFNOTIFICATIONCENTER_H)
+#define IOS3_SYSROOT_CFNOTIFICATIONCENTER_H
 
 #include <CoreFoundation/CFBase.h>
 #include <CoreFoundation/CFDictionary.h>
@@ -54,4 +54,4 @@ CF_EXPORT void CFNotificationCenterRemoveEveryObserver(CFNotificationCenterRef c
 
 CF_EXTERN_C_END
 
-#endif /* FIDELIO_SYSROOT_CFNOTIFICATIONCENTER_H */
+#endif /* IOS3_SYSROOT_CFNOTIFICATIONCENTER_H */

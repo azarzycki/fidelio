@@ -19,7 +19,8 @@ Verified end-to-end on real hardware: Zeroconf login → AP authentication → W
 
 ## Build (summary)
 ```sh
-export IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1
+# IOS3_SDK: a sysroot (toolchain/sysroot/build-sysroot.sh, or ../build/sysroot/root after tools/build-arm.sh), or Apple's iPhoneOS3.1.2.sdk
+export IOS3_SDK=/path/to/sysroot PATH=<toolchain>/bin:$PATH IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1
 # mbedTLS (v3.6.7) and the cspot tree (squeezelite-esp32 components/spotify/cspot @ ee1720c + the patch here)
 # then build the CLI from cli-src/ (expects the cspot tree at ../cspot). Full commands in CSPOT.md / BUILD.md.
 armv6-ios3-strip -x cspot-ios3 && armv6-ios3-ldid -S cspot-ios3 && armv6-ios3-check cspot-ios3

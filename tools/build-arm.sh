@@ -5,7 +5,7 @@
 # collects them in ARM_OUT (default $BUILD_ROOT/arm-out) and verifies each binary:
 #   size, sha256, armv6-ios3-check, tools/isa_scan.py (post-ARMv6 instructions), and for the entitled
 #   binaries the entitlement keys (armv6-ios3-ldid -e) against common/fidelio-springboard.entitlements.plist;
-#   the binary's link map: no .o file and no archive member under $IOS3_SDK was linked, and exactly one
+#   the binary's link map: no .o file and no archive member under the sysroot was linked, and exactly one
 #   start-up object, the one for its file type, from the toolchain's armv6-ios3/lib/startfiles;
 #   tools/startcheck.py: the start-up code inside the binary (its linked literals and __DATA,__dyld),
 #   and the source-availability notice of the start-up object: the section __TEXT,__csu_notice must
@@ -28,10 +28,22 @@
 #   DockRemote.dylib                 tweak/DockRemote/build.sh
 #   voltest                          audiod/probe/build.sh (a device probe of the system volume categories, B1.16.12)
 #
+# The sysroot (the directory the toolchain wrapper gets as IOS3_SDK; toolchain/sysroot/README.md):
+#   IOS3_SDK unset or empty: the project's own, made by toolchain/sysroot/build-sysroot.sh in
+#     $BUILD_ROOT/sysroot/root, without Apple's SDK. It is made again only when it is missing or when
+#     toolchain/sysroot/ or the tools that build it changed (the stamp $BUILD_ROOT/sysroot/stamp). Apple's
+#     open-source releases it needs are fetched once into $BUILD_ROOT/deps/apple-oss (pinned by commit
+#     and sha256) and read from there on later runs.
+#   IOS3_SDK set: that directory, used as it is: Apple's iPhoneOS3.1.2.sdk, which a developer supplies
+#     (needed to confirm a new symbol or declaration against the real libraries and headers,
+#     toolchain/sysroot/README.md), or a sysroot made earlier by build-sysroot.sh.
+# The CMake build dirs and the ARMv6 mbedTLS carry the sysroot in their stamps, so a change of sysroot
+# rebuilds them.
+#
 # Exit status: 0 all built and verified; 1 a verification failed (see report); 3 setup / build error.
 #
 # Environment
-#   IOS3_SDK       required: the iPhoneOS3.1.2.sdk directory (BUILD.md)
+#   IOS3_SDK       optional: the sysroot to use (see above); unset = the project's own
 #   IOS3_TOOLCHAIN the armv6-ios3-toolchain directory (default: found from armv6-ios3-clang in PATH)
 #   BUILD_ROOT     where everything is built (default: "build" next to the repo; never inside it)
 #   ARM_OUT        where the verified binaries are collected (default $BUILD_ROOT/arm-out)
@@ -54,8 +66,14 @@ set -euo pipefail
 
 REPO="$(resolve_repo "${1:-}")"
 init_build_root
-[ -n "${IOS3_SDK:-}" ] || die "set IOS3_SDK to the iPhoneOS3.1.2.sdk directory (BUILD.md)"
-export IOS3_SDK
+if [ -n "${IOS3_SDK:-}" ]; then
+  SYSROOT_KIND=supplied
+  [ -d "$IOS3_SDK" ] || die "IOS3_SDK=$IOS3_SDK is not a directory. Point it at Apple's iPhoneOS3.1.2.sdk or at a sysroot made by toolchain/sysroot/build-sysroot.sh, or leave it unset and the build makes the project's own sysroot"
+  m="$(sysroot_missing "$IOS3_SDK")"
+  [ -z "$m" ] || die "IOS3_SDK=$IOS3_SDK is not a sysroot for iPhone OS 3.1: it has no $m. Point it at Apple's iPhoneOS3.1.2.sdk or at a sysroot made by toolchain/sysroot/build-sysroot.sh, or leave it unset and the build makes the project's own sysroot"
+else
+  SYSROOT_KIND=own   # made below, once the toolchain is checked and the lock is held
+fi
 if [ -z "${IOS3_TOOLCHAIN:-}" ]; then
   c="$(command -v armv6-ios3-clang || true)"
   [ -n "$c" ] || die "set IOS3_TOOLCHAIN, or put the toolchain's bin/ in PATH"
@@ -71,8 +89,7 @@ ISA_SCAN="$TOOLS_DIR/isa_scan.py"
 STARTCHECK="$TOOLS_DIR/startcheck.py"
 export PYTHONDONTWRITEBYTECODE=1
 
-case "$BUILD_ROOT$REPO$ARM_OUT" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
-[ -f "$IOS3_SDK/usr/lib/libSystem.B.dylib" ] || die "IOS3_SDK=$IOS3_SDK is not the iPhoneOS3.1.2 SDK"
+case "$BUILD_ROOT$REPO$ARM_OUT${IOS3_SDK:-}" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
 [ -f "$TCFILE" ] || die "toolchain not found at $TC"
 [ -d "$STARTFILES" ] || die "the toolchain at $TC is revision 1: it has no armv6-ios3/lib/startfiles, so its links take the start-up objects from the SDK. Install revision $TOOLCHAIN_MIN_REVISION or later (toolchain/README.md)"
 for f in crt1.o dylib1.o bundle1.o; do
@@ -94,6 +111,22 @@ note "repo: $(repo_describe "$REPO")"
 note "toolchain: $TC (revision $TC_REV)"
 STATUS_BEFORE="$(git -C "$REPO" status --short --ignored 2>/dev/null || true)"
 
+# ------------------------------------------------------------------ the sysroot -----------------------
+if [ "$SYSROOT_KIND" = own ]; then
+  ensure_own_sysroot
+  IOS3_SDK="$OWN_SYSROOT"
+  m="$(sysroot_missing "$IOS3_SDK")"
+  [ -z "$m" ] || die "the sysroot made in $IOS3_SDK has no $m"
+  SYSROOT_DESC="$IOS3_SDK (the project's own, toolchain/sysroot/build-sysroot.sh; contents $OWN_SYSROOT_ID)"
+  SYSROOT_STAMP="sysroot=$IOS3_SDK@$OWN_SYSROOT_ID"
+else
+  if is_apple_sdk "$IOS3_SDK"; then k="Apple's SDK"; else k="not Apple's SDK"; fi
+  SYSROOT_DESC="$IOS3_SDK (supplied in IOS3_SDK; $k)"
+  SYSROOT_STAMP="sysroot=$IOS3_SDK"
+  note "sysroot: $SYSROOT_DESC"
+fi
+export IOS3_SDK
+
 # The toolchain a build dir was linked with (see the reproducibility notes): part of the CMake stamps.
 TC_STAMP="toolchain=$TC@r$TC_REV:$(cat "$TC/bin/armv6-ios3-clang" "$STARTFILES/crt1.o" "$STARTFILES/dylib1.o" "$STARTFILES/bundle1.o" | sha256sum | cut -c1-16)"
 # Every step's links write their ld64 map to $MAPS/<step>/ (the toolchain wrapper, IOS3_LINK_MAP_DIR).
@@ -105,11 +138,17 @@ cmake_env() { env IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1 "$@"; }
 
 note "mbedTLS $MBEDTLS_TAG for ARMv6"
 maps_for mbedtls
+# build_mbedtls builds only when its install is missing; compiled against another sysroot, it is removed first.
+if { [ -e "$ARM/mbedtls" ] || [ -e "$ARM/sysroot" ]; } && [ "$(cat "$ARM/mbedtls.stamp" 2>/dev/null)" != "$SYSROOT_STAMP" ]; then
+  note "sysroot changed for $ARM/mbedtls: removing it and its install $ARM/sysroot"
+  rm -rf "$ARM/mbedtls" "$ARM/sysroot"
+fi
 ( export IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1; build_mbedtls arm -DCMAKE_TOOLCHAIN_FILE="$TCFILE" )
+printf '%s\n' "$SYSROOT_STAMP" > "$ARM/mbedtls.stamp"
 
 note "fidelio-audiod + fidelio-lockctl"
 maps_for audiod
-stamp_dir "$ARM/audiod" "$REPO $TC_STAMP"
+stamp_dir "$ARM/audiod" "$REPO $TC_STAMP $SYSROOT_STAMP"
 [ -f "$ARM/audiod/build.ninja" ] || logged "$LOGS/arm-audiod-configure.log" cmake_env \
   cmake -S "$REPO/audiod" -B "$ARM/audiod" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$TCFILE" -DCMAKE_BUILD_TYPE=Release
 grep -q '^IOS3_LDID:FILEPATH=.*armv6-ios3-ldid$' "$ARM/audiod/CMakeCache.txt" || die "audiod CMake did not find armv6-ios3-ldid: the binaries would not be entitlement-signed"
@@ -117,7 +156,7 @@ logged "$LOGS/arm-audiod-build.log" cmake_env ninja -C "$ARM/audiod" fidelio-aud
 
 note "fidelio-raop"
 maps_for airplay
-stamp_dir "$ARM/airplay" "$REPO $TC_STAMP"
+stamp_dir "$ARM/airplay" "$REPO $TC_STAMP $SYSROOT_STAMP"
 [ -f "$ARM/airplay/build.ninja" ] || logged "$LOGS/arm-airplay-configure.log" cmake_env \
   cmake -S "$REPO/airplay" -B "$ARM/airplay" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$TCFILE" -DMBEDTLS_PREFIX="$ARM/sysroot"
 logged "$LOGS/arm-airplay-build.log" cmake_env ninja -C "$ARM/airplay"
@@ -129,14 +168,14 @@ ensure_nanopb_python
 # date is in the stamp, so a build dir made with another date, or with the wall clock, is rebuilt.
 cspot_env() { cmake_env env SOURCE_DATE_EPOCH="$CSPOT_SOURCE_DATE_EPOCH" "$@"; }
 maps_for cspot
-stamp_dir "$ARM/cspot" "$REPO $(cat "$DEPS/cspot.stamp") date=$CSPOT_SOURCE_DATE_EPOCH $TC_STAMP"
+stamp_dir "$ARM/cspot" "$REPO $(cat "$DEPS/cspot.stamp") date=$CSPOT_SOURCE_DATE_EPOCH $TC_STAMP $SYSROOT_STAMP"
 [ -f "$ARM/cspot/build.ninja" ] || PATH="$NANOPB_PY_DIR:$PATH" logged "$LOGS/arm-cspot-configure.log" cspot_env \
   cmake -S "$REPO/spotify/cli-src" -B "$ARM/cspot" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$TCFILE" -DCMAKE_BUILD_TYPE=Release \
     -DCSPOT_DIR="$DEPS/cspot" -DBELL_EXTERNAL_MBEDTLS="$ARM/sysroot/lib/cmake/MbedTLS" -DMBEDTLS_RELEASE=RELEASE
 PATH="$NANOPB_PY_DIR:$PATH" logged "$LOGS/arm-cspot-build.log" cspot_env ninja -C "$ARM/cspot"
 
 # ------------------------------------------------------------------ the repo's own build.sh scripts ---
-# They document only IOS3_SDK + PATH, so the two libc++/compat variables are NOT set for them.
+# They document only IOS3_SDK (the sysroot) + PATH, so the two libc++/compat variables are NOT set for them.
 script_env() { env -u IOS3_CXX_RUNTIME -u IOS3_COMPAT_INCLUDE "$@"; }
 
 note "NowPlaying.app"
@@ -190,7 +229,7 @@ map_of() {
   esac
 }
 # Paths in a map are compared as the linker printed them and with symlinks resolved.
-SDK_REAL="$(cd "$IOS3_SDK" && pwd -P)"
+SYSROOT_REAL="$(cd "$IOS3_SDK" && pwd -P)"
 STARTFILES_REAL="$(cd "$STARTFILES" && pwd -P)"
 bad=0
 REPORT="$ARM_OUT/report.txt"
@@ -199,7 +238,7 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
 
 {
   echo "repo:      $(repo_describe "$REPO")"
-  echo "toolchain: $TC (revision $TC_REV)   SDK: $IOS3_SDK   host clang: $(clang-18 --version 2>/dev/null | head -1)"
+  echo "toolchain: $TC (revision $TC_REV)   sysroot: $SYSROOT_DESC   host clang: $(clang-18 --version 2>/dev/null | head -1)"
   echo
   printf '%-34s %8s  %-64s  %-18s %8s  %-10s %-9s %-8s %s\n' binary size sha256 check post-v6 link-map start-up notice entitlements
   for b in $BINARIES; do
@@ -209,6 +248,9 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
     # armv6-ios3-check. The lock plugin subclasses SpringBoard's private SBAwayViewPluginController, whose
     # class + metaclass symbols are left undefined on purpose (-U): the raw check prints 2 ERRORs and FAIL
     # for it. Like nowplaying/lockplugin/build.sh, accept exactly those and nothing else, but say so.
+    # What the check proves depends on the sysroot: against the project's own it confirms that every
+    # import is in the stub manifest (toolchain/sysroot/stubs/manifest.tsv, the allow-list), which the
+    # link has shown already; against a supplied Apple SDK it confirms each import against the real library.
     crc=0; armv6-ios3-check "$f" > "$ARM_OUT/verify/$tag.check.txt" 2>&1 || crc=$?
     nerr="$(grep -c 'ERROR' "$ARM_OUT/verify/$tag.check.txt" || true)"
     nother="$(grep 'ERROR' "$ARM_OUT/verify/$tag.check.txt" | grep -vc 'SBAwayViewPluginController' || true)"
@@ -244,17 +286,17 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
       echo "$b: link map: $map belongs to another output ($(head -n 1 "$map"))" >> "$FAILS"
     else
       linkmap_objects "$map" > "$ARM_OUT/verify/$tag.linkmap.txt"
-      sdk_objs="$(awk -v a="$IOS3_SDK/" -v r="$SDK_REAL/" '(index($0, a) == 1 || index($0, r) == 1) && /(\.o|\))$/' "$ARM_OUT/verify/$tag.linkmap.txt")"
+      sysroot_objs="$(awk -v a="$IOS3_SDK/" -v r="$SYSROOT_REAL/" '(index($0, a) == 1 || index($0, r) == 1) && /(\.o|\))$/' "$ARM_OUT/verify/$tag.linkmap.txt")"
       starts="$(awk -v a="$STARTFILES/" -v r="$STARTFILES_REAL/" 'index($0, a) == 1 { print substr($0, length(a) + 1); next } index($0, r) == 1 { print substr($0, length(r) + 1) }' "$ARM_OUT/verify/$tag.linkmap.txt")"
       nstarts="$(printf '%s' "$starts" | grep -c . || true)"
-      if [ -n "$sdk_objs" ]; then
-        printf '%s\n' "$sdk_objs" | sed "s|^|$b: link map: an object of the SDK was linked statically: |" >> "$FAILS"
+      if [ -n "$sysroot_objs" ]; then
+        printf '%s\n' "$sysroot_objs" | sed "s|^|$b: link map: an object of the sysroot was linked statically: |" >> "$FAILS"
       fi
       if [ "$nstarts" != 1 ]; then
         echo "$b: link map: $nstarts start-up objects from $STARTFILES (need exactly 1)" >> "$FAILS"
       elif [ "$starts" != "$want_start" ]; then
         echo "$b: link map: start-up object $starts, but the file type needs $want_start" >> "$FAILS"
-      elif [ -z "$sdk_objs" ]; then
+      elif [ -z "$sysroot_objs" ]; then
         linkmap="$starts"
       fi
     fi
@@ -292,7 +334,7 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
   echo "  purpose, SpringBoard provides them); the repo's lockplugin/build.sh accepts exactly this."
   echo "post-v6 = tools/isa_scan.py: words only an ARMv7 decoder accepts, literal-pool data excluded (details: verify/*.isa.txt)"
   echo "link-map = the ld64 map of the link that made the binary ($MAPS/<step>/<output>.map; its object table: verify/*.linkmap.txt):"
-  echo "  no .o file and no archive member under \$IOS3_SDK was linked, and exactly one start-up object, from the toolchain's"
+  echo "  no .o file and no archive member under the sysroot (\$IOS3_SDK) was linked, and exactly one start-up object, from the toolchain's"
   echo "  startfiles directory (shown: crt1.o for an executable, dylib1.o for a dylib, bundle1.o for a bundle)."
   echo "start-up = tools/startcheck.py: start, dyld_stub_binding_helper and __dyld_func_lookup inside the binary, their linked"
   echo "  literals and the __DATA,__dyld section, and the notice (details: verify/*.startcheck.txt)"

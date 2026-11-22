@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build NowPlaying.app for iPhone OS 3.1 (armv6) with the armv6-ios3 toolchain.
-#   IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH ./build.sh [outdir]
+#   IOS3_SDK=<sysroot> PATH=<toolchain>/bin:$PATH ./build.sh [outdir]
+# The sysroot: one made by toolchain/sysroot/build-sysroot.sh, or Apple's iPhoneOS3.1.2.sdk (tools/build-arm.sh).
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT="${1:-build}"
@@ -8,7 +9,9 @@ APP="$OUT/NowPlaying.app"
 rm -rf "$APP" "$OUT"/*.o   # only our own products: never rm -rf a caller-supplied directory
 mkdir -p "$APP"
 
-CFLAGS="-O2 -Wall -Wno-unused -fno-objc-arc -fobjc-exceptions -x objective-c"
+# -Werror=objc-method-access: a message whose method no header declares stops the build. As a warning it
+# compiles, with the result taken to be id and the arguments promoted: wrong code (toolchain/sysroot/README.md).
+CFLAGS="-O2 -Wall -Wno-unused -Werror=objc-method-access -fno-objc-arc -fobjc-exceptions -x objective-c"
 for f in main FidelioAppDelegate FidelioStatus NowPlayingViewController TechnicalViewController SettingsViewController EnumPickerViewController StringEditorViewController NPEventProbe NPRemoteControl; do
   armv6-ios3-clang $CFLAGS -c "$f.m" -o "$OUT/$f.o"
 done

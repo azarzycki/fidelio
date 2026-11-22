@@ -17,7 +17,8 @@ Polls `/var/mobile/fidelio/status.plist` (XML plist — iOS 3 has no JSON parser
 
 ## Build
 ```sh
-export IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH
+# IOS3_SDK: a sysroot (toolchain/sysroot/build-sysroot.sh, or ../build/sysroot/root after tools/build-arm.sh), or Apple's iPhoneOS3.1.2.sdk
+export IOS3_SDK=/path/to/sysroot PATH=<toolchain>/bin:$PATH
 ./src/build.sh      # -> build/NowPlaying.app  (compile, link, strip, ldid -S, armv6-ios3-check, images)
 ```
 

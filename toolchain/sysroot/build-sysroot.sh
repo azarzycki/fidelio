@@ -33,7 +33,9 @@
 #
 # Environment: passed on to the two scripts, among them
 #   IOS3_OSS_CACHE   directory with <repo>/<tag>/ checkouts of Apple's releases (build-headers.sh)
+#   IOS3_OSS_CACHE_FILL  1 = releases missing from IOS3_OSS_CACHE are fetched into it and kept
 #   IOS3_TOOLCHAIN, IOS3_HOST_CLANG, HOST_CC, BISON, FLEX
+# tools/build-arm.sh runs this script itself when IOS3_SDK is not set (see README.md).
 set -euo pipefail
 
 die() { echo "build-sysroot: ERROR: $*" >&2; exit 1; }
@@ -80,9 +82,9 @@ echo "build-sysroot: $(wc -l < "$W/fw.lst") framework headers match frameworks/H
 echo "build-sysroot: stubs/build-stubs.sh"
 "$HERE/stubs/build-stubs.sh" "$W/stubs" > "$W/stubs.log" 2>&1 || { cat "$W/stubs.log" >&2; die "build-stubs.sh failed"; }
 grep -E '^build-stubs: STUBS OK' "$W/stubs.log" | sed 's/^/  /' || true
-echo "build-sysroot: headers/build-headers.sh${IOS3_OSS_CACHE:+ (IOS3_OSS_CACHE=$IOS3_OSS_CACHE)}"
+echo "build-sysroot: headers/build-headers.sh${IOS3_OSS_CACHE:+ (IOS3_OSS_CACHE=$IOS3_OSS_CACHE${IOS3_OSS_CACHE_FILL:+, IOS3_OSS_CACHE_FILL=$IOS3_OSS_CACHE_FILL})}"
 "$HERE/headers/build-headers.sh" "$W/headers" > "$W/headers.log" 2>&1 || { cat "$W/headers.log" >&2; die "build-headers.sh failed"; }
-grep -E '^build-headers: [^ ]+ [^ ]+: (from|fetching) ' "$W/headers.log" | sed 's/^/  /' || true
+grep -E '^build-headers: [^ ]+ [^ ]+: ((from|fetching) |.*: fetching it again$)' "$W/headers.log" | sed 's/^/  /' || true
 tail -n 1 "$W/headers.log" | sed 's/^/  /'
 
 # ---- 3. the tree: three parts, no file in two of them --------------------------------------------------------

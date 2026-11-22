@@ -102,7 +102,8 @@ Binary facts (from `armv6-ios3-check`, `otool`, `nm`, `objdump`):
 
 ### Build commands (reproducible)
 ```sh
-export IOS3_SDK=.../iPhoneOS3.1.2.sdk PATH=<toolchain>/bin:$PATH IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1
+# IOS3_SDK: a sysroot (toolchain/sysroot/build-sysroot.sh, or ../build/sysroot/root after tools/build-arm.sh), or Apple's iPhoneOS3.1.2.sdk
+export IOS3_SDK=/path/to/sysroot PATH=<toolchain>/bin:$PATH IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1
 # mbedTLS
 git clone -b v3.6.7 --recurse-submodules https://github.com/Mbed-TLS/mbedtls && cd mbedtls
 cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=<toolchain>/share/armv6-ios3/toolchain.cmake -DCMAKE_BUILD_TYPE=Release \

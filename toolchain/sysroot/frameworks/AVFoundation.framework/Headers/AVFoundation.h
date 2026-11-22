@@ -11,8 +11,8 @@
  * out-parameter; -play, which returns a BOOL; the property numberOfLoops (an NSInteger, -1 for
  * endless), whose setter the source calls.
  */
-#if !defined(FIDELIO_SYSROOT_AVFOUNDATION_H)
-#define FIDELIO_SYSROOT_AVFOUNDATION_H
+#if !defined(IOS3_SYSROOT_AVFOUNDATION_H)
+#define IOS3_SYSROOT_AVFOUNDATION_H
 
 #import <Foundation/Foundation.h>
 
@@ -22,4 +22,4 @@
 @property NSInteger numberOfLoops;
 @end
 
-#endif /* FIDELIO_SYSROOT_AVFOUNDATION_H */
+#endif /* IOS3_SYSROOT_AVFOUNDATION_H */

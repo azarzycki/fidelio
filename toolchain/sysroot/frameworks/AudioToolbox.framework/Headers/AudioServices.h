@@ -20,8 +20,8 @@
  *     "OutputDeviceDidChange_Reason" and "OutputDeviceDidChange_OldRoute" (they are used with CFSTR);
  *   - the two listeners' parameter lists, and C linkage for every function.
  */
-#if !defined(FIDELIO_SYSROOT_AUDIOSERVICES_H)
-#define FIDELIO_SYSROOT_AUDIOSERVICES_H
+#if !defined(IOS3_SYSROOT_AUDIOSERVICES_H)
+#define IOS3_SYSROOT_AUDIOSERVICES_H
 
 #include <CoreFoundation/CFRunLoop.h>
 
@@ -85,4 +85,4 @@ extern OSStatus AudioSessionAddPropertyListener(AudioSessionPropertyID inID, Aud
 }
 #endif
 
-#endif /* FIDELIO_SYSROOT_AUDIOSERVICES_H */
+#endif /* IOS3_SYSROOT_AUDIOSERVICES_H */

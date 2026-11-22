@@ -10,8 +10,8 @@
  * Interface facts stated here: the layer class CALayer, and the names and types of its two properties
  * cornerRadius (CGFloat) and masksToBounds (BOOL), whose setters the source calls.
  */
-#if !defined(FIDELIO_SYSROOT_QUARTZCORE_H)
-#define FIDELIO_SYSROOT_QUARTZCORE_H
+#if !defined(IOS3_SYSROOT_QUARTZCORE_H)
+#define IOS3_SYSROOT_QUARTZCORE_H
 
 #import <Foundation/Foundation.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -21,4 +21,4 @@
 @property BOOL masksToBounds;
 @end
 
-#endif /* FIDELIO_SYSROOT_QUARTZCORE_H */
+#endif /* IOS3_SYSROOT_QUARTZCORE_H */

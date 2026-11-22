@@ -25,3 +25,19 @@ Linux x86_64 → ARMv6 Mach-O for iOS 3.1.3 (cctools-port ld64, clang 18, ldid f
 static libc++ 18.1.3, mbedTLS 3.6.7). `tools/build-arm.sh` builds and verifies every binary
 and `tools/run-host-tests.sh` runs the host suites; `spotify/BUILD.md` documents the toolchain,
 and `docs/HANDOFF.md` has the project state and conventions.
+
+## Building
+
+```sh
+export PATH=/path/to/armv6-ios3-toolchain/bin:$PATH   # toolchain revision 3 (toolchain/README.md)
+tools/build-arm.sh                                    # binaries and report in ../build/arm-out
+```
+
+Apple's iPhone SDK is not needed and not included. Without `IOS3_SDK`, `tools/build-arm.sh` makes
+the project's own sysroot (`toolchain/sysroot/`): stub libraries from a symbol list, headers from
+Apple's published open-source releases (fetched once, pinned by commit and sha256) and framework
+headers of this project. It needs Ubuntu 24.04's `clang-18 llvm-18 cmake ninja-build
+protobuf-compiler python3-protobuf libavahi-client-dev g++ unifdef flex bison`. A developer who has
+Apple's `iPhoneOS3.1.2.sdk` can build against it with `IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk`; that is
+needed only to confirm additions to the sysroot's symbol list and headers
+(`toolchain/sysroot/README.md`).

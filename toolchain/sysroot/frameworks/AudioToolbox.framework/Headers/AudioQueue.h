@@ -19,8 +19,8 @@
  *   - the error "enqueue during reset" is -66632;
  *   - every function returns an OSStatus and has C linkage.
  */
-#if !defined(FIDELIO_SYSROOT_AUDIOQUEUE_H)
-#define FIDELIO_SYSROOT_AUDIOQUEUE_H
+#if !defined(IOS3_SYSROOT_AUDIOQUEUE_H)
+#define IOS3_SYSROOT_AUDIOQUEUE_H
 
 #include <CoreAudio/CoreAudioTypes.h>
 #include <CoreFoundation/CFRunLoop.h>
@@ -73,4 +73,4 @@ extern OSStatus AudioQueueSetParameter(AudioQueueRef inAQ, AudioQueueParameterID
 }
 #endif
 
-#endif /* FIDELIO_SYSROOT_AUDIOQUEUE_H */
+#endif /* IOS3_SYSROOT_AUDIOQUEUE_H */

@@ -17,8 +17,8 @@
  *   - AudioTimeStamp and AudioStreamPacketDescription are only passed by pointer here (as NULL), so
  *     their members are not declared.
  */
-#if !defined(FIDELIO_SYSROOT_COREAUDIOTYPES_H)
-#define FIDELIO_SYSROOT_COREAUDIOTYPES_H
+#if !defined(IOS3_SYSROOT_COREAUDIOTYPES_H)
+#define IOS3_SYSROOT_COREAUDIOTYPES_H
 
 #include <MacTypes.h>
 
@@ -48,4 +48,4 @@ enum {
 typedef struct AudioTimeStamp AudioTimeStamp;
 typedef struct AudioStreamPacketDescription AudioStreamPacketDescription;
 
-#endif /* FIDELIO_SYSROOT_COREAUDIOTYPES_H */
+#endif /* IOS3_SYSROOT_COREAUDIOTYPES_H */

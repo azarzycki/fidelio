@@ -8,16 +8,21 @@ built with it (`tools/build-arm.sh`).
 This directory holds the toolchain's own source files and the script that packs the release tarball,
 `armv6-ios3-toolchain-linux-x86_64.tar.xz`. The file `VERSION` holds the toolchain revision: **3**.
 
-Apple's iPhone SDK is **not** part of the toolchain, of the tarball or of this repository. To compile
-and link you supply your own copy of `iPhoneOS3.1.2.sdk` and point `IOS3_SDK` at it. `spotify/BUILD.md`
-§1 says which SDK it is and how a copy was checked. A host clang 18 is not included either
-(`apt install clang-18`).
+Apple's iPhone SDK is **not** part of the toolchain, of the tarball or of this repository, and it is
+not needed to build. The wrapper compiles and links against the sysroot that `IOS3_SDK` names.
+`tools/build-arm.sh` makes the project's own sysroot when `IOS3_SDK` is not set
+(`toolchain/sysroot/README.md`); `toolchain/sysroot/build-sysroot.sh` makes one for other uses. A
+developer's own copy of `iPhoneOS3.1.2.sdk` still works as `IOS3_SDK`, and it is needed to confirm an
+addition to the sysroot's stub manifest or headers against Apple's libraries and headers.
+`spotify/BUILD.md` §1 says which SDK it is and how a copy was checked. A host clang 18 is not
+included either (`apt install clang-18`).
 
 <!-- README.txt: pack.sh copies the text block below into the tarball as README.txt -->
 ```text
 armv6-ios3 cross toolchain (Linux x86_64 host -> ARMv6 iPhone OS 3.x). Revision: see VERSION.
 
-  export IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk   # Apple's SDK is NOT included: supply your own copy
+  export IOS3_SDK=/path/to/sysroot   # NOT included: the source repository's toolchain/sysroot makes one;
+                                     # your own copy of Apple's iPhoneOS3.1.2.sdk works as well
   export PATH=$PWD/bin:$PATH                   # needs the host's clang 18 (apt install clang-18)
   armv6-ios3-clang -O2 hello.c -o hello && armv6-ios3-ldid -S hello && armv6-ios3-check hello
   armv6-ios3-clang++ -std=c++17 -stdlib=libc++ ...   (static libc++ 18)   |  default C++: the SDK's libstdc++ 4.2.1
@@ -149,7 +154,7 @@ sources (sections, contents, relocations, symbols) is the same as in revision 2'
 
 - The toolchain is revision 3 or later; it refuses to build with an older one.
 - The three installed objects have the sha256 values pinned in `tools/_common.sh`.
-- The link map of every binary: no object file of the SDK was linked, and exactly one start-up
+- The link map of every binary: no object file of the sysroot was linked, and exactly one start-up
   object, the toolchain's, of the kind that fits the file type.
 - `tools/startcheck.py` on every binary: the start-up code inside it, and the notice. The section
   `__TEXT,__csu_notice` must hold, byte for byte, the text for a program (in an executable) or the
@@ -178,15 +183,19 @@ toolchain/pack.sh --base /path/to/an/unpacked/armv6-ios3-toolchain [--out DIR]
   built on the spot by `startfiles/build-startfiles.sh`, and `README.txt` is the text block above.
 - Before it writes the tarball, the script checks the staged tree and stops on any of these: a
   start-up object is missing; a licence file named in the manifest is missing or differs; a staged
-  file contains one of the strings on the script's deny list; `IOS3_SDK` is set and a staged file has
-  the sha256 of a file of the SDK.
+  file contains one of the strings on the script's deny list; `IOS3_SDK` names Apple's SDK and a
+  staged file has the sha256 of a file of the SDK. That last check runs only when `IOS3_SDK` is
+  Apple's SDK (it has `SDKSettings.plist` and `usr/lib/crt1.o`, which a sysroot of
+  `toolchain/sysroot/build-sysroot.sh` never has); otherwise the script says it was not run.
 - The result is deterministic: sorted names, one fixed mtime, owner 0, fixed modes, `xz` on one
   thread. Two runs give the same sha256. The script prints the size and the sha256.
 - The tarball lands in `toolchain-dist/` next to the repo unless `--out` says otherwise.
 
-Installing it: unpack it anywhere, put its `bin/` in `PATH` and set `IOS3_SDK`.
+Installing it: unpack it anywhere and put its `bin/` in `PATH`. `tools/build-arm.sh` needs nothing
+more; to call the wrapper yourself, set `IOS3_SDK` to a sysroot.
 
 ```sh
 mkdir -p ~/opt && tar xf armv6-ios3-toolchain-linux-x86_64.tar.xz -C ~/opt
-export PATH=~/opt/armv6-ios3-toolchain/bin:$PATH IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk
+export PATH=~/opt/armv6-ios3-toolchain/bin:$PATH
+export IOS3_SDK=/path/to/sysroot    # only to call armv6-ios3-clang directly (build-sysroot.sh, or Apple's SDK)
 ```

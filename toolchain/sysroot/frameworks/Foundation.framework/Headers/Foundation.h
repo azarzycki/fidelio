@@ -25,8 +25,8 @@
  *   - NSException's exception type is exported by Foundation (the objc_exception attribute);
  *   - NSUTF8StringEncoding is 4; NSOrderedAscending, NSOrderedSame, NSOrderedDescending are -1, 0, 1.
  */
-#if !defined(FIDELIO_SYSROOT_FOUNDATION_H)
-#define FIDELIO_SYSROOT_FOUNDATION_H
+#if !defined(IOS3_SYSROOT_FOUNDATION_H)
+#define IOS3_SYSROOT_FOUNDATION_H
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <objc/objc.h>
@@ -287,4 +287,4 @@ typedef struct {
 - (void)invalidate;
 @end
 
-#endif /* FIDELIO_SYSROOT_FOUNDATION_H */
+#endif /* IOS3_SYSROOT_FOUNDATION_H */

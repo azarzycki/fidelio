@@ -2,12 +2,13 @@
      Copyright (c) 2026 Andy Zarzycki. Part of this repository's original work; see LICENSE at its root. -->
 # A sysroot without Apple's SDK: link libraries (stage 1), published headers (stage 2), framework headers of our own (stage 3)
 
-The ARM build of this repository compiles and links against a sysroot: the directory that `IOS3_SDK`
-names. Today that has to be a copy of Apple's `iPhoneOS3.1.2.sdk`, which is not part of this
-repository and must not be published. The aim of this directory is a sysroot that the project makes
-itself.
+The ARM build of this repository compiles and links against a sysroot: the directory that the
+toolchain wrapper gets as `IOS3_SDK`. This directory makes that sysroot without Apple's SDK, and
+`tools/build-arm.sh` uses it unless the developer names another one ("How `tools/build-arm.sh` uses
+the sysroot" below). Apple's `iPhoneOS3.1.2.sdk` is not part of this repository and must not be
+published; a developer who has a copy can still build against it.
 
-That is done in stages.
+The sysroot has three parts, made in three stages.
 
 - **Stage 1: the link libraries.** `stubs/build-stubs.sh` generates stand-ins for the dylibs that
   the linker reads in the SDK. They are made from a list of names, `stubs/manifest.tsv`, and from
@@ -22,10 +23,9 @@ That is done in stages.
   "Stage 3: framework headers of our own" below.
 
 `build-sysroot.sh OUTDIR` puts the three together into a complete sysroot, from nothing and without
-an SDK. With it as `IOS3_SDK`, `tools/build-arm.sh` gives the same nine binaries, byte for byte, as
-with Apple's SDK ("What is verified" in the stage 3 section). `tools/build-arm.sh`, the toolchain
-wrapper, `armv6-ios3-check`, `toolchain/pack.sh` and the build notes are unchanged and still
-describe the SDK; pointing them here is a later step.
+an SDK. With it, `tools/build-arm.sh` gives the same nine binaries, byte for byte, as with Apple's
+SDK ("What is verified" in the stage 3 section and at the end). `tools/build-arm.sh` makes it itself
+when `IOS3_SDK` is not set.
 
 ## What is here
 
@@ -283,10 +283,13 @@ and what was compared.
 ```sh
 toolchain/sysroot/headers/build-headers.sh OUTDIR                        # fetches what it needs
 IOS3_OSS_CACHE=DIR toolchain/sysroot/headers/build-headers.sh OUTDIR     # DIR/<repo>/<tag>/ checkouts
+IOS3_OSS_CACHE=DIR IOS3_OSS_CACHE_FILL=1 toolchain/sysroot/headers/build-headers.sh OUTDIR
+                                         # what DIR lacks is fetched into it and kept for the next run
 ```
 
 Besides git, sha256sum, awk and sed it needs `unifdef`, the host clang (as the preprocessor for mig),
-a host C compiler, `bison` and `flex` (to build mig, see below). `OUTDIR` must not exist yet, or be
+a host C compiler, `bison` and `flex` (to build mig, see below; on Ubuntu 24.04
+`apt-get install unifdef flex bison`). `OUTDIR` must not exist yet, or be
 empty. Every published file is checked against the sha256 of its row in `sources.tsv` before it is
 used; the result is checked against `HEADERS.sha256`. On any mismatch the script stops and writes
 nothing to `OUTDIR`. Two runs give the same bytes.
@@ -316,8 +319,8 @@ code compiles. So a header is added only when a source of the build needs it. 21
 `usr/include` and 38 CoreFoundation headers were read by the build against the SDK; the stage 2 tree
 differs from that set as follows:
 
-- left out: `usr/include/stdint.h` (in the SDK a link to a gcc file). clang's own `<stdint.h>` is
-  used instead and gives the same objects. Also left out: `CFAttributedString.h`,
+- left out on purpose: `usr/include/stdint.h` (in the SDK a link to a gcc file). clang's own
+  `<stdint.h>` is used instead and gives the same objects (see "What differs" below). Also left out: `CFAttributedString.h`,
   `CFFileDescriptor.h` and `CFStringTokenizer.h`, which Apple never published and which nothing in
   the build uses (CoreFoundation.h does not name them here).
 - added: the twelve small headers that the xnu-4570.1.46 versions of the ARM headers include
@@ -410,8 +413,9 @@ Two of the generated headers (`mach/arm/task.h`, `mach/arm/thread_act.h`) came o
 the SDK's copies. Most others differ from them by one line (a second `#include <mach/mig.h>`);
 `mach/host_priv.h` and `mach/mach_port.h` differ by routines and arguments that xnu-1456 has and the
 iPhone OS 3.1 kernel did not, which no source of the build calls. The two `.y`/`.l` generators were
-tested with bison 1.28 and flex 2.5.4 (Apple's bison-6.1.1 and flex-9 releases); any later bison and
-flex should do, because they only build the tool.
+tested with Ubuntu 24.04's bison 3.8.2 and flex 2.6.4, and with bison 1.28 and flex 2.5.4 (Apple's
+bison-6.1.1 and flex-9 releases): with either pair the headers match `HEADERS.sha256`, with no change
+to how migcom is built. They only build the tool, so the distribution's versions are the ones to use.
 
 ### CoreFoundation
 
@@ -482,13 +486,13 @@ compiles comes out differently. Differences that a future source could notice:
   `__IPHONE_OS_VERSION_MAX_ALLOWED` is 30100 now, as in the SDK. The availability macros for 3.1
   itself (`__AVAILABILITY_INTERNAL__IPHONE_3_1...`) are not there, because nothing uses them: a
   declaration annotated with `__IPHONE_3_1` does not compile until they are added.
-- There is no `usr/include/stdint.h`, so clang's own is used: same types and limits, but
-  `__WORDSIZE` is not defined, and the limit macros are spelled with clang's builtins. No published
-  release offers an APSL `stdint.h` that defines `__WORDSIZE`: Libc-498.1.7 (and Libc-583,
-  Libc-594.9.5) have none; xnu's `EXTERNAL_HEADERS/stdint.h` does not define it; gcc_42-5577's
-  `more-hdrs/stdint.h` does (it is the file the SDK's `stdint.h` link leads to, and all 409 compiles
-  give the same objects with it), but it carries no licence of its own and its release is GCC's, so it
-  is left out until that is decided.
+- There is no `usr/include/stdint.h`, deliberately, so clang's own is used: same types and limits,
+  but `__WORDSIZE` is not defined, and the limit macros are spelled with clang's builtins. The only
+  published file that defines `__WORDSIZE` is gcc_42-5577's `more-hdrs/stdint.h` (the file the SDK's
+  `stdint.h` link leads to; all 409 compiles give the same objects with it). It carries no licence of
+  its own and its release is GCC's, under the GPL, so it is not used. No APSL release has one:
+  Libc-498.1.7 (and Libc-583, Libc-594.9.5) have no `stdint.h`, and xnu's
+  `EXTERNAL_HEADERS/stdint.h` does not define `__WORDSIZE`.
 - The ARM headers come from 2017 (xnu-4570.1.46): `arm/_structs.h` is that release's
   `bsd/arm/_mcontext.h`, whose machine context has the same layout but is called
   `struct __darwin_mcontext32` (the SDK: `__darwin_mcontext`), and `mcontext_t` is declared by
@@ -568,8 +572,13 @@ from a test link of each object, instance sizes from the `instanceStart` of our 
 1. Start from the source that needs it. A missing function, type, class or constant is a compile
    error. **A missing method is only a warning** ("instance method '-x' not found",
    `-Wobjc-method-access`), and the compiler then sends the message as if it returned `id` and took
-   promoted arguments (a `float` passed as a `double`): code that compiles and is wrong. Treat that
-   warning as an error.
+   promoted arguments (a `float` passed as a `double`): code that compiles and is wrong. The build
+   scripts of the Objective-C components (NowPlaying, the lock-screen plugin, DockRemote, voltest)
+   therefore compile with `-Werror=objc-method-access`, which makes it an error for instance and class
+   messages alike. One related case stays a warning: when the receiver's class lacks the method but
+   another class declares one of that name, clang says "'X' may not respond to 'y'" and uses that
+   other declaration. This warning has no flag of its own, so it cannot be made an error by itself;
+   look for it in the build logs.
 2. Declare it in the header of its framework, in the documented shape (selector, result and argument
    types, getter name of a property, enumeration value), and nothing more.
 3. Confirm it, in one of two ways: compile the unit also against an SDK that a developer supplies and
@@ -586,8 +595,10 @@ from a test link of each object, instance sizes from the `instanceStart` of our 
 ```sh
 toolchain/sysroot/build-sysroot.sh OUTDIR                       # fetches the published releases
 IOS3_OSS_CACHE=DIR toolchain/sysroot/build-sysroot.sh OUTDIR    # DIR/<repo>/<tag>/ checkouts
-IOS3_SDK=OUTDIR tools/build-arm.sh                              # the build, with no SDK
+IOS3_SDK=OUTDIR tools/build-arm.sh                              # the build against that sysroot
 ```
+
+`tools/build-arm.sh` without `IOS3_SDK` runs the script itself (next section).
 
 `OUTDIR` must not exist yet, or be empty. The script checks the framework headers against
 `frameworks/HEADERS.sha256` first, runs `stubs/build-stubs.sh` and `headers/build-headers.sh` (each
@@ -650,7 +661,8 @@ They declare what today's sources use and were checked by what today's build com
 source could notice:
 
 - **Anything else is missing.** A class, function, constant or header file that is not here does not
-  compile. A method that is not here compiles with a warning and wrong code (above).
+  compile. A method that is not here does not compile in the build scripts
+  (`-Werror=objc-method-access`); elsewhere it compiles with a warning and wrong code (above).
 - **Partial structures.** `AudioQueueBuffer` declares only its first three members; its size must not
   be taken. Enumerations list only the values in use.
 - **Subclassing.** Only `NSObject`, `UIApplication`, `UIWindow` and `UIViewController` have their
@@ -668,12 +680,83 @@ source could notice:
   library.
 - **Missing frameworks.** Security, AudioUnit and OpenGLES have no headers.
 
-## Later stages
+## How `tools/build-arm.sh` uses the sysroot
 
-The sysroot is complete for this repository's build. Not changed here, and left to the stage that
-integrates it: `tools/build-arm.sh` (its message and check "is not the iPhoneOS3.1.2 SDK", and making
-the sysroot or taking a built one), the toolchain wrapper (its message, and the `-cxx-isystem` path
-into the SDK's libstdc++ headers for `IOS3_CXX_RUNTIME=libstdc++`), `armv6-ios3-check` (against the
-stubs it shows that an import is in the manifest, not that the real library has it; stage 1),
-`toolchain/pack.sh` and `toolchain/THIRD-PARTY-NOTICES.md` (the published headers' licences, if the
-sysroot ships), and the build notes (`docs/HANDOFF.md`, BUILD.md).
+```sh
+tools/build-arm.sh                  # the project's own sysroot, made in $BUILD_ROOT/sysroot/root
+IOS3_SDK=DIR tools/build-arm.sh     # DIR as it is: Apple's iPhoneOS3.1.2.sdk, or a sysroot of build-sysroot.sh
+```
+
+- **`IOS3_SDK` unset or empty: the project's own sysroot.** The script runs `build-sysroot.sh` into
+  `$BUILD_ROOT/sysroot/root` and gives that directory to the toolchain wrapper as `IOS3_SDK`. It makes
+  the sysroot only when it is missing or when the stamp `$BUILD_ROOT/sysroot/stamp` differs. The stamp
+  holds a sha256 over every file under `toolchain/sysroot/` and what identifies the tools that build
+  it: the toolchain's linker (by sha256) and the versions of the host clang, the host C compiler,
+  `unifdef`, `bison`, `flex` and `python3`. A tree that no longer matches its list
+  `$BUILD_ROOT/sysroot/CONTENTS` (the sha256 of every file, the target of every symlink) is made again
+  as well. When a new tree has the same contents as the intact tree in place (after a change to this
+  README, for example), the tree in place is kept, with its file times, so nothing compiles again. In
+  this case only, the script also needs `unifdef`, `flex` and `bison` (Ubuntu 24.04:
+  `apt-get install unifdef flex bison`).
+- **The cache.** The first run fetches Apple's releases into `$BUILD_ROOT/deps/apple-oss/<repo>/<tag>/`
+  (`build-headers.sh` with `IOS3_OSS_CACHE` and `IOS3_OSS_CACHE_FILL=1`); later runs read them from
+  there and check them against their pinned commits and sha256 values all the same. A cached release
+  at another commit, or without a file that `sources.tsv` now names, is fetched again; a cached file
+  with another sha256 stops the build. A run that finds the sysroot up to date uses no network, and
+  neither does a rebuild of the sysroot from a complete cache.
+- **`IOS3_SDK` set: a supplied directory.** It is used as it is. It must hold what every sysroot of
+  this build holds (`usr/lib/libSystem.B.dylib`, `usr/include/stdlib.h`, the CoreFoundation, Foundation
+  and UIKit headers and UIKit's library), or the script stops before it builds anything. This is how a
+  developer builds against Apple's SDK, which is still needed for one thing: confirming a new symbol
+  ("Adding a symbol") or a new declaration ("Adding a header", "Adding a declaration") against the
+  real libraries and headers. A sysroot made earlier by `build-sysroot.sh` can be named the same way.
+- **The report.** The second line of `report.txt` names the sysroot. For the project's own: its path
+  and `contents` with the first 16 hex digits of the sha256 of `CONTENTS`. For a supplied directory:
+  its path, "supplied in IOS3_SDK", and whether it is Apple's SDK (it has `SDKSettings.plist` and
+  `usr/lib/crt1.o`, which `build-sysroot.sh` never makes).
+- **Rebuilds.** The sysroot (its path, and for the project's own its contents) is part of the stamps of
+  the CMake build directories and of the ARMv6 mbedTLS, so a build against another sysroot compiles
+  everything again.
+- **The checks are the same for both kinds**: no object file under the sysroot linked (the link maps),
+  the start-up objects, the notice, the instruction scan, `armv6-ios3-check`. Against the project's own
+  sysroot `armv6-ios3-check` confirms that each import is in the stub manifest, which the link has
+  shown already; against Apple's SDK it confirms the import against the real library.
+- **Objective-C.** The four Objective-C build scripts compile with `-Werror=objc-method-access`
+  ("Adding a declaration").
+
+Not changed, because they belong to the toolchain and a change would be a new toolchain revision:
+the wrapper `armv6-ios3-clang` and `share/armv6-ios3/toolchain.cmake` (their messages still ask for
+"your iPhoneOS3.1.2.sdk directory"; any sysroot of this build passes their test; the wrapper's
+`-cxx-isystem` path for `IOS3_CXX_RUNTIME=libstdc++` leads into the SDK's libstdc++ headers, which this
+sysroot does not have), `armv6-ios3-check` (it says "SDK" for whatever `IOS3_SDK` names), and
+`toolchain/THIRD-PARTY-NOTICES.md` (the sysroot is not part of the toolchain tarball, so the published
+headers' licences are not listed there). `toolchain/pack.sh` compares the staged files with the
+files under `IOS3_SDK` only when that is Apple's SDK, by the same test as the report, and says when it
+does not.
+
+### What is verified for the integration
+
+On 2026-11-22, with toolchain revision 3 and the host's clang 18.1.3, against the reference build of
+the same day (built with the SDK):
+
+- **The default build from nothing.** `tools/build-arm.sh` with `IOS3_SDK` unset, from an empty build
+  root at the reference path, inside a mount namespace in which `/home/user/sdk` (where the SDK lies on
+  the test machine) was an empty file system: it fetched mbedTLS, cspot's upstream and the 14 releases,
+  made the sysroot and ended with `result: OK`. The sha256 of all nine outputs equal those of the
+  reference build, and so do all 405 object files, the members of all 15 static archives and the
+  `CMakeCache.txt` of the four CMake build directories. A second run in the same tree, inside a
+  network namespace without network, found the sysroot up to date and gave the same nine sha256.
+- **With a supplied directory.** With `IOS3_SDK` set to Apple's SDK, and with it set to a sysroot made
+  beforehand by `build-sysroot.sh`, each in a build root of its own: `result: OK`, and the outputs that
+  embed no build path have the sha256 of the reference build.
+- **Every compile.** All 409 compiler invocations of the reference build, replayed against the sysroot
+  that the default build made: all 409 objects byte-identical to those compiled against the SDK.
+- **bison and flex.** `build-headers.sh` with Ubuntu 24.04's bison 3.8.2 and flex 2.6.4 gives headers
+  that match `HEADERS.sha256`.
+- **The script's own paths.** A cached release file with another content stops the build; an
+  `IOS3_SDK` that names an empty directory is refused before anything is built; a change of a file
+  under `toolchain/sysroot/` makes the sysroot again on the next run (and, when its contents come out
+  the same, keeps the tree in place and compiles nothing), and a run without a change does not.
+- **The Objective-C flag.** A copy of a NowPlaying source with a message to an undeclared instance
+  method and one to an undeclared class method does not compile; the unchanged sources give the same
+  objects as before (above).

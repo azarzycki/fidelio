@@ -13,8 +13,14 @@
 #   deps/cspot               that subtree + <repo>/spotify/patches/<CSPOT_PATCH_REL> applied with git am
 #   deps/cspot.stamp         "<upstream commit> <sha256 of the patch>" the tree was made from
 #   deps/mbedtls             Mbed-TLS @ MBEDTLS_TAG (with its framework submodule)
+#   deps/apple-oss/<repo>/<tag>   Apple's open-source releases that toolchain/sysroot/headers/build-headers.sh
+#                            reads (sparse checkouts at the commits pinned in its sources.tsv; fetched once)
+#   sysroot/root             the project's own sysroot (toolchain/sysroot/build-sysroot.sh), when build-arm.sh
+#                            runs without IOS3_SDK; sysroot/stamp names its inputs, sysroot/CONTENTS lists
+#                            its files (sha256) and symlinks
 #   host/{mbedtls,sysroot}   host build + install of mbedTLS      host/{audiod,airplay,cspot}  host builds
-#   arm/{mbedtls,sysroot}    ARMv6 build + install of mbedTLS     arm/{audiod,airplay,cspot,nowplaying,lockplugin,dockremote}
+#   arm/{mbedtls,sysroot}    ARMv6 build + install of mbedTLS (arm/sysroot is mbedTLS's install prefix,
+#                            not the iPhone OS sysroot)           arm/{audiod,airplay,cspot,nowplaying,lockplugin,dockremote}
 #   arm/maps/<step>/*.map    ld64 link maps, one per linked output, written by the toolchain wrapper
 #                            (IOS3_LINK_MAP_DIR); build-arm.sh reads them in its verification step
 #   tools/nanopb-py/python3  -> a python3 whose protobuf module still has reflection.MakeClass (see below)
@@ -66,10 +72,100 @@ logged() {
   fi
 }
 
-need_tools() {
-  local t missing=""
+APT_PACKAGES="clang-18 llvm-18 cmake ninja-build protobuf-compiler python3-protobuf libavahi-client-dev g++"
+# what toolchain/sysroot/build-sysroot.sh needs on top (only when build-arm.sh makes the sysroot itself)
+APT_PACKAGES_SYSROOT="unifdef flex bison"
+
+_need_tools() {  # APT-PACKAGES TOOL...
+  local hint="$1" t missing=""; shift
   for t in "$@"; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
-  [ -z "$missing" ] || die "missing tools:$missing (Ubuntu 24.04: apt-get install clang-18 llvm-18 cmake ninja-build protobuf-compiler python3-protobuf libavahi-client-dev g++)"
+  [ -z "$missing" ] || die "missing tools:$missing (Ubuntu 24.04: apt-get install $hint)"
+}
+need_tools() { _need_tools "$APT_PACKAGES" "$@"; }
+# The tools of toolchain/sysroot/build-sysroot.sh (and the two scripts it runs), with their overrides.
+need_sysroot_tools() {
+  _need_tools "$APT_PACKAGES $APT_PACKAGES_SYSROOT" "${IOS3_HOST_CLANG:-clang-18}" "${HOST_CC:-cc}" \
+    "${BISON:-bison}" "${FLEX:-flex}" unifdef git python3 sha256sum awk sed sort find realpath
+}
+
+# --- the sysroot (IOS3_SDK) ------------------------------------------------------------------------
+# Files that every sysroot of this build has, Apple's iPhoneOS3.1.2.sdk and one made by
+# toolchain/sysroot/build-sysroot.sh alike (a stub library, C library, CoreFoundation and framework headers).
+SYSROOT_PROBE_FILES="usr/lib/libSystem.B.dylib usr/include/stdlib.h
+  System/Library/Frameworks/CoreFoundation.framework/Headers/CoreFoundation.h
+  System/Library/Frameworks/Foundation.framework/Headers/Foundation.h
+  System/Library/Frameworks/UIKit.framework/Headers/UIKit.h System/Library/Frameworks/UIKit.framework/UIKit"
+sysroot_missing() {  # DIR: prints the first probe file DIR lacks; nothing if it has them all
+  local f
+  for f in $SYSROOT_PROBE_FILES; do [ -f "$1/$f" ] || { echo "$f"; return; }; done
+}
+# Apple's SDK, as opposed to a sysroot of build-sysroot.sh: it has SDKSettings.plist and the start-up
+# object usr/lib/crt1.o, and build-sysroot.sh makes neither. (toolchain/pack.sh uses the same test.)
+is_apple_sdk() { [ -f "$1/SDKSettings.plist" ] && [ -f "$1/usr/lib/crt1.o" ]; }
+# One line per file (its sha256) and per symlink (its target), sorted by path: what a sysroot holds.
+sysroot_listing() {  # DIR
+  ( cd "$1" && find . \( -type f -o -type l \) | LC_ALL=C sort | while IFS= read -r p; do
+      if [ -L "$p" ]; then printf 'link:%s  %s\n' "$(readlink "$p")" "${p#./}"
+      else printf '%s  %s\n' "$(sha256sum < "$p" | cut -d' ' -f1)" "${p#./}"; fi
+    done )
+}
+
+# The project's own sysroot, $BUILD_ROOT/sysroot/root, made by toolchain/sysroot/build-sysroot.sh. Needs
+# REPO, TC (the toolchain directory), BUILD_ROOT, DEPS, LOGS. It is made again only when it is missing,
+# when the stamp differs (the contents of toolchain/sysroot/ or the tools that build it changed), or when
+# the tree no longer matches its CONTENTS list. A new tree with the same contents as an intact tree in
+# place is thrown away, so that the files keep their times and ninja compiles nothing again.
+# Apple's releases are fetched into deps/apple-oss once
+# (IOS3_OSS_CACHE + IOS3_OSS_CACHE_FILL of build-headers.sh) and read from there afterwards, still
+# checked against their pinned commits and sha256; a run that finds the sysroot up to date reads nothing
+# from the network. Sets OWN_SYSROOT (the tree) and OWN_SYSROOT_ID (16 hex digits of the sha256 of CONTENTS).
+ensure_own_sysroot() {
+  local d="$BUILD_ROOT/sysroot" src="$REPO/toolchain/sysroot" want hc
+  need_sysroot_tools
+  hc="${IOS3_HOST_CLANG:-clang-18}"
+  want="inputs: toolchain/sysroot $(cd "$src" && find . -type f ! -name '*.pyc' ! -path '*/__pycache__/*' | LC_ALL=C sort \
+      | xargs -d '\n' sha256sum | sha256sum | cut -d' ' -f1)
+linker: $TC/bin/arm-apple-darwin9-ld $(sha256sum < "$TC/bin/arm-apple-darwin9-ld" | cut -c1-16)
+host clang: $("$hc" --version 2>/dev/null | head -n 1)
+host cc: $("${HOST_CC:-cc}" --version 2>/dev/null | head -n 1)
+unifdef: $(unifdef -V 2>&1 | head -n 1)
+bison: $("${BISON:-bison}" --version 2>/dev/null | head -n 1)
+flex: $("${FLEX:-flex}" --version 2>/dev/null | head -n 1)
+python3: $(python3 --version 2>&1)"
+  OWN_SYSROOT="$d/root"
+  local intact=0
+  if [ -d "$d/root" ] && [ -f "$d/CONTENTS" ] && sysroot_listing "$d/root" | cmp -s - "$d/CONTENTS"; then intact=1; fi
+  if [ "$intact" = 1 ] && [ "$(cat "$d/stamp" 2>/dev/null)" = "$want" ]; then
+    OWN_SYSROOT_ID="$(sha256sum < "$d/CONTENTS" | cut -c1-16)"
+    note "sysroot: $d/root is up to date (contents $OWN_SYSROOT_ID)"
+    return 0
+  fi
+  if [ ! -d "$d/root" ]; then
+    note "sysroot: making $d/root with toolchain/sysroot/build-sysroot.sh (releases cached in $DEPS/apple-oss)"
+  elif [ "$intact" = 0 ]; then
+    note "sysroot: $d/root does not match its CONTENTS list: making it again"
+  else
+    note "sysroot: toolchain/sysroot or the tools that build it changed: making $d/root again"
+  fi
+  # The stamp goes first: a run that fails here leaves none, and the next run tries again.
+  rm -rf "$d/root.new" "$d/CONTENTS.new" "$d/stamp"
+  mkdir -p "$d" "$DEPS/apple-oss" "$LOGS"
+  logged "$LOGS/sysroot.log" env IOS3_OSS_CACHE="$DEPS/apple-oss" IOS3_OSS_CACHE_FILL=1 IOS3_TOOLCHAIN="$TC" \
+    "$src/build-sysroot.sh" "$d/root.new"
+  sysroot_listing "$d/root.new" > "$d/CONTENTS.new"
+  note "sysroot: $(tail -n 1 "$LOGS/sysroot.log" | sed "s/^build-sysroot: //; s|$d/root.new|$d/root|")"
+  if [ "$intact" = 1 ] && cmp -s "$d/CONTENTS.new" "$d/CONTENTS"; then
+    # Same bytes as the tree in place: keep that one, with its file times, so that nothing compiles again.
+    rm -rf "$d/root.new" "$d/CONTENTS.new"
+    note "sysroot: the new tree has the same contents as $d/root; the tree in place is kept"
+  else
+    rm -rf "$d/root"
+    mv "$d/root.new" "$d/root"
+    mv "$d/CONTENTS.new" "$d/CONTENTS"
+  fi
+  printf '%s\n' "$want" > "$d/stamp"
+  OWN_SYSROOT_ID="$(sha256sum < "$d/CONTENTS" | cut -c1-16)"
+  note "sysroot: $d/root: contents $OWN_SYSROOT_ID"
 }
 
 # REPO: absolute path of the worktree to build (default: the repo this script lives in)

@@ -24,8 +24,8 @@
  *     subclasses' storage. A source that subclasses UIResponder or UIView directly must first
  *     establish their sizes (see the README).
  */
-#if !defined(FIDELIO_SYSROOT_UIKIT_H)
-#define FIDELIO_SYSROOT_UIKIT_H
+#if !defined(IOS3_SYSROOT_UIKIT_H)
+#define IOS3_SYSROOT_UIKIT_H
 
 #import <Foundation/Foundation.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -295,7 +295,7 @@ UIKIT_EXTERN void UIGraphicsEndImageContext(void);
 
 @interface UIApplication : UIResponder {
   @private
-    char _fidelioReserved[53];   /* instances are 57 bytes; see the comment at the top */
+    char _reserved[53];   /* instances are 57 bytes; see the comment at the top */
 }
 @property(nonatomic, getter=isIdleTimerDisabled) BOOL idleTimerDisabled;
 - (void)setStatusBarHidden:(BOOL)hidden animated:(BOOL)animated;
@@ -347,7 +347,7 @@ UIKIT_EXTERN void UIGraphicsEndImageContext(void);
 
 @interface UIWindow : UIView {
   @private
-    void *_fidelioReserved[21];  /* with UIView's storage: instances are 88 bytes; see the top */
+    void *_reserved[21];  /* with UIView's storage: instances are 88 bytes; see the top */
 }
 - (void)makeKeyAndVisible;
 @end
@@ -493,7 +493,7 @@ UIKIT_EXTERN void UIGraphicsEndImageContext(void);
 
 @interface UIViewController : UIResponder {
   @private
-    void *_fidelioReserved[22];  /* with UIResponder's storage: instances are 92 bytes; see the top */
+    void *_reserved[22];  /* with UIResponder's storage: instances are 92 bytes; see the top */
 }
 - (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil;
 @property(nonatomic, retain) UIView *view;
@@ -518,4 +518,4 @@ UIKIT_EXTERN void UIGraphicsEndImageContext(void);
 @property(nonatomic, assign) UIViewController *selectedViewController;
 @end
 
-#endif /* FIDELIO_SYSROOT_UIKIT_H */
+#endif /* IOS3_SYSROOT_UIKIT_H */

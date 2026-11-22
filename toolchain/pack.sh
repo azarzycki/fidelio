@@ -38,8 +38,11 @@
 #     or LICENSES/ holds a file the manifest does not name,
 #   * a staged file contains one of the FORBIDDEN strings below (the tarball must carry no link to a
 #     file-sharing or web-archive host),
-#   * IOS3_SDK is set and a staged file has the sha256 of a file under $IOS3_SDK: nothing of
-#     Apple's SDK may be in the tarball. (Without IOS3_SDK this check cannot run; the script says so.)
+#   * IOS3_SDK names Apple's SDK and a staged file has the sha256 of a file under $IOS3_SDK: nothing
+#     of Apple's SDK may be in the tarball. The check runs only when IOS3_SDK is Apple's SDK, known by
+#     two files that only it has, SDKSettings.plist and usr/lib/crt1.o (a sysroot made by
+#     toolchain/sysroot/build-sysroot.sh has neither). When IOS3_SDK is unset or names another
+#     directory, the check does not run, and the script says so.
 #
 # Determinism: names sorted, one fixed mtime (PACK_MTIME), owner and group 0, modes set here (755 for
 # directories and programs, 644 for the rest), ustar format, xz -9 on one thread. The bytes can still
@@ -199,8 +202,13 @@ else
 fi
 
 ( cd "$S" && find . -type f -print0 | sort -z | xargs -0 sha256sum ) > "$STAGE_ROOT/staged.sha256"
-if [ -n "${IOS3_SDK:-}" ]; then
-  [ -d "$IOS3_SDK" ] || die "IOS3_SDK=$IOS3_SDK is not a directory"
+if [ -z "${IOS3_SDK:-}" ]; then
+  note "SDK check: NOT RUN (IOS3_SDK is not set): the staged files were not compared with Apple's SDK"
+elif [ ! -d "$IOS3_SDK" ]; then
+  die "IOS3_SDK=$IOS3_SDK is not a directory"
+elif [ ! -f "$IOS3_SDK/SDKSettings.plist" ] || [ ! -f "$IOS3_SDK/usr/lib/crt1.o" ]; then
+  note "SDK check: NOT RUN (IOS3_SDK=$IOS3_SDK is not Apple's SDK: it has no SDKSettings.plist and usr/lib/crt1.o): the staged files were not compared with Apple's SDK"
+else
   ( cd "$IOS3_SDK" && find . -type f -print0 | xargs -0 sha256sum ) > "$STAGE_ROOT/sdk.sha256"
   # sha256sum lines: 64 hex digits, two spaces, the path (a leading backslash marks an escaped name)
   same="$(awk '{ h = $1; sub(/^\\/, "", h); p = substr($0, index($0, "  ") + 2) }
@@ -212,8 +220,6 @@ if [ -n "${IOS3_SDK:-}" ]; then
     note "SDK check: none of the $(wc -l < "$STAGE_ROOT/staged.sha256") staged files has the sha256 of any of the $(wc -l < "$STAGE_ROOT/sdk.sha256") files under $IOS3_SDK"
   fi
   rm -f "$STAGE_ROOT/sdk.sha256"
-else
-  note "SDK check: NOT RUN (IOS3_SDK is not set): the staged files were not compared with an SDK"
 fi
 [ "$fail" = 0 ] || die "the staged tree failed its checks; no tarball written (staged tree: $S)"
 

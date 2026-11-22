@@ -8,7 +8,8 @@
 # directory:
 #   OUTDIR/usr/include/...                                              C library, POSIX, Mach, BSD
 #   OUTDIR/System/Library/Frameworks/CoreFoundation.framework/Headers/... CoreFoundation
-# The other frameworks' headers (Foundation, UIKit, ...) are not made here (a later stage).
+# The other frameworks' headers (Foundation, UIKit, ...) are not made here: they are files of this
+# project, which ../build-sysroot.sh installs.
 # No file of Apple's iPhone SDK is read, and the script works without one. ../README.md says what
 # was compared and how.
 #
@@ -66,13 +67,20 @@
 # https://github.com/apple-oss-distributions/<repo> (shallow, partial, only the files needed), unless
 # IOS3_OSS_CACHE names a directory that holds <repo>/<tag>/ already (a checkout of that release; if it
 # is a git work tree, its HEAD must be the pinned commit). The sha256 pins are checked all the same.
+# With IOS3_OSS_CACHE_FILL=1 as well, a release that is not in IOS3_OSS_CACHE is fetched into
+# IOS3_OSS_CACHE/<repo>/<tag>/ and kept there, so that the next run needs no network
+# (tools/build-arm.sh does that). A cached git checkout that is at another commit, or lacks a file
+# that sources.tsv now names, is fetched again; a cached file whose sha256 does not match its row
+# stops the script like any other mismatch.
 #
 # Needs: bash, git, sha256sum, awk, sed, unifdef (2.x), the host clang (as the preprocessor for mig;
 #   IOS3_HOST_CLANG, default clang-18 if present, else clang), a host C compiler for migcom (HOST_CC,
-#   default cc), bison (BISON, default bison) and flex (FLEX, default flex). No SDK.
+#   default cc), bison (BISON, default bison) and flex (FLEX, default flex): the distribution's
+#   versions do (tested: Ubuntu 24.04's bison 3.8.2 and flex 2.6.4). No SDK.
 #
 # Environment:
 #   IOS3_OSS_CACHE   directory with <repo>/<tag>/ checkouts of the releases (replaces the fetch)
+#   IOS3_OSS_CACHE_FILL  1 = fetch a release that IOS3_OSS_CACHE lacks into it and keep it there
 #   IOS3_HOST_CLANG  the host clang, as in armv6-ios3-clang
 #   HOST_CC, BISON, FLEX   tools for building migcom
 set -euo pipefail
@@ -126,25 +134,50 @@ awk -F'\t' '$3 != "own" { k = $3 "\t" $4; if (k in c && c[k] != $5) { print k; b
   || die "$SOURCES names two commits for one release"
 
 # ---- 2. the published files, at the pinned commits ----------------------------------------------------
+FILL="${IOS3_OSS_CACHE_FILL:-0}"
+[ "$FILL" != 1 ] || [ -n "${IOS3_OSS_CACHE:-}" ] || die "IOS3_OSS_CACHE_FILL=1 needs IOS3_OSS_CACHE (the directory to fill)"
+fetch_release() {  # REPO COMMIT DIR: a shallow, sparse checkout of the files in $W/files.lst
+  local repo="$1" commit="$2" d="$3"
+  git init -q "$d"
+  git -C "$d" remote add origin "https://github.com/apple-oss-distributions/$repo"
+  git -C "$d" config core.sparseCheckout true
+  sed 's|^|/|' "$W/files.lst" > "$d/.git/info/sparse-checkout"
+  git -C "$d" -c core.autocrlf=false fetch -q --depth 1 --filter=blob:none origin "$commit" \
+    || die "could not fetch $commit from https://github.com/apple-oss-distributions/$repo"
+  git -C "$d" -c core.autocrlf=false -c advice.detachedHead=false checkout -q --detach FETCH_HEAD
+  [ "$(git -C "$d" rev-parse HEAD)" = "$commit" ] || die "the fetch did not give commit $commit ($repo)"
+}
+has_files() {  # DIR: every file of $W/files.lst is a regular file in DIR
+  local f
+  while IFS= read -r f; do [ -f "$1/$f" ] && [ ! -L "$1/$f" ] || return 1; done < "$W/files.lst"
+}
 while IFS=$'\t' read -r repo tag commit; do
   awk -F'\t' -v r="$repo" -v t="$tag" '$3 == r && $4 == t { print $6 }' "$W/rows.tsv" | sort -u > "$W/files.lst"
+  src=""
   if [ -n "${IOS3_OSS_CACHE:-}" ] && [ -d "$IOS3_OSS_CACHE/$repo/$tag" ]; then
     src="$IOS3_OSS_CACHE/$repo/$tag"
-    if [ -e "$src/.git" ]; then
-      [ "$(git -C "$src" rev-parse HEAD)" = "$commit" ] || die "$src is not at commit $commit ($repo $tag)"
+    if [ -e "$src/.git" ] && [ "$(git -C "$src" rev-parse HEAD 2>/dev/null)" != "$commit" ]; then
+      [ "$FILL" = 1 ] || die "$src is not at commit $commit ($repo $tag)"
+      echo "build-headers: $repo $tag: $src is not at commit $commit: fetching it again"
+      rm -rf "$src"; src=""
+    elif [ "$FILL" = 1 ] && [ -e "$src/.git" ] && ! has_files "$src"; then
+      echo "build-headers: $repo $tag: $src lacks files that sources.tsv names: fetching it again"
+      rm -rf "$src"; src=""
+    else
+      echo "build-headers: $repo $tag: from $src (IOS3_OSS_CACHE)"
     fi
-    echo "build-headers: $repo $tag: from $src (IOS3_OSS_CACHE)"
-  else
+  fi
+  if [ -z "$src" ] && [ "$FILL" = 1 ]; then
+    src="$IOS3_OSS_CACHE/$repo/$tag"
+    echo "build-headers: $repo $tag: fetching https://github.com/apple-oss-distributions/$repo @ $commit into $src (IOS3_OSS_CACHE_FILL)"
+    mkdir -p "$IOS3_OSS_CACHE/$repo"
+    rm -rf "$src.part"
+    fetch_release "$repo" "$commit" "$src.part"
+    mv "$src.part" "$src"
+  elif [ -z "$src" ]; then
     src="$W/rel/$repo@$tag"
     echo "build-headers: $repo $tag: fetching https://github.com/apple-oss-distributions/$repo @ $commit"
-    git init -q "$src"
-    git -C "$src" remote add origin "https://github.com/apple-oss-distributions/$repo"
-    git -C "$src" config core.sparseCheckout true
-    sed 's|^|/|' "$W/files.lst" > "$src/.git/info/sparse-checkout"
-    git -C "$src" -c core.autocrlf=false fetch -q --depth 1 --filter=blob:none origin "$commit" \
-      || die "could not fetch $commit from https://github.com/apple-oss-distributions/$repo"
-    git -C "$src" -c core.autocrlf=false -c advice.detachedHead=false checkout -q --detach FETCH_HEAD
-    [ "$(git -C "$src" rev-parse HEAD)" = "$commit" ] || die "the fetch did not give commit $commit ($repo $tag)"
+    fetch_release "$repo" "$commit" "$src"
   fi
   while IFS= read -r f; do
     [ -f "$src/$f" ] && [ ! -L "$src/$f" ] || die "$repo $tag: $f is not a regular file in that release"
@@ -158,7 +191,8 @@ while IFS=$'\t' read -r f; do
   mkdir -p "$(dirname "$W/in/own/$f")"; cp "$HERE/$f" "$W/in/own/$f"
 done < <(awk -F'\t' '$3 == "own" { print $6 }' "$W/rows.tsv" | sort -u)
 awk -F'\t' '{ if ($3 == "own") p = "own/" $6; else p = $3 "/" $4 "/" $6; print $7 "  " p }' "$W/rows.tsv" | sort -u > "$W/in.sha256"
-( cd "$W/in" && sha256sum -c --strict --quiet "$W/in.sha256" ) || die "an input file does not match the sha256 of its row in sources.tsv"
+( cd "$W/in" && sha256sum -c --strict --quiet "$W/in.sha256" ) \
+  || die "an input file does not match the sha256 of its row in sources.tsv (the files named above${IOS3_OSS_CACHE:+; if one came from IOS3_OSS_CACHE=$IOS3_OSS_CACHE, check that copy or delete its <repo>/<tag> directory to fetch it again})"
 echo "build-headers: $(wc -l < "$W/in.sha256") input files match their sha256"
 
 src_of() { if [ "$1" = own ]; then echo "$W/in/own/$3"; else echo "$W/in/$1/$2/$3"; fi; }   # repo tag file

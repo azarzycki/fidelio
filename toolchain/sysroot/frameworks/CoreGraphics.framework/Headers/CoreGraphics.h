@@ -16,8 +16,8 @@
  *     constant and CGRectGetMaxY a function of the library;
  *   - a drawing context is a pointer to "struct CGContext".
  */
-#if !defined(FIDELIO_SYSROOT_COREGRAPHICS_H)
-#define FIDELIO_SYSROOT_COREGRAPHICS_H
+#if !defined(IOS3_SYSROOT_COREGRAPHICS_H)
+#define IOS3_SYSROOT_COREGRAPHICS_H
 
 #include <CoreFoundation/CFBase.h>
 
@@ -84,4 +84,4 @@ extern void CGContextFillRect(CGContextRef c, CGRect rect);
 }
 #endif
 
-#endif /* FIDELIO_SYSROOT_COREGRAPHICS_H */
+#endif /* IOS3_SYSROOT_COREGRAPHICS_H */

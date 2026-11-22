@@ -46,7 +46,7 @@ ldid links libcrypto statically. libplist is bundled.
 ### Usage
 ```sh
 tar xf armv6-ios3-toolchain-linux-x86_64.tar.xz -C ~/opt
-export IOS3_SDK=/path/to/iPhoneOS3.1.2.sdk
+export IOS3_SDK=/path/to/sysroot     # toolchain/sysroot/build-sysroot.sh of the source repository, or Apple's SDK (§1)
 export PATH=~/opt/armv6-ios3-toolchain/bin:$PATH
 
 armv6-ios3-clang   -O2 hello.c -o hello                    # C / Objective-C
@@ -62,7 +62,7 @@ Wrapper environment variables:
 
 | Variable | Meaning |
 |---|---|
-| `IOS3_SDK` | **Required.** Path to `iPhoneOS3.1.2.sdk`. |
+| `IOS3_SDK` | **Required.** Path to the sysroot: one made by `toolchain/sysroot/build-sysroot.sh` of the source repository (`tools/build-arm.sh` makes its own when the variable is not set), or `iPhoneOS3.1.2.sdk` (§1). |
 | `IOS3_CXX_RUNTIME=libc++` | Same as passing `-stdlib=libc++` on every invocation. `none` adds no C++ runtime flags at all (used to bootstrap libc++ itself). |
 | `IOS3_COMPAT_INCLUDE=1` | Force-includes `ios3compat.h` (declarations for `clock_gettime`, `strnlen`, `getline`, …). |
 | `IOS3_HOST_CLANG`, `IOS3_HOST_CLANGXX` | Choose a different host clang. |
@@ -72,6 +72,8 @@ Wrapper environment variables:
 ---
 
 ## 1. SDK
+
+The build no longer needs it: `tools/build-arm.sh` makes the project's own sysroot (`toolchain/sysroot/README.md`), and its binaries are byte-identical to the ones built against the SDK. A developer's own copy is still needed to confirm an addition to that sysroot's stub manifest or headers against Apple's libraries and headers.
 
 The SDK is Apple's. It is not part of this project and is not distributed with it, and this file gives no download location for it: you supply your own copy. It is the `iPhoneOS3.1.2.sdk` directory from Apple's "iPhone SDK 3.1.3 with Xcode 3.2.1" disk image. The copy used here, packed as `iPhoneOS3.1.2.sdk.tar.xz`:
 ```sh
@@ -329,7 +331,7 @@ It follows the release's Makefile (sources, order, `-Os`, the `-D` flags). The d
 **In the wrapper.** `armv6-ios3-clang` puts `-L<toolchain>/armv6-ios3/lib/startfiles` before the caller's arguments on every link. ld64 searches the `-L` directories before the SDK's `usr/lib`, so the driver's `-lcrt1.o` finds the toolchain's file. The wrapper refuses to link if one of the three files is missing. With `IOS3_MIN_VERSION=3.1` the driver would ask for `crt1.3.1.o`, which the toolchain does not have, and the link would take the SDK's: one more reason to leave the deployment target at 3.0.
 
 **In `tools/build-arm.sh`.** The script refuses to run with a toolchain that has no `startfiles` directory (revision 1) or whose `VERSION` is below 3 (revision 2: no notice in the objects). It sets `IOS3_LINK_MAP_DIR` for every ARM build, and for every binary it then
-- reads the binary's link map and fails if the object table lists a `.o` file or an archive member under `$IOS3_SDK` (dylibs and frameworks of the SDK are linked dynamically and are expected there),
+- reads the binary's link map and fails if the object table lists a `.o` file or an archive member under `$IOS3_SDK` (dylibs and frameworks of the sysroot are linked dynamically and are expected there),
 - requires exactly one start-up object, from the toolchain's `startfiles` directory, and the right one for the file type,
 - runs `tools/startcheck.py` on the binary: the start-up code, and the notice (§6d).
 
@@ -349,7 +351,7 @@ toolchain/pack.sh --base /path/to/an/unpacked/armv6-ios3-toolchain [--out DIR]
 ```
 - **From `--base`**, unchanged: the parts built from upstream sources as §2 and §3c describe. These are the ELF host tools and their three shared libraries, the libc++ headers, and the four ARMv6 archives. Revision 2 was packed with revision 1 as its base, revision 3 with revision 2.
 - **From the repository:** the files under `toolchain/`, this file, the three toolchain patches from `spotify/patches/` (the cspot patch is not part of the toolchain), the top-level `LICENSE`. The `bin/armv6-ios3-*` symlinks are made by the script. The start-up objects are built on the spot (§6a).
-- **Self-check.** Before writing the tarball the script stops if a start-up object is missing, if a licence file named in the manifest is missing or differs from it, if a staged file contains a string on the script's deny list, or, with `IOS3_SDK` set, if a staged file has the sha256 of any file of the SDK.
+- **Self-check.** Before writing the tarball the script stops if a start-up object is missing, if a licence file named in the manifest is missing or differs from it, if a staged file contains a string on the script's deny list, or, with `IOS3_SDK` set to Apple's SDK, if a staged file has the sha256 of any file of the SDK (the script says when that check does not run).
 - **Deterministic.** Sorted names, one fixed mtime, owner and group 0, fixed modes, ustar format, `xz -9` on one thread. Two runs give the same sha256, which the script prints with the size.
 - The tarball lands in `toolchain-dist/` next to the repository unless `--out` says otherwise.
 

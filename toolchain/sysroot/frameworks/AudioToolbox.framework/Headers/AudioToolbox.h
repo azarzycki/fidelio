@@ -5,10 +5,10 @@
  * other AudioToolbox headers of this sysroot. Each says what it declares and why. See
  * ../../../README.md, "Stage 3".
  */
-#if !defined(FIDELIO_SYSROOT_AUDIOTOOLBOX_H)
-#define FIDELIO_SYSROOT_AUDIOTOOLBOX_H
+#if !defined(IOS3_SYSROOT_AUDIOTOOLBOX_H)
+#define IOS3_SYSROOT_AUDIOTOOLBOX_H
 
 #include <AudioToolbox/AudioQueue.h>
 #include <AudioToolbox/AudioServices.h>
 
-#endif /* FIDELIO_SYSROOT_AUDIOTOOLBOX_H */
+#endif /* IOS3_SYSROOT_AUDIOTOOLBOX_H */
