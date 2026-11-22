@@ -1,4 +1,5 @@
 #include "DockRemoteCore.h"
+#include "DockRemoteKeys.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -16,15 +17,6 @@ static const char* kDisable    = "/var/mobile/fidelio/remote-tweak.disabled";
 static const char* kConf       = "/var/mobile/fidelio/settings.conf";
 static const char* kActive     = "/var/mobile/fidelio/active-source";
 static const char* kSock       = "/var/mobile/fidelio/audiod.sock";
-
-uint8_t verbForKey(int key) {
-  switch (key) {
-    case KEY_PLAYPAUSE: return AUDIOD_CTRL_TOGGLE;
-    case KEY_NEXT:      return AUDIOD_CTRL_NEXT;
-    case KEY_PREV:      return AUDIOD_CTRL_PREV;
-    default:            return 0;  // menu/select/up/down and anything else: always fall through
-  }
-}
 
 static bool exists(const char* p) { struct stat st; return stat(p, &st) == 0; }
 
@@ -71,9 +63,9 @@ static bool audiodReachable() {
   return ok;
 }
 
-bool shouldForward(int key) {
+bool shouldForward(uint32_t code) {
   if (exists(kDisable)) return false;      // global kill switch, no rebuild needed
-  if (!verbForKey(key)) return false;      // not a key we take over
+  if (!verbForCode(code)) return false;    // not a key we take over
   if (!dockRemoteEnabled()) return false;  // the user setting is off
   if (!sourceActive()) return false;       // nothing Fidelio is playing -> let the iPod app have it
   if (!audiodReachable()) return false;    // audiod not up -> fall through

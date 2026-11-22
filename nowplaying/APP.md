@@ -37,7 +37,7 @@ The fork's `TrackInfo.imageUrl` is already `https://i.scdn.co/image/<hex file id
 
 ## Screens
 - **Now Playing**: 256 px cover (rounded 10 px) or the placeholder tile, title (bold 26), artist (20), album (16, dimmed), progress bar with `m:ss` elapsed / `-m:ss` remaining, status line (Playing / Paused / Stopped / Connected - waiting for Spotify / Waiting for cspot (no status file); "(stale)" appended when the status file is older than 15 s). Black background, status bar hidden, idle timer disabled so the dock screen does not lock.
-- **Technical**: plain black table, refreshed each second: state, codec+bitrate, TLS suite, access point, country, cspot RSS, app RSS (`task_info`), device free memory (`host_statistics` free pages), uptime (`KERN_BOOTTIME`), Wi-Fi IP (`getifaddrs` en0), battery (`UIDevice`, monitoring enabled), status-file age, device name, build.
+- **Technical**: plain black table, refreshed each second: state, codec+bitrate, TLS suite, access point, country, cspot RSS, app RSS (`task_info`), device free memory (`host_statistics` free pages), uptime (`KERN_BOOTTIME`), Wi-Fi IP (`getifaddrs` en0), battery (`UIDevice`, monitoring enabled), status-file age, device name, build. Since 1.4.2 a "Dock remote" section with the last key presses comes first (below).
 
 Memory: the app allocates the two view hierarchies, one decoded cover (≈300 KB for a 300 px JPEG) and a 14-row table. No caches, no large buffers.
 
@@ -83,6 +83,28 @@ phone's NowPlaying behaves as before, apart from the version, now 1.4.1.
 Test on the iPad: Spotify playing through audiod, NowPlaying in front, dock keys pressed. Does
 `remote-control.log` fill, and with which subtypes? Try stage 1, then 2, then 3. Also check who gets the
 keys when the iPod app was the last to play.
+
+## The dock remote's key presses in the Technical tab (1.4.2, B1.16.13)
+
+So that the owner can see at the dock which remote keys reached the phone (and whether a key needs a
+firmer press), the Technical tab starts with a section **"Dock remote"**.
+
+- **Source:** `/var/mobile/fidelio/remote-keys.log`, written by the DockRemote tweak inside iapd (phone
+  only) while `remote-tweak.observe` or `remote-tweak.swallow` is set: one line per completed press,
+  `<unix seconds> <code> <name> <taken|passed>` (`tweak/DockRemote/README.md`).
+- **Shown:** the last six presses, newest first, each as the local time `HH:MM:SS` and the key in words
+  (`play/pause`, `next`, `previous`, `menu`, `select`, `up`, `down`, `seek forward`, `rewind`, `code N`),
+  with "(taken)" when the tweak swallowed the press and sent it to audiod.
+- **The newest press** is bold and white; for 3 s after it was logged it is green. The older ones are grey.
+- **No file, or no complete line in it:** one entry, "No key seen yet." with "The dock remote tweak logs
+  keys only while it is observing." under it. That is what the iPad always shows: it has no tweak.
+- **Polling:** twice a second, only while the tab is visible. Each poll is one `stat()`; the file (its last
+  8 KB at most) is read only when its size, date or inode changed. The poll starts when the tab appears
+  and stops when another tab is selected (within a second, from the app's 1 Hz tick) or the app resigns
+  active.
+- The parsing, the words and the clock are plain C (`NPKeyLog.c`), host-tested by
+  `nowplaying/hosttest/keylog_test.c` (the suite `keylog`).
+- The rest of the tab is unchanged; it follows as the second section.
 
 ## Install
 ```sh

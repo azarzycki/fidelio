@@ -61,6 +61,10 @@ extern char** environ;
   if (tabs.selectedViewController == nowPlaying) [nowPlaying update];
   else if (tabs.selectedViewController == technical) [technical update];
   else if (tabs.selectedViewController == settingsNav) [settingsVC update];
+  // B1.16.13: the Technical tab's key-log poll (2 Hz) runs only while that tab is the one shown. It starts
+  // in its viewDidAppear:; this catches a tab switch within a second either way.
+  if (tabs.selectedViewController == technical) [technical startKeyPolling];
+  else [technical stopKeyPolling];
 }
 
 - (void)watchdog {
@@ -98,6 +102,7 @@ extern char** environ;
 
 - (void)applicationWillResignActive:(UIApplication*)application {
   [self stopTimer];
+  [technical stopKeyPolling];  // B1.16.13
 }
 
 - (void)applicationDidBecomeActive:(UIApplication*)application {
@@ -108,6 +113,7 @@ extern char** environ;
 
 - (void)applicationWillTerminate:(UIApplication*)application {
   [self stopTimer];
+  [technical stopKeyPolling];
 }
 
 - (void)dealloc {

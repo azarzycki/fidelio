@@ -1,6 +1,16 @@
 #import "TechnicalViewController.h"
 #import "NPRemoteControl.h"
 
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+
+// B1.16.13: the dock remote's key log (written by the DockRemote tweak in iapd, phone only).
+#define NP_KEYLOG_PATH "/var/mobile/fidelio/remote-keys.log"
+#define NP_KEYLOG_POLL_S 0.5     // twice a second while the tab is visible
+#define NP_KEYLOG_FRESH_S 3      // the newest press is highlighted this long after it was logged
+enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
+
 @implementation TechnicalViewController
 
 - (id)initWithStatus:(FidelioStatus*)s {
@@ -16,6 +26,7 @@
 }
 
 - (void)dealloc {
+  [self stopKeyPolling];
   [rows release];
   [table release];
   [super dealloc];
@@ -53,7 +64,13 @@
 
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self update]; }
 // B1.16.9: keep the window first responder, so the iPad's dock remote events have a responder.
-- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; NPRemoteControlClaimFirstResponder(self.view); }
+// B1.16.13: the key log is polled while the tab is visible. The app delegate stops the poll when another
+// tab is selected or the app resigns active (the sysroot's UIKit declares no viewWillDisappear:).
+- (void)viewDidAppear:(BOOL)animated {
+  [super viewDidAppear:animated];
+  NPRemoteControlClaimFirstResponder(self.view);
+  [self startKeyPolling];
+}
 
 // B1.18: the tablet rotates; the phone stays portrait as before.
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
@@ -88,15 +105,122 @@
   [table reloadData];
 }
 
+// ---- B1.16.13: the dock remote's key presses -------------------------------------------------------------
+
+- (void)startKeyPolling {
+  if (keyTimer) return;
+  // The timer retains its target; -stopKeyPolling (from the app delegate, or dealloc) breaks that.
+  keyTimer = [[NSTimer scheduledTimerWithTimeInterval:NP_KEYLOG_POLL_S target:self selector:@selector(pollKeys:)
+                                             userInfo:nil repeats:YES] retain];
+  [self pollKeys:nil];
+}
+
+- (void)stopKeyPolling {
+  [keyTimer invalidate];
+  [keyTimer release];
+  keyTimer = nil;
+}
+
+// Cheap when nothing happened: one stat(); the file is read only when its size, date or inode changed.
+- (void)pollKeys:(NSTimer*)t {
+  BOOL changed = NO;
+  struct stat st;
+  if (stat(NP_KEYLOG_PATH, &st) != 0) {
+    if (keyFileKnown || keyCount) changed = YES;
+    keyFileKnown = NO;
+    keyCount = 0;
+  } else if (!keyFileKnown || st.st_mtime != keyMtime || st.st_size != keySize || st.st_ino != keyIno) {
+    NPKeyEntry parsed[NP_KEYLOG_SHOWN];
+    memset(parsed, 0, sizeof parsed);  // so that memcmp below compares only what was parsed
+    int n = NPKeyLogRead(NP_KEYLOG_PATH, parsed, NP_KEYLOG_SHOWN);
+    if (n != keyCount || (n > 0 && memcmp(parsed, keys, sizeof(NPKeyEntry) * n) != 0)) changed = YES;
+    memset(keys, 0, sizeof keys);
+    if (n > 0) memcpy(keys, parsed, sizeof(NPKeyEntry) * n);
+    keyCount = n;
+    keyFileKnown = YES;
+    keyMtime = st.st_mtime;
+    keySize = st.st_size;
+    keyIno = st.st_ino;
+  }
+  long long age = keyCount ? (long long)time(NULL) - keys[0].time : -1000;
+  BOOL fresh = keyCount > 0 && age >= -1 && age <= NP_KEYLOG_FRESH_S;
+  if (fresh != keyFresh) changed = YES;
+  keyFresh = fresh;
+  if (changed) [table reloadData];
+}
+
+- (UITableViewCell*)keyCellFor:(UITableView*)tableView row:(NSInteger)r {
+  BOOL tablet = [FidelioStatus isTablet];
+  CGFloat fs = tablet ? 20 : 15;
+  if (keyCount == 0) {
+    static NSString* emptyId = @"keyempty";
+    UITableViewCell* cell = [tableView dequeueReusableCellWithIdentifier:emptyId];
+    if (!cell) {
+      cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:emptyId] autorelease];
+      cell.backgroundColor = [UIColor blackColor];
+      cell.selectionStyle = UITableViewCellSelectionStyleNone;
+      cell.textLabel.textColor = [UIColor whiteColor];
+      cell.textLabel.font = [UIFont boldSystemFontOfSize:fs];
+      cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.65f alpha:1];
+      cell.detailTextLabel.font = [UIFont systemFontOfSize:tablet ? 17 : 13];
+      cell.detailTextLabel.adjustsFontSizeToFitWidth = YES;
+      cell.detailTextLabel.minimumFontSize = 9;
+    }
+    // One entry, on two lines (UILabel's numberOfLines is not in the sysroot's UIKit).
+    cell.textLabel.text = @"No key seen yet.";
+    cell.detailTextLabel.text = @"The dock remote tweak logs keys only while it is observing.";
+    return cell;
+  }
+  static NSString* keyId = @"key";
+  UITableViewCell* cell = [tableView dequeueReusableCellWithIdentifier:keyId];
+  if (!cell) {
+    cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:keyId] autorelease];
+    cell.backgroundColor = [UIColor blackColor];
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.detailTextLabel.adjustsFontSizeToFitWidth = YES;
+    cell.detailTextLabel.minimumFontSize = 10;
+  }
+  const NPKeyEntry* k = &keys[r];
+  char clock[16], words[NP_KEYLOG_NAME_MAX + 8];
+  NPKeyClock(k->time, clock, sizeof clock);
+  NPKeyWords(k->name, words, sizeof words);
+  cell.textLabel.text = [NSString stringWithUTF8String:clock];
+  NSString* w = [NSString stringWithUTF8String:words];
+  cell.detailTextLabel.text = k->taken ? [w stringByAppendingString:@" (taken)"] : w;
+  // The newest press stands out: bold and white, and green for a few seconds after it was logged.
+  // Older ones are grey and regular weight.
+  BOOL newest = r == 0;
+  UIColor* green = [UIColor colorWithRed:0.3f green:1.0f blue:0.3f alpha:1];
+  UIColor* c = newest ? (keyFresh ? green : [UIColor whiteColor]) : [UIColor colorWithWhite:0.6f alpha:1];
+  cell.textLabel.textColor = c;
+  cell.detailTextLabel.textColor = c;
+  cell.textLabel.font = newest ? [UIFont boldSystemFontOfSize:fs] : [UIFont systemFontOfSize:fs];
+  cell.detailTextLabel.font = newest ? [UIFont boldSystemFontOfSize:fs] : [UIFont systemFontOfSize:fs];
+  return cell;
+}
+
+- (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
+  return section == SECTION_KEYS ? @"Dock remote" : nil;
+}
+
+- (CGFloat)tableView:(UITableView*)tableView heightForRowAtIndexPath:(NSIndexPath*)indexPath {
+  if (indexPath.section == SECTION_KEYS && keyCount == 0) return [FidelioStatus isTablet] ? 60 : 44;  // two lines
+  return tableView.rowHeight;
+}
+
+// ---- the table -------------------------------------------------------------------------------------------
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView {
-  return 1;
+  return 2;
 }
 
 - (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
+  if (section == SECTION_KEYS) return keyCount ? keyCount : 1;
   return [rows count];
 }
 
 - (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)indexPath {
+  if (indexPath.section == SECTION_KEYS) return [self keyCellFor:tableView row:indexPath.row];
   static NSString* cellId = @"tech";
   UITableViewCell* cell = [tableView dequeueReusableCellWithIdentifier:cellId];
   if (!cell) {

@@ -11,7 +11,7 @@ REPO="$(cd ../.. && pwd)"
 # -Werror=objc-method-access: a message whose method no header declares stops the build. As a warning it
 # compiles, with the result taken to be id and the arguments promoted: wrong code (toolchain/sysroot/README.md).
 armv6-ios3-clang++ -std=c++17 -stdlib=libc++ -O2 -Wall -Werror=objc-method-access -fno-objc-arc -fobjc-exceptions -I"$REPO" \
-  -dynamiclib -o "$OUT/DockRemote.dylib" DockRemoteHook.mm DockRemoteCore.cpp \
+  -dynamiclib -o "$OUT/DockRemote.dylib" DockRemoteHook.mm DockRemoteCore.cpp DockRemoteKeys.cpp \
   -framework Foundation
 armv6-ios3-strip -x "$OUT/DockRemote.dylib"
 armv6-ios3-ldid -S "$OUT/DockRemote.dylib"

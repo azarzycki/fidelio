@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # tools/run-host-tests.sh [REPO]   (REPO defaults to the repo this script lives in)
 #
-# Builds the host targets the 22 host suites need (19 audiod + the NowPlaying and lock-plugin layouts + cspot's cover URL) (only what is missing / out of date), runs
+# Builds the host targets the 25 host suites need (19 audiod + the NowPlaying and lock-plugin layouts + cspot's cover URL
+# + the NowPlaying key log + the DockRemote key decode) (only what is missing / out of date), runs
 # the suites one after another (they share fixed /tmp/audiod-* dirs and TCP ports: never in
 # parallel), and prints a per-suite table plus a TOTAL line.
 #
@@ -41,7 +42,7 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 354 ok, 0 FAIL, at B1.16.12)
+# name | baseline ok count | command (baseline: 423 ok, 0 FAIL, at B1.16.13)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -66,6 +67,8 @@ dockvol      14 $PYTHON $T/test_dock_volume.py $AUDIOD
 layout       30 $HOST/nowplaying/layout_test
 lock_layout  10 $HOST/nowplaying/lock_layout_test
 cover_url     6 $HOST/cspot/cover_url_test
+keylog       17 $HOST/nowplaying/keylog_test
+remote_keys  52 $HOST/dockremote/keys_test
 "
 
 case "$BUILD_ROOT$REPO" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
@@ -127,6 +130,13 @@ build_host() {
     "$REPO/nowplaying/lockplugin/LPLayout.c" "$REPO/nowplaying/hosttest/lock_layout_test.c" -lm
   logged "$LOGS/host-cover-url-build.log" c++ -O2 -Wall -std=c++17 -I"$REPO/spotify/cli-src" -o "$HOST/cspot/cover_url_test" \
     "$REPO/spotify/hosttest/cover_url_test.cpp"
+  # B1.16.13: the Technical tab's key-log reader (the same C the app compiles) and the DockRemote tweak's
+  # key decode, swallow decisions and key log (the same C++ the tweak compiles).
+  logged "$LOGS/host-keylog-build.log" cc -O2 -Wall -Wextra -std=c99 -I"$REPO/nowplaying/src" -o "$HOST/nowplaying/keylog_test" \
+    "$REPO/nowplaying/src/NPKeyLog.c" "$REPO/nowplaying/hosttest/keylog_test.c"
+  mkdir -p "$HOST/dockremote"
+  logged "$LOGS/host-dockremote-keys-build.log" c++ -O2 -Wall -std=c++17 -I"$REPO" -o "$HOST/dockremote/keys_test" \
+    "$REPO/tweak/DockRemote/DockRemoteKeys.cpp" "$REPO/tweak/DockRemote/hosttest/keys_test.cpp"
 }
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
@@ -135,7 +145,7 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
   note "host build done after ${SECONDS}s"
 fi
 BUILD_SECS=$SECONDS
-for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/nowplaying/lock_layout_test" "$HOST/cspot/cover_url_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
+for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/nowplaying/lock_layout_test" "$HOST/cspot/cover_url_test" "$HOST/nowplaying/keylog_test" "$HOST/dockremote/keys_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
          "$HOST/audiod/aqsink_bare_test" "$HOST/audiod/writeframe_test" "$HOST/audiod/settings_test"; do
   [ -x "$f" ] || die "missing host binary $f (run without SKIP_BUILD=1)"
 done
