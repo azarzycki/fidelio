@@ -52,6 +52,7 @@ Server::Server(const ServerOptions& o, const Tunables& tn, AudioOutput* output, 
   if (leadFrames > kRingFrames) leadFrames = kRingFrames;
   if (!opts.eventLog.empty()) eventFile = fopen(opts.eventLog.c_str(), "w");
   if (const char* e = getenv("AUDIOD_STALL_ACTIVE_MS")) stallActiveMs = (uint64_t)atoll(e);
+  if (const char* e = getenv("AUDIOD_DOCK_FORWARD_MIN_MS")) dockMinMs = (uint64_t)atoll(e);
   // B1.9 A: absolute Spotify volume needs the hardware API; read the level once (never set at startup)
   if (hw) {
     hwAvailable = hw->available() && hw->get(hwLevel);
@@ -69,6 +70,7 @@ Server::Server(const ServerOptions& o, const Tunables& tn, AudioOutput* output, 
   }
   IOS3_TRACE("airplay volume: %s (B1.13)%s", opts.airplayAbsolute ? "absolute" : "software",
              opts.airplayAbsolute && !hwReady() ? " requested but hardware unavailable -> software fallback" : "");
+  IOS3_TRACE("dock volume (B1.16.12): %s", hw ? hw->describeDock().c_str() : "unavailable (no hardware volume backend)");
   IOS3_TRACE("wake-on-play: %s%s%s", opts.wakeOnPlay && waker ? "on (" : "off", opts.wakeOnPlay && waker ? waker->describe().c_str() : "",
              opts.wakeOnPlay && waker ? (", mode " + std::string(opts.wakeLaunch ? "launch, app " + opts.wakeBundle : "screen only") + ")").c_str() : "");
   IOS3_TRACE("unlock-on-play: %s (url %s; %s)", opts.unlockOnPlay ? "on" : "off", opts.unlockUrl.c_str(),
@@ -152,8 +154,11 @@ void Server::applySlider(Client& c, uint16_t slider) {
   if (hwLevel >= 0 && fabsf(level - hwLevel) < 0.002f && !clamped) return;  // already there (the controller echoing our report)
   bool ok = hw->set(level);
   if (ok) hwLevel = level;
-  char reason[160];
-  snprintf(reason, sizeof reason, "set %.3f by '%s' slider %u%s%s", level, c.name.c_str(), slider, clamped ? " clamped from " : "", clamped ? std::to_string(want).substr(0, 5).c_str() : "");
+  // B1.16.12: the dock hears of it only through iapd. Only after a set that worked, with the same level.
+  const char* dock = ok ? forwardToDock(level, nowMs()) : nullptr;
+  char reason[192];
+  snprintf(reason, sizeof reason, "set %.3f by '%s' slider %u%s%s; dock=%s", level, c.name.c_str(), slider, clamped ? " clamped from " : "",
+           clamped ? std::to_string(want).substr(0, 5).c_str() : "", dock ? dock : "?");
   if (!ok) snprintf(reason, sizeof reason, "set FAILED (%.3f) by '%s' slider %u", level, c.name.c_str(), slider);
   logEvent(Event{Event::HWVOLUME, nowMs(), c.name, ok ? std::to_string(level).substr(0, 5) : "?", reason});
   if (ok && clamped) broadcastHwVolume();
@@ -174,8 +179,44 @@ void Server::pollHardwareVolume(uint64_t now) {
   if (!changed || !(l >= 0)) return;
   if (hwLevel >= 0 && fabsf(l - hwLevel) < 0.002f) return;
   hwLevel = l;
+  if (dockPending) {  // B1.16.12: a held source level is older than this change: never send it now
+    IOS3_TRACE("hwvolume: held dock level %.3f dropped (%d held): the level changed outside", dockPendingLevel, dockHeld);
+    dockPending = false;
+    dockHeld = 0;
+  }
   logEvent(Event{Event::HWVOLUME, now, "external", std::to_string(l).substr(0, 5), "hardware level changed (buttons / another app): reporting slider " + std::to_string(levelToSlider(l))});
   broadcastHwVolume();
+}
+
+// B1.16.12: tell the dock (IAPAudioSetVolume through the backend). Two synchronous MIG round trips to
+// iapd (the "supported?" question, then the set) on the run-loop thread, so a slider drag is coalesced:
+// one call per dockMinMs at most, the latest level of a drag going out when the window ends.
+const char* Server::forwardToDock(float level, uint64_t now) {
+  if (!hw->dockAvailable()) return HardwareVolume::dockResultName(HardwareVolume::DOCK_UNAVAILABLE);  // no IPC at all
+  if (dockCalled && now - lastDockMs < dockMinMs) {
+    dockPending = true;
+    dockPendingLevel = level;
+    dockHeld++;
+    return "deferred";
+  }
+  return HardwareVolume::dockResultName(sendToDock(level, now));
+}
+
+HardwareVolume::DockResult Server::sendToDock(float level, uint64_t now) {
+  HardwareVolume::DockResult r = hw->tellDock(level);
+  lastDockMs = now;
+  dockCalled = true;
+  dockPending = false;
+  dockHeld = 0;
+  return r;
+}
+
+void Server::flushDockForward(uint64_t now) {
+  if (!dockPending || now - lastDockMs < dockMinMs) return;
+  float level = dockPendingLevel;
+  int held = dockHeld;
+  HardwareVolume::DockResult r = sendToDock(level, now);
+  IOS3_TRACE("hwvolume: dock told %.3f, the latest of %d held set%s: dock=%s", level, held, held == 1 ? "" : "s", HardwareVolume::dockResultName(r));
 }
 
 // ---------------------------------------------------------------- B1.9 B: wake on play
@@ -674,6 +715,7 @@ void Server::run() {
     afterTick();
     out->tick();
     pollHardwareVolume(now);  // B1.9 A: buttons / external changes -> the producers
+    flushDockForward(now);    // B1.16.12: the latest held dock level, once the window has passed
     firePreempts(now);        // B1.12: tell a source that lost the output to pause
     syncLockPlugin(now);      // B1.16.11: live lock_plugin changes, re-enable after a SpringBoard restart
     maybeReloadSettings(now);  // B1.14: pick up a settings.conf change

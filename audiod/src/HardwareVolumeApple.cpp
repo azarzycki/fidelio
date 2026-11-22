@@ -10,6 +10,14 @@
 //   AVSystemController_AudioVolumeNotificationParameter and AVSystemController_AudioCategoryNotificationParameter
 // Not verifiable off-device: whether the notification is delivered to a daemon with no main run
 // loop (we observe it on CF's local center AND poll getVolume: every second as the fallback).
+//
+// B1.16.12: the dock. iapd sends the dock a volume notification only when IAPAudioSetVolume is called
+// (packet log and listening test, 2026-11-22; docs/HANDOFF.md 2.5 and 3.1). IAP.framework's wrappers are
+// plain C exports around MIG calls to iapd; the prototypes are those voltest uses (audiod/probe/voltest.m),
+// read from the armv6 code of the 3.1.2 IAP binary: each returns 1 (a BOOL) when its MIG call succeeded,
+// IAPAudioSetVolume takes the float in r0 (softfp), IAPAudioIsVolumeControlSupported stores one byte through
+// its pointer. Resolved with dlopen/dlsym only: a missing framework or symbol (the iPad's 5.1.1 is not
+// verified) leaves the forward off.
 #include <dlfcn.h>
 #include <objc/message.h>
 #include <objc/runtime.h>
@@ -26,10 +34,12 @@ namespace {
 typedef id (*MsgSendId)(id, SEL);
 typedef signed char (*MsgSendGetVolume)(id, SEL, float*, id);
 typedef signed char (*MsgSendSetVolume)(id, SEL, float, id);
+typedef signed char (*IapSetVolumeFn)(float);        // IAPAudioSetVolume
+typedef signed char (*IapGetBoolFn)(signed char*);  // IAPAudioIsVolumeControlSupported
 
 class AVSystemControllerVolume : public HardwareVolume {
  public:
-  AVSystemControllerVolume() { load(); }
+  AVSystemControllerVolume() { loadIap(); load(); }
   ~AVSystemControllerVolume() override {
     if (observing) CFNotificationCenterRemoveEveryObserver(CFNotificationCenterGetLocalCenter(), this);
     if (category) CFRelease(category);
@@ -59,12 +69,34 @@ class AVSystemControllerVolume : public HardwareVolume {
     level = pendingLevel;
     return true;
   }
+  bool dockAvailable() override { return iapSet && iapSupported; }
+  DockResult tellDock(float level) override {
+    if (!iapSet || !iapSupported) return DOCK_UNAVAILABLE;
+    // A zeroed int as the out-buffer: the 3.1.2 code stores one byte, and a build that stored a whole
+    // word would still fit and still read as nonzero in the low byte (little-endian).
+    int word = 0;
+    if (!iapSupported(reinterpret_cast<signed char*>(&word))) return DOCK_QUERY_FAILED;
+    if ((word & 0xff) == 0) return DOCK_UNSUPPORTED;
+    return iapSet(level) ? DOCK_OK : DOCK_FAILED;
+  }
+  std::string describeDock() override {
+    return iapSet && iapSupported ? "available (IAP.framework: IAPAudioSetVolume, IAPAudioIsVolumeControlSupported)" : "unavailable (" + iapWhy + ")";
+  }
   std::string describe() override {
     return ok ? std::string("AVSystemController (Celestial, category Audio/Video, notification ") + (observing ? "observed" : "not observed") + " + 1 s poll)"
               : "AVSystemController unavailable: " + why;
   }
 
  private:
+  void loadIap() {
+    void* h = dlopen("/System/Library/PrivateFrameworks/IAP.framework/IAP", RTLD_LAZY);
+    if (!h) { const char* e = dlerror(); iapWhy = std::string("dlopen IAP: ") + (e ? e : "?"); return; }
+    IapSetVolumeFn set = (IapSetVolumeFn)dlsym(h, "IAPAudioSetVolume");
+    IapGetBoolFn sup = (IapGetBoolFn)dlsym(h, "IAPAudioIsVolumeControlSupported");
+    if (!set || !sup) { iapWhy = !set ? "IAPAudioSetVolume missing" : "IAPAudioIsVolumeControlSupported missing"; return; }
+    iapSet = set;
+    iapSupported = sup;
+  }
   void load() {
     ObjcAutoreleasePool pool;  // B1.10: sharedAVSystemController / getVolume autorelease
     void* h = dlopen("/System/Library/PrivateFrameworks/Celestial.framework/Celestial", RTLD_LAZY);
@@ -107,6 +139,9 @@ class AVSystemControllerVolume : public HardwareVolume {
   SEL selGet = nullptr, selSet = nullptr;
   CFStringRef category = nullptr;
   float lastKnown = 0;
+  IapSetVolumeFn iapSet = nullptr;  // B1.16.12
+  IapGetBoolFn iapSupported = nullptr;
+  std::string iapWhy;
   volatile bool pending = false;
   volatile float pendingLevel = 0;
 };

@@ -44,7 +44,7 @@ repo and is the one record of the project's state: **update it in the same commi
    - Builds and test runs go in subagents, one at a time (§6.1).
 3. **Prove the baseline:**
    - `tools/build-arm.sh` → `result: OK` with the hashes in §2.3.
-   - `tools/run-host-tests.sh` → `TOTAL host: 340 ok, 0 FAIL`, 22 suites, about 9.5 minutes. Run it alone
+   - `tools/run-host-tests.sh` → `TOTAL host: 354 ok, 0 FAIL`, 23 suites, about 10 minutes. Run it alone
      (§6.4).
 4. Then work through §3 in order.
 
@@ -103,6 +103,8 @@ The **dock**:
     (§6.3). No binary changed.
   - `b2a8ee3` (2026-11-22): the docs name where the toolchain is published. The tag **`toolchain-r3`**
     points at it, and the release of that name holds the toolchain tarball (§6.1).
+- **B1.16.12** (2026-11-22, §3.1) is on the branch `b11612-dock-volume`, built and host-tested, not yet
+  on `main` and with no marker: it waits for the device test. Only `fidelio-audiod` changed (§2.3).
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
   - Earliest rounds: `audiod-b11`, `-b12`, `-b13`, `-b15` … `-b19`, `-b110` … `-b116`. There is no `-b14`.
@@ -138,14 +140,16 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | toolchain r2 | 5a2283c | none | toolchain revision 2: start-up objects built from Apple's open-source Csu, licence texts, `toolchain/pack.sh`, the toolchain's own sources in the repo under MIT, link-map and start-up checks in `build-arm.sh`; every binary keeps its sha256 | nothing to install |
 | toolchain r3 | c46beee | none | toolchain revision 3: the start-up objects carry a notice that says where their source is (Apple's open-source licence asks for it "in the code itself"), so every binary carries it in a section `__TEXT,__csu_notice`; `build-arm.sh` requires revision 3 and checks the notice; every binary has the same size and a new sha256 (§2.3) | 2026-11-22: smoke test PASS and the suite installed on both devices (§2.4, §3.2) |
 | sysroot | 55d1a82, 926ea54, 831ac15, b5e3106 | none | the build without Apple's SDK: `toolchain/sysroot/` makes a sysroot from a symbol list (stub libraries), Apple's published open-source headers (pinned) and framework headers of our own; `tools/build-arm.sh` uses it by default; every binary keeps its sha256 (§6.3) | nothing to install |
+| B1.16.12 | branch `b11612-dock-volume` | none | audiod tells the dock a source's volume: after a set of the system volume in absolute mode it calls `IAPAudioSetVolume` (IAP.framework, dlopen'ed) with the same level, while an accessory takes the volume; never for an external change; a drag is coalesced (one call per 200 ms, the latest level last); the `hwvolume` line ends `; dock=<result>`; host suite `dockvol` (§3.1, §10.4) | built; device test pending |
 
-### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee, unchanged)
+### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee; audiod of B1.16.12)
 
-The sources of each binary are those of the round named in the last column. Only the toolchain changed.
+The sources of each binary are those of the round named in the last column. Since c46beee only the
+toolchain changed, and B1.16.12 changed audiod.
 
 | Binary | Size | sha256 (toolchain revision 3) | Round |
 |---|---|---|---|
-| fidelio-audiod | 464,960 | `30eb78eb0f6edb919d8091a2793e7097e2b5bcaf68bb60a690c878b85b89afe1` | B1.16.11, 7330752 (includes wake_mode, 4 keys) |
+| fidelio-audiod | 481,680 | `7c04dc0b61e15bd308a7a5f5c9d2071fca66007dc394cea6aed97086ad2f1923` | B1.16.12, branch `b11612-dock-volume` (the dock forward); before it, B1.16.11 7330752: 464,960, `30eb78eb0f6edb919d8091a2793e7097e2b5bcaf68bb60a690c878b85b89afe1` |
 | fidelio-lockctl | 163,024 | `704c799f8b15122d8921cbdd9609c0e8136a85d038cc1a9c019b2c929db1ed12` | B1.16.6, aeed5b1 |
 | fidelio-raop | 942,112 | `baf304f686d4bc63b8737942e935ba812746eb5b5451efe7c725daef3f07d132` | B1.16, a5ba534 (old id bf61abb; raop unchanged since) |
 | cspot-ios3 | 2,290,160 | `35de013e2141c6a26cf8fe6a429f2f75cf99f9a75576c38720a1e1918e4b74fb` | B1.18, 47d4760 |
@@ -158,6 +162,9 @@ The sources of each binary are those of the round named in the last column. Only
   on 2026-11-22 gave the same nine files. cspot-ios3's and DockRemote.dylib's hashes depend on those
   paths (§6.3).
 - After a build the same list is in `$BUILD_ROOT/arm-out/SHA256SUMS`.
+- **B1.16.12's audiod is 16,720 bytes larger.** Its `__text` grew by about 3.7 KB and `__cstring` by
+  about 0.8 KB, and `__TEXT` crossed a 16 KB segment boundary (368 KB to 384 KB). It imports no new
+  symbol (the indirect symbol tables of the two builds list the same names).
 - **Built without Apple's SDK since `b5e3106`** (§6.3): the same nine files, byte for byte, as the build
   against the SDK.
 - **What differs from the revision 2 build of the same sources:** one more section in each binary,
@@ -289,8 +296,9 @@ identical bytes. They are what the cloud session published and what was installe
     Spotify slider moves NowPlaying's display and not the dock.
   - **`IAPAudioSetVolume` does reach the dock's wire.** `voltest iap set V` gives `SetVolumeMaster ...
     notifyApp=0` and the notification `04 00 <V*255>` goes out to the dock (seen for 25, 76 and 47). The
-    dock sends nothing back. The system volume does not follow (notifyApp=0). **Whether the dock's
-    amplifier follows the notification is not known yet:** it needs the owner's ears (§3.1).
+    dock sends nothing back. The system volume does not follow (notifyApp=0). **The dock's loudness
+    follows it:** the owner heard the dock go quieter, louder and back with those three calls
+    (2026-11-22). B1.16.12 builds the fix on this (§3.1).
   - Digital Audio lingo (10): the dock offers 32000, 44100 and 48000 Hz; the phone sends its
     track-attributes message `0000ac44 00000000 00000000` (44100 Hz, sound check 0, volume offset 0) and
     the dock acknowledges it.
@@ -335,10 +343,30 @@ identical bytes. They are what the cloud session published and what was installe
 
 ## 3. Open work, in order
 
-### 3.1 B1.16.12: the phone's volume must move the dock (investigation in progress)
+### 3.1 B1.16.12: the phone's volume must move the dock (fix built, device test pending)
 - **Report:** phone docked, `spotify_volume=absolute`. The Spotify slider moves NowPlaying's display and
   audiod logs `hwvolume: 'spotify' -> X (set X by 'spotify' slider Y)`, but the loudness doesn't change.
   The dock buttons work and show up as `hwvolume: 'external'`.
+- **State on 2026-11-22, evening: the fix is built; the device test is next.**
+  - The cause (§2.5): nothing on the phone forwards the system volume to iapd, so the dock never hears
+    of a change made on the phone. The owner confirmed by ear on 2026-11-22 that the dock follows
+    `IAPAudioSetVolume`: quieter, louder and back with `voltest iap set`.
+  - The fix (branch `b11612-dock-volume`, audiod only; §10.4): in absolute mode, after a source's set
+    of the system volume (the Spotify slider, the AirPlay volume), audiod calls `IAPAudioSetVolume` with
+    the same level, when `IAPAudioIsVolumeControlSupported` says yes at that moment. Never for an
+    external change (the dock's buttons, another app). A drag is coalesced: one call per 200 ms at
+    most, the latest level last. The `hwvolume` line ends `; dock=ok` when the dock was told.
+  - **The device test:** install audiod from the branch on the phone, dock it, play Spotify in
+    absolute mode and move the slider. Pass: the loudness follows, the event lines end `; dock=ok`, and
+    the start-up line reads `dock volume (B1.16.12): available (IAP.framework: ...)`. Also: the dock's
+    buttons still work and give `hwvolume: 'external'` lines with no `dock=`; a drag gives `dock=deferred`
+    lines followed by one `hwvolume: dock told X, the latest of N held sets: dock=ok`; on the iPad the
+    start-up line shows whether its IAP has the two functions, and nothing else changes there unless an
+    accessory that takes the volume is attached.
+  - Then fast-forward `main` with a marker branch (§7).
+  - The relabel of the settings below is still wanted and is not part of this round.
+
+The record of the investigation follows.
 - **The owner's requirement (2026-11-18): absolute volume on this dock unless it is absolutely not
   possible.** The phone's volume setting must change the dock's loudness.
   - An "Auto" mode that silently falls back to software gain does not meet the request and is not the
@@ -374,7 +402,7 @@ identical bytes. They are what the cloud session published and what was installe
     on the phone. `IAPAudioSetVolume` does send it.
   - **One thing is open, and it decides the fix: does the dock's amplifier follow the notification?**
     On 2026-11-22 three notifications went out while Spotify played (25, 76, then 47 of 255, at 16:47:35,
-    :42 and :50 phone time). The owner has not yet said whether the loudness changed.
+    :42 and :50 phone time). Answered the same day: the loudness followed (the state above).
     - If it follows: audiod calls `IAPAudioSetVolume` whenever it sets the system volume (item 4 below).
       That is the whole fix, and absolute volume works on this dock.
     - If it does not: try the Digital Audio offset (step 5 below), then look at what the dock does
@@ -964,7 +992,7 @@ About the script itself:
 - **Each round, rebuild once from the clean commit** for the report (`repo: … @ <sha> (git status clean)`).
 
 ### 6.4 tools/run-host-tests.sh (the host suites)
-It builds the host targets (`$BUILD_ROOT/host/...`) and runs **22 suites one after another**. They share
+It builds the host targets (`$BUILD_ROOT/host/...`) and runs **23 suites one after another**. They share
 `/tmp/audiod-*` dirs and ports: never run two at once, and **don't run CPU-heavy work alongside**, since
 the suites are timing-sensitive.
 
@@ -977,9 +1005,9 @@ the suites are timing-sensitive.
 | settings | 23 | wake | 11 | volume | 11 |
 | settings_dmn | 29 | unlock | 23 | layout | 30 |
 | control | 8 | arbiter | 13 | lock_layout | 10 |
-| cover_url | 6 | | | | |
+| cover_url | 6 | dockvol | 14 | | |
 
-- **Baseline: 340 ok, 0 FAIL.**
+- **Baseline: 354 ok, 0 FAIL** (340 before B1.16.12 added `dockvol`).
 - **It needs `cc` and `c++`** (apt `g++`): the plain tests call them by name, and they are CMake's default
   compilers. Since `6721da9` the script checks for both.
 - **Exit codes:** 0 all passed first time; 1 a persistent failure; **2 passed only after a re-run**
@@ -1006,9 +1034,13 @@ the suites are timing-sensitive.
   - `AUDIOD_MOCK_SB_RESTART_MS`: SpringBoard's pid changes from 100 to 200.
 - **Mock hardware volume:** `AUDIOD_MOCK_HW_VOLUME`, `AUDIOD_MOCK_HW_CHANGE_FILE`. Test hook:
   `AUDIOD_STALL_ACTIVE_MS`.
+- **Mock dock** (B1.16.12, `audiod/src/HardwareVolume.*`): `AUDIOD_MOCK_IAP=ok|unsupported|fail|query-fail`
+  (unset = IAP unavailable); each call it "makes" is logged as `mock iap: IAPAudioSetVolume(L) -> R`.
+  Test hook: `AUDIOD_DOCK_FORWARD_MIN_MS` (the coalescing window, default 200 ms).
 - **Practice:**
   - A new test must be shown to **fail against the previous binary**. Build the old commit in a temporary
-    `git worktree`, as B1.16.6 did: 6 FAILs against b051bfc.
+    `git worktree`, as B1.16.6 did: 6 FAILs against b051bfc. B1.16.12's `dockvol`: 11 FAILs against
+    1a6ce9e (the other 3 are the "never told" checks, which the old binary passes by doing nothing).
   - Plain-C layout cores have host tests that pin the device-proven frames: `nowplaying/src/NPLayout.c` with
     `layout_test.c`, and `nowplaying/lockplugin/LPLayout.c` with `lock_layout_test.c`.
 
@@ -1168,6 +1200,29 @@ Defaults are in brackets.
   1 s poll.
 - **In absolute mode:** a slider-driven source plays at unity. An APPLY sets `curve(slider)`, clamped by
   `max_volume`; external changes are broadcast.
+- **The dock (B1.16.12):** the system volume does not reach an accessory by itself (§2.5). After an APPLY
+  has set the system volume, `Server::applySlider` also tells the dock through iapd.
+  - `IAPAudioSetVolume(float)` and `IAPAudioIsVolumeControlSupported(BOOL*)` from
+    `/System/Library/PrivateFrameworks/IAP.framework/IAP`, with `dlopen` and `dlsym` at start-up; the
+    prototypes are voltest's. Missing framework or symbol: the forward is off. The start-up line
+    `dock volume (B1.16.12): available (...)` or `unavailable (<why>)` says which.
+  - Each forward first asks `IAPAudioIsVolumeControlSupported` and calls `IAPAudioSetVolume` with the
+    level just set only when the answer is yes (1 docked on the phone, 0 off the dock).
+  - Never for an external change (`pollHardwareVolume`): the dock's buttons set the phone's volume, and
+    the dock already knows its level. The external path has no call to the dock at all, so there is no
+    loop. `IAPAudioSetVolume` does not change the system volume (iapd's notifyApp=0) and the dock sends
+    nothing back (§2.5), so it cannot produce a false `external` either. Were a dock to echo the level,
+    it would at worst show once as `external` (iapd's steps of 1/255 are wider than audiod's 0.002 dead
+    band) and stop there, since an external change is never forwarded.
+  - Both calls are synchronous MIG round trips to iapd on audiod's run-loop thread. A drag is coalesced:
+    at most one forward per 200 ms; a set inside that window is held, and the latest held level goes
+    out from the run loop when the window ends. An external change drops a held level.
+  - Logging: the event's reason ends `; dock=<result>`, one of `ok`, `failed` (the call returned 0),
+    `deferred` (held), `unsupported`, `query-failed`, `unavailable`. Example:
+    `hwvolume: 'spotify' -> '0.400' (set 0.400 by 'spotify' slider 26214; dock=ok)`. A held level that
+    goes out later logs `hwvolume: dock told 0.300, the latest of 2 held sets: dock=ok`; one dropped
+    logs `hwvolume: held dock level 0.550 dropped (1 held): the level changed outside`.
+  - A set that failed is not forwarded; its line (`set FAILED ...`) is unchanged.
 - **In software mode:** the producer applies the B1.7 curve.
 - **Type encodings** (`voltest`):
   - `getActiveCategoryVolume:andName:` = `c16@0:4^f8^@12`
@@ -1252,7 +1307,11 @@ Defaults are in brackets.
 ## 12. Appendix
 
 ### 12.1 `main`, newest first (subjects shortened)
+On the branch `b11612-dock-volume`, not yet on `main`: `B1.16.12: tell the dock a source's volume
+(IAPAudioSetVolume)`, on top of 1a6ce9e.
 ```
+1a6ce9e docs: what the logs rule out for the phone's reboot after the respring
+945ffc1 docs: toolchain published; the phone on the revision 3 builds; first packet log of the dock
 b2a8ee3 Toolchain: name where revision 3 is published   (tag toolchain-r3)
 5ef0218 docs: the build without Apple's SDK in the handoff; the licence note names the sysroot patches
 b5e3106 tools: build against the project's own sysroot by default; IOS3_SDK optional

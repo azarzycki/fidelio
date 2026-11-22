@@ -133,6 +133,13 @@ class Server {
   uint16_t levelToSlider(float level) const;    // inverse, for reporting
   void applySlider(Client& c, uint16_t slider); // a user slider move: clamp, set the hardware, log, report a clamp
   void pollHardwareVolume(uint64_t now);        // buttons / other changes -> HWVOLUME to v2 clients
+  // B1.16.12: after a SOURCE's set (applySlider only; never an external change), tell the dock the
+  // same level (HardwareVolume::tellDock). At most one call per dockMinMs; a set inside that window is
+  // held, and the latest held level goes out from the run loop (flushDockForward) when the window ends.
+  // An external change drops a held level: the dock set it, or another app did after our set.
+  const char* forwardToDock(float level, uint64_t now);  // returns the log word (ok, deferred, ...)
+  HardwareVolume::DockResult sendToDock(float level, uint64_t now);
+  void flushDockForward(uint64_t now);
   void sendToClient(Client& c, uint32_t type, const void* payload, size_t len);  // non-blocking; a full buffer drops the message
   void sendWelcome(Client& c);
   void sendHwVolumeTo(Client& c);   // B1.10: current hardware level to one (active) source; arms the grace
@@ -168,6 +175,13 @@ class Server {
   bool hwAvailable = false;
   float hwLevel = -1;            // last level we know (-1 = unknown)
   uint64_t lastHwPollMs = 0;
+  // B1.16.12 dock forward (see forwardToDock). AUDIOD_DOCK_FORWARD_MIN_MS overrides the window (host tests).
+  uint64_t dockMinMs = 200;
+  uint64_t lastDockMs = 0;
+  bool dockCalled = false;      // a call to iapd was made at least once (lastDockMs is valid)
+  bool dockPending = false;     // a held level waits for the window to end
+  float dockPendingLevel = 0;
+  int dockHeld = 0;             // sets held since the last call (for the log)
   uint64_t lastWakeMs = 0;
   std::string lastActiveName;  // B1.16: the last source that held the output (for PLAY-resumes-paused)
   bool lockEnabled = false;  // B1.11: the lock bundle is currently enabled

@@ -490,3 +490,40 @@ start. `Server::syncLockPlugin()` runs every run-loop pass while a source plays:
     without a restart.
   - A restart 3 s in: one re-enable, 6–10.5 s in.
   - After an audiod unlock, switching the setting on keeps the plugin off.
+
+## B1.16.12 (the dock follows a source's volume: `IAPAudioSetVolume`)
+
+Device-found on the docked phone: in absolute mode the Spotify slider set the system volume and the
+dock's loudness did not change. iapd's packet log showed why: the dock subscribes to the phone's volume,
+but nothing on the phone tells iapd when the system volume changes, so the dock never hears of it.
+`IAPAudioSetVolume` (the private IAP.framework, a MIG call to iapd) makes iapd send the dock the volume
+notification, and the owner heard the dock follow it (2026-11-22; `docs/HANDOFF.md` §2.5).
+
+- **What audiod does.** After `Server::applySlider` has set the system volume for a source in absolute
+  mode (the Spotify slider, the AirPlay volume), it tells the dock the same level:
+  `HardwareVolume::tellDock()` asks `IAPAudioIsVolumeControlSupported` and, when the answer is yes,
+  calls `IAPAudioSetVolume(level)`. A set that failed is not forwarded.
+- **Resolved at run time only** (`HardwareVolumeApple.cpp`): `dlopen` of
+  `/System/Library/PrivateFrameworks/IAP.framework/IAP` and `dlsym` of the two functions, with voltest's
+  prototypes. No new link-time symbol. If the framework or a symbol is missing the forward is off; the
+  start-up line says `dock volume (B1.16.12): available (...)` or `unavailable (<why>)`.
+- **Never for an external change.** `pollHardwareVolume` (the dock's buttons, another app) does not call
+  the dock: the dock set that level itself. The forward cannot loop back as an external change:
+  `IAPAudioSetVolume` does not change the system volume (iapd logs notifyApp=0) and the dock sends
+  nothing back. If a dock ever did echo the level, the echo would at worst be reported once as an
+  `external` change (iapd's 0..255 steps are about 0.004 apart, audiod's dead band is 0.002), and an
+  external change is never forwarded, so it ends there.
+- **Coalescing.** Both calls are synchronous MIG round trips on the run-loop thread. At most one forward
+  goes out per 200 ms; a set inside that window is held, and the latest held level goes out from the
+  run loop when the window ends (`Server::flushDockForward`). An external change drops a held level.
+  A single slider move is forwarded at once.
+- **Logging.** The `hwvolume` event's reason ends `; dock=<result>`: `ok`, `failed` (the call returned
+  0), `deferred` (held), `unsupported` (no accessory takes the volume now), `query-failed`, or
+  `unavailable`. Example: `hwvolume spotify 0.400 set 0.400 by 'spotify' slider 26214; dock=ok`. A held
+  level that goes out logs `hwvolume: dock told 0.300, the latest of 2 held sets: dock=ok`.
+- **Tests:** `hosttest/test_dock_volume.py` (14 checks), with the mock dock `AUDIOD_MOCK_IAP=ok|unsupported|fail|query-fail`
+  (unset = unavailable) and the window hook `AUDIOD_DOCK_FORWARD_MIN_MS`: a Spotify set is told with
+  the same level; external changes are not; a drag sends the first and the latest level only; a held
+  level is dropped by an external change; unsupported, query failure and no IAP each give their word and
+  no call, a failed call gives `dock=failed`; Spotify in software mode tells nothing while AirPlay in
+  absolute mode is told.
