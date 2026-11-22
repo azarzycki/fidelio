@@ -92,8 +92,8 @@ The **dock**:
 
 ### 2.1 Git
 - `main`: see `git log`. On 2026-11-18 it holds `6721da9` (tools only), `dfbbc3d` (this record moved
-  into the repo), `b8d8976` (the volume probe extended) and the docs commit after it. No binary that is
-  installed on a device changed since `5dc865f`.
+  into the repo), `b8d8976` (the volume probe extended), `5a2283c` (toolchain revision 2, §6.1) and the
+  docs commits around them. No binary that is installed on a device changed since `5dc865f`.
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
   - Earliest rounds: `audiod-b11`, `-b12`, `-b13`, `-b15` … `-b19`, `-b110` … `-b116`. There is no `-b14`.
@@ -125,8 +125,9 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | voltest | 5dc865f | 0049 | the volume probe (no marker) | ran on the phone once (paused) |
 | tools | 6721da9 | none | cspot build date pinned (§6.3), host compiler check (§6.4); no binary changed | nothing to install |
 | voltest | b8d8976 | none | the probe also shows iapd's side of the volume and can call `IAPAudioSetVolume` (§3.1) | not run on a device yet |
+| toolchain r2 | 5a2283c | none | toolchain revision 2: start-up objects built from Apple's open-source Csu, licence texts, `toolchain/pack.sh`, the toolchain's own sources in the repo under MIT, link-map and start-up checks in `build-arm.sh`; every binary keeps its sha256 | nothing to install |
 
-### 2.3 Current builds: `tools/build-arm.sh` at b8d8976
+### 2.3 Current builds: `tools/build-arm.sh` at 5a2283c, toolchain revision 2 (the hashes of b8d8976)
 
 | Binary | Size | sha256 | Round |
 |---|---|---|---|
@@ -377,6 +378,8 @@ Hands-on work waits until the owner is at the dock. The volume readings of §3.1
 - GitHub CI that makes a release on every merge to `main`, with an automatic version bump (the owner,
   2026-11-18). Nothing built.
 - It needs one version number for the whole suite, stamped into the app and the daemons at build time.
+- The owner's direction (2026-11-21): a release includes the packages and the toolchain tarball.
+  Nothing has been published yet.
 - How CI gets Apple's SDK is open (§4).
 
 ---
@@ -384,11 +387,16 @@ Hands-on work waits until the owner is at the dock. The volume readings of §3.1
 ## 4. Questions waiting for the owner
 1. **Bonjour keep-warm** (§3.4): build it or not.
 2. **B1.17:** go, once the owner is satisfied with the device tests.
-3. **Where the toolchain tarball should live now** (§6.1). With the private store retired it exists only
-   on the owner's PC, and unpacked in WSL. The choices:
-   - publish it as a GitHub Release asset on `azarzycki/fidelio`;
-   - commit it to the repo;
-   - leave it local, with the rebuild instructions in `spotify/BUILD.md`.
+3. **Licence points found while preparing the release** (2026-11-21; facts gathered, not judged):
+   - Apple's open-source licence asks, for object code, for a notice "in the code itself as well as in
+     related documentation" saying where the source is. The start-up objects carry no notice text;
+     `toolchain/THIRD-PARTY-NOTICES.md` §9 is the documentation notice. The packages will need the same
+     notice.
+   - Four toolchain components ask for source to be offered (the linker tools, a disassembler inside
+     `otool`, ldid, libplist); the notices file points to their sources and our patches. ldid is AGPL
+     with a statically linked Apache-licensed libcrypto: upstream's combination, not assessed.
+   - The Spotify library: the tree we build from has no licence file, while its original upstream
+     states GPL-3.0-or-later. This bears on the terms of the `cspot-ios3` package.
 4. **How release CI gets Apple's SDK** (§3.7). The owner wants no exposure to Apple (§5.2). The repo is
    public, and so are its Actions logs. Proposed, not decided:
    - the host suites on GitHub's runners (they need no SDK);
@@ -452,6 +460,11 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
   - Apple: avoid any exposure. Never put the SDK, or a link to a copy of it, in the repo, a release, a CI
     artifact, a cache or a log. `spotify/BUILD.md` carried a download link until 2026-11-18; it is removed
     from the current tree and remains in the history.
+- **11-21**, from the owner:
+  - A release includes the toolchain and the packages (after a research report on how comparable
+    projects fared and an audit of what the builds contain). Nothing is published yet.
+  - The start-up objects come from Apple's open-source Csu release, not from the SDK (§6.1).
+  - The project's own code, the toolchain's files included, is MIT (the top-level `LICENSE`).
 - **Naming** (from before): the app is "NowPlaying"; new components get neutral names; the advertised device
   names stay. The full rename is B1.17 only.
 
@@ -487,11 +500,23 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   - `g++` gives the host suite its `cc` and `c++`.
   - `tools/_common.sh` prints exactly this list if something is missing.
   - The host clang is Ubuntu 24.04's `clang-18` (18.1.3).
-- **Neither the toolchain nor the SDK is in the repo.**
-  - **Toolchain tarball** `armv6-ios3-toolchain-linux-x86_64.tar.xz`: 3,923,700 bytes, sha256
-    `c07f80c400d6d2935c854afc1a9e75adc158355291fe0105892abb754c79dbff`. It is kept on the PC at
-    `C:\code\fidelio\cloud-build\` and can be rebuilt from `spotify/BUILD.md`. Where it should live is an
-    open question (§4).
+- **The toolchain's own files are in the repo** (`toolchain/`, since `5a2283c`); its tarball and the SDK
+  are not.
+  - **Toolchain tarball, revision 2:** `armv6-ios3-toolchain-linux-x86_64.tar.xz`, 3,976,540 bytes, sha256
+    `1f1cd6300985b4027b178024e1dea1740b4f2db9dfcf206f6bcc31430f46b078`. On the PC it is
+    `C:\code\fidelio\cloud-build\armv6-ios3-toolchain-linux-x86_64-r2.tar.xz`; it is the one installed in
+    WSL. `toolchain/pack.sh --base <an unpacked toolchain>` rebuilds it, byte for byte, from the repo and
+    the upstream-built parts of a base toolchain (`toolchain/README.md`, `spotify/BUILD.md` §6).
+    - Against revision 1 it adds the start-up objects (`armv6-ios3/lib/startfiles/`, built from Apple's
+      open-source Csu, tag Csu-79), `LICENSES/`, `THIRD-PARTY-NOTICES.md`, `LICENSE` and `VERSION`, and
+      carries the current `BUILD.md`. The host tools, the libc++ headers and the four ARMv6 archives
+      are revision 1's, byte for byte.
+    - Its wrapper puts the toolchain's start-up objects ahead of the SDK's on every link. Linked
+      outputs are byte-identical to revision 1's.
+    - It contains no file of the SDK (checked by hash against all 2,228 SDK files).
+  - **Revision 1** (3,923,700 bytes, sha256 `c07f80c4…dbff`) is kept beside it and as
+    `/home/user/opt/armv6-ios3-toolchain.r1`. Do not publish it: it has no licence texts and an old copy
+    of the build notes. `tools/build-arm.sh` refuses it.
   - **SDK tarball** `iPhoneOS3.1.2.sdk.tar.xz`: 97,995,312 bytes, sha256
     `d5122c3bd2ddd217de918ff3635c590261424dc7f3a5e63d4cbd8417bec2d5e2` (verified identical to Apple's DMG).
     It is kept at `C:\code\fidelio\`. It is Apple's: never commit it, and never publish it or a link to a
@@ -577,6 +602,15 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   DockRemote and voltest (their `build.sh`).
 - It collects everything into `$BUILD_ROOT/arm-out`, then verifies each binary: size, sha256,
   `armv6-ios3-check`, the post-v6 count, and the entitlement keys against the plist.
+- **Since `5a2283c` it needs toolchain revision 2** and also checks, for every binary:
+  - its link map (`$BUILD_ROOT/arm/maps/<step>/`): no `.o` file or archive member under `$IOS3_SDK` was
+    linked, and exactly one start-up object, the toolchain's;
+  - `tools/startcheck.py`: the start-up code inside the binary. It exists because start-up objects
+    built with the Csu Makefile's `ld -r` step are wrong and still pass `armv6-ios3-check` and
+    `isa_scan.py`;
+  - the toolchain's three start-up objects against the sha256 pins in `tools/_common.sh`.
+
+  All three were shown to fail on deliberately bad set-ups (the commit message of `5a2283c`).
 - It writes `arm-out/report.txt`, `SHA256SUMS` and `verify/*`.
 - **Exit codes:** 0 OK, 1 verification failed, 3 setup or build error. About 15 s warm.
 - **Reproducible:** three clean rebuilds give identical hashes.
@@ -864,6 +898,7 @@ Defaults are in brackets.
 
 ### 12.1 `main`, newest first (subjects shortened)
 ```
+5a2283c toolchain: revision 2 (own start-up objects, licence texts, pack script), sources in the repo, MIT
 b8d8976 tools: voltest shows iapd's side of the volume, can call IAPAudioSetVolume
 dfbbc3d docs: the project record moves into the repo
 6721da9 tools: cspot build date pinned, host compiler check
