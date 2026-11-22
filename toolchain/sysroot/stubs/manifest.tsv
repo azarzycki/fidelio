@@ -1,0 +1,468 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Andy Zarzycki. Part of this repository's original work; see LICENSE at its root.
+#
+# manifest.tsv: what the stub libraries of the sysroot offer to the linker. build-stubs.sh makes the
+# stubs from this file, imports.py writes and checks it, and ../README.md explains both.
+#
+# Tab-separated fields, one record per line, the records sorted in byte order (LC_ALL=C sort):
+#   lib   path in the sysroot | install name | current version | compatibility version |
+#         install names of the libraries it re-exports, separated by one space, in the order of
+#         the stub's LC_REEXPORT_DYLIB commands, or -
+#   link  path in the sysroot | target of the symlink
+#   sym   install name of the library | symbol | imported by | note
+#         imported by: the labels of our binaries that import the symbol from that library, separated
+#                      by one space, or - . imports.py rewrites this field from the binaries.
+#         note:        - , or where a symbol that none of our binaries imports comes from and how
+#                      it was confirmed. Written by hand; imports.py keeps it.
+# A sym row needs an importer or a note. A lib row without sym rows is a library that our binaries
+# name but take nothing from.
+#
+# The rule for adding a symbol: only after it was shown to exist in that library on iPhone OS 3.1.x,
+# in one of two ways.
+#   1. Against the SDK that the developer supplies: link a binary that uses the symbol with IOS3_SDK
+#      set to the real iPhoneOS3.1.2.sdk, then run "imports.py update" on it. The linker found the
+#      symbol in the SDK's library, and the binary records which library that was. (The rows that
+#      carry a note today were confirmed with the look-up such a link makes: each name comes from
+#      our own objects and was looked up, yes or no, in the SDK's library.)
+#   2. With a dlsym() probe on a device that runs iPhone OS 3.1.x: write the row by hand, with a note
+#      that names the device, the OS version and the date.
+# No name is ever copied from the export list of an SDK library.
+lib	System/Library/Frameworks/AVFoundation.framework/AVFoundation	/System/Library/Frameworks/AVFoundation.framework/AVFoundation	1.0.0	1.0.0	-
+lib	System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	246.0.0	1.0.0	-
+lib	System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	478.52.0	150.0.0	-
+lib	System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	359.16.0	64.0.0	-
+lib	System/Library/Frameworks/Foundation.framework/Foundation	/System/Library/Frameworks/Foundation.framework/Foundation	678.51.0	300.0.0	/usr/lib/libobjc.A.dylib /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
+lib	System/Library/Frameworks/QuartzCore.framework/QuartzCore	/System/Library/Frameworks/QuartzCore.framework/QuartzCore	1.6.0	1.2.0	-
+lib	System/Library/Frameworks/UIKit.framework/UIKit	/System/Library/Frameworks/UIKit.framework/UIKit	1000.0.0	1.0.0	-
+lib	usr/lib/libSystem.B.dylib	/usr/lib/libSystem.B.dylib	111.2.1	1.0.0	-
+lib	usr/lib/libgcc_s.1.dylib	/usr/lib/libgcc_s.1.dylib	1.0.0	1.0.0	-
+lib	usr/lib/libobjc.A.dylib	/usr/lib/libobjc.A.dylib	227.0.0	1.0.0	-
+lib	usr/lib/libstdc++.6.dylib	/usr/lib/libstdc++.6.dylib	7.9.0	7.0.0	-
+link	usr/lib/libSystem.dylib	libSystem.B.dylib
+link	usr/lib/libobjc.dylib	libobjc.A.dylib
+sym	/System/Library/Frameworks/AVFoundation.framework/AVFoundation	_OBJC_CLASS_$_AVAudioPlayer	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueAllocateBuffer	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueDispose	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueEnqueueBuffer	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueNewOutput	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueuePause	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueReset	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueSetParameter	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueStart	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioQueueStop	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioSessionAddPropertyListener	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioSessionGetProperty	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioSessionInitialize	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioSessionSetActive	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox	_AudioSessionSetProperty	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFAbsoluteTimeGetCurrent	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFDictionaryGetValue	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFGetTypeID	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFNotificationCenterAddObserver	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFNotificationCenterGetLocalCenter	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFNotificationCenterRemoveEveryObserver	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFNumberGetTypeID	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFNumberGetValue	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFRelease	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFRunLoopAddTimer	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFRunLoopGetCurrent	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFRunLoopRemoveTimer	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFRunLoopRunInMode	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFRunLoopStop	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFRunLoopTimerCreate	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFStringCompare	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFStringCreateWithCString	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFStringGetCString	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFStringGetTypeID	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_CFURLCreateWithBytes	fidelio-audiod	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSArray	NowPlaying.app/NowPlaying voltest	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSData	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSDate	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSDictionary	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSException	smoke/objc	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSMutableArray	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSMutableData	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSMutableDictionary	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSObject	NowPlaying.app/NowPlaying smoke/objc	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_CLASS_$_NSTimer	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_EHTYPE_$_NSException	DockRemote.dylib Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying smoke/objc	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_OBJC_METACLASS_$_NSObject	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying smoke/objc	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	___CFConstantStringClassReference	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop smoke/objc voltest	-
+sym	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation	_kCFRunLoopDefaultMode	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGContextAddLineToPoint	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGContextClosePath	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGContextFillPath	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGContextFillRect	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGContextMoveToPoint	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGContextScaleCTM	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGContextSetRGBFillColor	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGRectGetMaxY	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics	_CGRectZero	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_NSFileModificationDate	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_NSFileSize	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_NSLog	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSAutoreleasePool	NowPlaying.app/NowPlaying smoke/objc voltest	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSBundle	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSCharacterSet	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying voltest	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSFileHandle	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSFileManager	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSIndexPath	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSMutableString	NowPlaying.app/NowPlaying voltest	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSProcessInfo	smoke/objc	-
+sym	/System/Library/Frameworks/Foundation.framework/Foundation	_OBJC_CLASS_$_NSString	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying smoke/objc voltest	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIAlertView	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIApplication	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIBarButtonItem	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIButton	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIColor	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIDevice	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIFont	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIImage	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIImageView	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UILabel	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UINavigationController	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIProgressView	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIScreen	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UISlider	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UISwitch	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UITabBarController	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UITabBarItem	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UITableView	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UITableViewCell	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UITextField	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIView	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIViewController	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_CLASS_$_UIWindow	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_METACLASS_$_UIApplication	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_METACLASS_$_UIViewController	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_OBJC_METACLASS_$_UIWindow	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_UIApplicationMain	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_UIGraphicsBeginImageContext	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_UIGraphicsEndImageContext	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_UIGraphicsGetCurrentContext	NowPlaying.app/NowPlaying	-
+sym	/System/Library/Frameworks/UIKit.framework/UIKit	_UIGraphicsGetImageFromCurrentImageContext	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_DNSServiceProcessResult	fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_DNSServiceRefDeallocate	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_DNSServiceRefSockFD	fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_DNSServiceRegister	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_DNSServiceResolve	fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_OSSpinLockLock	-	toolchain archive libios3compat.a(atomic.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_OSSpinLockUnlock	-	toolchain archive libios3compat.a(atomic.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_TXTRecordCreate	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_TXTRecordDeallocate	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_TXTRecordGetBytesPtr	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_TXTRecordGetLength	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_TXTRecordSetValue	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	__DefaultRuneLocale	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	____mb_cur_max_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	____tolower_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	____toupper_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	___assert_rtn	-	toolchain archive libios3compat.a(int_util.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	___cxa_atexit	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	___error	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	___maskrune	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	___maskrune_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	___stack_chk_fail	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx voltest	-
+sym	/usr/lib/libSystem.B.dylib	___stack_chk_guard	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx voltest	-
+sym	/usr/lib/libSystem.B.dylib	___stderrp	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx smoke/loader voltest	-
+sym	/usr/lib/libSystem.B.dylib	___stdinp	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	___stdoutp	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx smoke/cxx-libcxx smoke/hello voltest	-
+sym	/usr/lib/libSystem.B.dylib	___tolower	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	___toupper	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_abort	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_accept	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_arc4random	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_asprintf_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_atexit	smoke/hello	-
+sym	/usr/lib/libSystem.B.dylib	_atof	cspot-ios3 fidelio-audiod fidelio-raop voltest	-
+sym	/usr/lib/libSystem.B.dylib	_atoi	cspot-ios3 fidelio-audiod fidelio-raop smoke/t.bundle voltest	-
+sym	/usr/lib/libSystem.B.dylib	_atoll	fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_bind	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_btowc_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_calloc	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_catclose	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_catgets	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_catopen	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_cbrtf	fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_ceilf	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_chdir	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_chmod	fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_close	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_closedir	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_connect	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_copyfile_state_alloc	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_copyfile_state_free	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_dlerror	fidelio-audiod fidelio-lockctl smoke/loader	-
+sym	/usr/lib/libSystem.B.dylib	_dlopen	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx smoke/loader voltest	-
+sym	/usr/lib/libSystem.B.dylib	_dlsym	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx smoke/loader voltest	-
+sym	/usr/lib/libSystem.B.dylib	_exit	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx smoke/cxx-libcxx smoke/hello smoke/loader smoke/objc voltest	-
+sym	/usr/lib/libSystem.B.dylib	_fchmod	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_fclose	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_fcntl	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_fcopyfile	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_ferror	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_fflush	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx smoke/cxx-libcxx smoke/hello voltest	-
+sym	/usr/lib/libSystem.B.dylib	_fgets	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_fileno	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_floorf	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio	-
+sym	/usr/lib/libSystem.B.dylib	_fopen	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_fprintf	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/loader	-
+sym	/usr/lib/libSystem.B.dylib	_fputc	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_fputs	DockRemote.dylib	-
+sym	/usr/lib/libSystem.B.dylib	_fputwc	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_fread	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_free	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_freeaddrinfo	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_freeifaddrs	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_freelocale	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_fseek	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_fseeko	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_fstat	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_ftell	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_ftello	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_ftruncate	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_fwrite	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx voltest	-
+sym	/usr/lib/libSystem.B.dylib	_getaddrinfo	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_getc	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_getcwd	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_getenv	cspot-ios3 fidelio-audiod fidelio-raop smoke/hello	-
+sym	/usr/lib/libSystem.B.dylib	_getifaddrs	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_getnameinfo	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_getpid	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_getpwnam	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_getrusage	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_getsockname	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_getsockopt	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_gettimeofday	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_getuid	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_getwc	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_gmtime	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_gmtime_r	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_host_page_size	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_host_statistics	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_inet_ntoa	fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_inet_ntop	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_inet_pton	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_ioctl	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_isatty	-	toolchain archive libc++.a(print.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_link	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_listen	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_localeconv_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_localtime	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_log10f	fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_lroundf	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_lstat	-	toolchain archive libc++.a(directory_entry.cpp.o,operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_mach_absolute_time	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_mach_error_string	fidelio-lockctl	-
+sym	/usr/lib/libSystem.B.dylib	_mach_host_self	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_mach_port_deallocate	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_mach_task_self_	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_mach_thread_self	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_mach_timebase_info	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_malloc	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_mbrlen_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_mbrtowc_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_mbsnrtowcs_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_mbsrtowcs_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_mbtowc_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_memchr	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_memcmp	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_memcpy	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_memmove	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_memset	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_mkdir	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_nanosleep	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_newlocale	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_open	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_opendir	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_poll	cspot-ios3 fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_posix_memalign	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_posix_spawn	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_powf	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_printf	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx smoke/cxx-libcxx smoke/hello smoke/loader smoke/objc voltest	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_atfork	-	CMake check CMAKE_HAVE_LIBC_PTHREAD (FindThreads), linked when mbedTLS and cspot are configured; checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_pthread_attr_destroy	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_attr_init	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_attr_setdetachstate	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_attr_setstacksize	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_cancel	-	CMake check CMAKE_HAVE_LIBC_PTHREAD (FindThreads), linked when mbedTLS and cspot are configured; checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_pthread_cond_broadcast	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_cond_destroy	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_cond_init	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_cond_signal	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_cond_timedwait	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_cond_wait	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_create	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_detach	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_exit	-	CMake check CMAKE_HAVE_LIBC_PTHREAD (FindThreads), linked when mbedTLS and cspot are configured; checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_pthread_getspecific	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_join	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_key_create	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_key_delete	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutex_destroy	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutex_init	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutex_lock	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutex_trylock	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutex_unlock	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutexattr_destroy	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutexattr_init	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_mutexattr_settype	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_once	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_self	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_pthread_setspecific	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_putchar	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_puts	cspot-ios3 fidelio-lockctl fidelio-raop smoke/cxx smoke/cxx-libcxx smoke/hello smoke/objc voltest	-
+sym	/usr/lib/libSystem.B.dylib	_rand	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_read	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_readdir	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_readlink	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_realloc	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_realpath$DARWIN_EXTSN	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_recv	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_recvfrom	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_remove	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_rename	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_sched_yield	-	toolchain archive libc++.a(atomic.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_select	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_send	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_sendto	fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_setbuf	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_setgid	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_setgroups	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_setlocale	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_setsockopt	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_setuid	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_setvbuf	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_shutdown	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_sigaction	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_signal	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_sin	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_sleep	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_snprintf	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_snprintf_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_socket	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_sprintf	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_sscanf	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_sscanf_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_stat	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_statvfs	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_strchr	DockRemote.dylib cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strcmp	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx voltest	-
+sym	/usr/lib/libSystem.B.dylib	_strcoll_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strcpy	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strcspn	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strdup	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strerror	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_strerror_r	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_strftime	cspot-ios3 fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_strftime_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strlen	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx smoke/libt.dylib	-
+sym	/usr/lib/libSystem.B.dylib	_strncmp	DockRemote.dylib cspot-ios3 fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_strncpy	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_strrchr	fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_strstr	cspot-ios3 fidelio-raop smoke/hello	-
+sym	/usr/lib/libSystem.B.dylib	_strtod	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_strtod_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strtof	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_strtof_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strtol	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_strtold	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_strtold_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strtoll	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_strtoll_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strtoul	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_strtoull	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_strtoull_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_strxfrm_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_swprintf	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_symlink	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_sysconf	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_sysctl	NowPlaying.app/NowPlaying fidelio-audiod	-
+sym	/usr/lib/libSystem.B.dylib	_syslog	DockRemote.dylib	-
+sym	/usr/lib/libSystem.B.dylib	_task_info	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_thread_info	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_time	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_truncate	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_uname	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_ungetc	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_ungetwc	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_unlink	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_usleep	cspot-ios3 fidelio-audiod fidelio-raop voltest	-
+sym	/usr/lib/libSystem.B.dylib	_utimes	-	toolchain archive libc++.a(operations.cpp.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libSystem.B.dylib	_vasprintf	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_vfprintf	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_vprintf	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_vsnprintf	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_waitpid	NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libSystem.B.dylib	_wcrtomb_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_wcscoll_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_wcslen	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcsnrtombs_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_wcstod	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcstof	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcstol	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcstold	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcstoll	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcstoul	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcstoull	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wcsxfrm_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_wctob_l	cspot-ios3	-
+sym	/usr/lib/libSystem.B.dylib	_wmemchr	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_wmemcmp	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libSystem.B.dylib	_write	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_writev	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_DeleteException	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_GetIP	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_GetLanguageSpecificData	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_GetRegionStart	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_SetGR	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_SetIP	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_SjLj_RaiseException	cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_SjLj_Register	DockRemote.dylib Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx smoke/cxx-libcxx smoke/objc	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_SjLj_Resume	DockRemote.dylib Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx smoke/objc	-
+sym	/usr/lib/libgcc_s.1.dylib	__Unwind_SjLj_Unregister	DockRemote.dylib Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx smoke/cxx-libcxx smoke/objc	-
+sym	/usr/lib/libgcc_s.1.dylib	___divdi3	cspot-ios3 fidelio-raop	-
+sym	/usr/lib/libgcc_s.1.dylib	___divsi3	cspot-ios3	-
+sym	/usr/lib/libgcc_s.1.dylib	___fixdfdi	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libgcc_s.1.dylib	___fixunsdfdi	cspot-ios3	-
+sym	/usr/lib/libgcc_s.1.dylib	___floatdidf	NowPlaying.app/NowPlaying fidelio-raop	-
+sym	/usr/lib/libgcc_s.1.dylib	___floatdisf	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio	-
+sym	/usr/lib/libgcc_s.1.dylib	___floatundidf	cspot-ios3	-
+sym	/usr/lib/libgcc_s.1.dylib	___moddi3	NowPlaying.app/NowPlaying cspot-ios3	-
+sym	/usr/lib/libgcc_s.1.dylib	___modsi3	cspot-ios3 voltest	-
+sym	/usr/lib/libgcc_s.1.dylib	___udivdi3	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx	-
+sym	/usr/lib/libgcc_s.1.dylib	___udivmoddi4	-	toolchain archive libios3compat.a(divmoddi4.o); checked against the 3.1.2 SDK on 2026-11-22
+sym	/usr/lib/libgcc_s.1.dylib	___udivsi3	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libgcc_s.1.dylib	___umodsi3	cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libobjc.A.dylib	___objc_personality_v0	DockRemote.dylib Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying smoke/objc	-
+sym	/usr/lib/libobjc.A.dylib	__objc_empty_cache	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying smoke/objc	-
+sym	/usr/lib/libobjc.A.dylib	_class_getClassMethod	fidelio-audiod voltest	-
+sym	/usr/lib/libobjc.A.dylib	_class_getInstanceMethod	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio fidelio-audiod voltest	-
+sym	/usr/lib/libobjc.A.dylib	_method_copyArgumentType	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio	-
+sym	/usr/lib/libobjc.A.dylib	_method_getTypeEncoding	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio voltest	-
+sym	/usr/lib/libobjc.A.dylib	_objc_begin_catch	DockRemote.dylib Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying smoke/objc	-
+sym	/usr/lib/libobjc.A.dylib	_objc_end_catch	DockRemote.dylib Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying smoke/objc	-
+sym	/usr/lib/libobjc.A.dylib	_objc_enumerationMutation	NowPlaying.app/NowPlaying voltest	-
+sym	/usr/lib/libobjc.A.dylib	_objc_getClass	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio fidelio-audiod voltest	-
+sym	/usr/lib/libobjc.A.dylib	_objc_msgSend	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying fidelio-audiod smoke/objc voltest	-
+sym	/usr/lib/libobjc.A.dylib	_objc_msgSendSuper2	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libobjc.A.dylib	_objc_msgSend_stret	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio NowPlaying.app/NowPlaying	-
+sym	/usr/lib/libobjc.A.dylib	_object_getClass	Fidelio.bundle/Fidelio Fidelio.lockbundle/Fidelio voltest	-
+sym	/usr/lib/libobjc.A.dylib	_sel_registerName	fidelio-audiod voltest	-
+sym	/usr/lib/libstdc++.6.dylib	__ZN9__gnu_cxx18__exchange_and_addEPVii	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZNKSs7compareEPKc	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZNSs4_Rep10_M_destroyERKSaIcE	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZNSs4_Rep20_S_empty_rep_storageE	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZNSsC1EPKcRKSaIcE	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZNSsD1Ev	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZNSt13runtime_errorC1ERKSs	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZNSt13runtime_errorD1Ev	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZSt9terminatev	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZTISt13runtime_error	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	__ZTISt9exception	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	___cxa_allocate_exception	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	___cxa_begin_catch	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	___cxa_end_catch	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	___cxa_free_exception	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	___cxa_throw	smoke/cxx	-
+sym	/usr/lib/libstdc++.6.dylib	___gxx_personality_sj0	smoke/cxx	-
