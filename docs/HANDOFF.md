@@ -101,6 +101,8 @@ The **dock**:
     (§2.3). Those builds are on the iPad since 2026-11-22 and not yet on the phone (§2.4).
   - `55d1a82`, `926ea54`, `831ac15` and `b5e3106` (2026-11-22): the build no longer needs Apple's SDK
     (§6.3). No binary changed.
+  - `b2a8ee3` (2026-11-22): the docs name where the toolchain is published. The tag **`toolchain-r3`**
+    points at it, and the release of that name holds the toolchain tarball (§6.1).
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
   - Earliest rounds: `audiod-b11`, `-b12`, `-b13`, `-b15` … `-b19`, `-b110` … `-b116`. There is no `-b14`.
@@ -126,15 +128,15 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | B1.16.5 | b051bfc | 0042 | DockRemote finds `MSHookMessageEx` in libsubstrate | bound on the phone, but on the wrong method |
 | B1.16.6 | aeed5b1 | 0043 | 4 entitlement keys; the accepted unlock request is the result (no launch probe); keep-lit (`restartDimTimer`) | **iPad unlock PASS**; installed on both |
 | B1.16.7 | e3e448e | 0044 | lock plugin: phone layout (`LPLayout.c`) and 3.1.3 keep-lit fallback (`restartDimTimer:` float) | **phone PASS, iPad PASS**; installed on both |
-| B1.16.8 | 4ed6a5a | 0045 | DockRemote hooks GraphicsServices `GSSendEvent` (observe-first) | staged on the PC, not installed |
-| B1.16.9 | 8eec470 | 0046 | NowPlaying 1.4.1: the iPad dock remote as a staged media-controller prototype | installed on the iPad 2026-11-22 (revision 3 build); not exercised |
+| B1.16.8 | 4ed6a5a | 0045 | DockRemote hooks GraphicsServices `GSSendEvent` (observe-first) | the revision 3 build is in place on the phone since 2026-11-22 and loaded into iapd (load line seen); the observe run is open (§3.2) |
+| B1.16.9 | 8eec470 | 0046 | NowPlaying 1.4.1: the iPad dock remote as a staged media-controller prototype | installed on both devices 2026-11-22 (revision 3 build); not exercised on the iPad |
 | B1.16.10 | 4158342 | 0047 | `wake_mode` launch\|screen (the lock plugin as backstop) | its audiod is superseded by B1.16.11's |
-| B1.16.11 | 7330752 | 0048 | lock plugin follows a live setting change and a SpringBoard restart | installed on the iPad 2026-11-22 (revision 3 build); not exercised |
+| B1.16.11 | 7330752 | 0048 | lock plugin follows a live setting change and a SpringBoard restart | installed on both devices 2026-11-22 (revision 3 build); not exercised on the iPad |
 | voltest | 5dc865f | 0049 | the volume probe (no marker) | ran on the phone once (paused) |
 | tools | 6721da9 | none | cspot build date pinned (§6.3), host compiler check (§6.4); no binary changed | nothing to install |
-| voltest | b8d8976 | none | the probe also shows iapd's side of the volume and can call `IAPAudioSetVolume` (§3.1) | not run on a device yet |
+| voltest | b8d8976 | none | the probe also shows iapd's side of the volume and can call `IAPAudioSetVolume` (§3.1) | on the phone since 2026-11-22; first readings in §2.5 and §3.1 |
 | toolchain r2 | 5a2283c | none | toolchain revision 2: start-up objects built from Apple's open-source Csu, licence texts, `toolchain/pack.sh`, the toolchain's own sources in the repo under MIT, link-map and start-up checks in `build-arm.sh`; every binary keeps its sha256 | nothing to install |
-| toolchain r3 | c46beee | none | toolchain revision 3: the start-up objects carry a notice that says where their source is (Apple's open-source licence asks for it "in the code itself"), so every binary carries it in a section `__TEXT,__csu_notice`; `build-arm.sh` requires revision 3 and checks the notice; every binary has the same size and a new sha256 (§2.3) | iPad, 2026-11-22: smoke test PASS and the suite installed; the phone is open (§2.4, §3.2) |
+| toolchain r3 | c46beee | none | toolchain revision 3: the start-up objects carry a notice that says where their source is (Apple's open-source licence asks for it "in the code itself"), so every binary carries it in a section `__TEXT,__csu_notice`; `build-arm.sh` requires revision 3 and checks the notice; every binary has the same size and a new sha256 (§2.3) | 2026-11-22: smoke test PASS and the suite installed on both devices (§2.4, §3.2) |
 | sysroot | 55d1a82, 926ea54, 831ac15, b5e3106 | none | the build without Apple's SDK: `toolchain/sysroot/` makes a sysroot from a symbol list (stub libraries), Apple's published open-source headers (pinned) and framework headers of our own; `tools/build-arm.sh` uses it by default; every binary keeps its sha256 (§6.3) | nothing to install |
 
 ### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee, unchanged)
@@ -164,12 +166,12 @@ The sources of each binary are those of the round named in the last column. Only
   - No file size changed: the notice fits into the padding of `__TEXT`.
   - `__text` and the stubs start at a lower address, so address-dependent bytes differ. Every other
     section has the size it had.
-- **On the iPad** these builds run since 2026-11-22, all but DockRemote and voltest (§2.4). **None has
-  run on the phone** (iPhone OS 3.1.3): the smoke test of §3.2 comes first there.
+- **On both devices** these builds run since 2026-11-22 (§2.4): the iPad has all but DockRemote and
+  voltest, the phone has all eight.
 
 **The earlier hashes** are the ones the same sources gave with toolchain revisions 1 and 2, which built
-identical bytes. They are what the cloud session published, what is installed on the devices (§2.4) and
-what is staged on the PC. A device report that shows one of them still identifies the round.
+identical bytes. They are what the cloud session published and what was installed on the devices until
+2026-11-22 (the backups there, §2.4). A device report that shows one of them still identifies the round.
 
 | Binary | sha256 with toolchain revisions 1 and 2 |
 |---|---|
@@ -183,14 +185,31 @@ what is staged on the PC. A device report that shows one of them still identifie
 | voltest | `8c9f1f0372f05643f34d088fc4d6b16538dbf5eefd2fb8354d16e851754299f1` (the 5dc865f one was 51,056, `bb956992…f956b9`) |
 
 ### 2.4 What runs on each device (the last device reports)
-- **Phone** (as last reported on 2026-11-15; on 2026-11-22 it was not on the network, see below):
-  - audiod `c23cd624` (aeed5b1, B1.16.6) and lockctl `45da7833`.
-  - `Fidelio.bundle` `559763a5` (B1.16.7).
-  - NowPlaying 1.4.0 (B1.18).
-  - DockRemote **b051bfc** (inert: no flags), loaded into iapd.
-  - raop/cspot: B1.16-era builds. Whether cspot 47d4760 was installed is not reported.
-  - Settings, as left for the lock-plugin test: `wake_on_play=off`, `lock_plugin=on`, `keep_screen_on=on`,
-    `lockplugin.debug` present.
+- **Phone** (installed by this session on 2026-11-22, on the owner's "Update the iPhone and iPad"): the
+  whole suite as built with toolchain revision 3, the first table of §2.3.
+  - audiod `30eb78eb` (7330752), lockctl `704c799f`, raop `baf304f6`, cspot `35de013e` (47d4760), voltest
+    `c4d1c424` (b8d8976), NowPlaying 1.4.1 `35bfa229`, `Fidelio.bundle` `e708fab0`. Each sha256 was read
+    back on the device. The start-up smoke test passed first (§3.2).
+  - What was there before is kept beside each file: `<name>.pre-r3.bak` in `/var/mobile/fidelio/b1/`,
+    `/Applications/NowPlaying.app.pre-r3`, `Fidelio.bundle.pre-r3`, `settings.conf.pre-r3`. Before: audiod
+    `c23cd624` (aeed5b1), lockctl `45da7833`, raop `9edce5e5`, cspot `2979aedd`, NowPlaying 1.4.0, bundle
+    `559763a5`.
+  - Settings now: `dock_remote=on`, `wake_on_play=on` (was off), `wake_mode=launch` (the owner's choice),
+    `lock_plugin=on`, `keep_screen_on=on`; `lockplugin.debug` present.
+  - **DockRemote 4ed6a5a** (`8427742c`, the revision 3 build) is in
+    `/Library/MobileSubstrate/DynamicLibraries/` and loaded into iapd since an undocked iapd restart
+    that day; the load line reads `DockRemote B1.16.8: hooked GSSendEvent with MSHookFunction from
+    /usr/lib/libsubstrate.dylib`. `remote-tweak.observe` is set: it logs and passes every key through.
+    The build before it is kept as `DockRemote.dylib.pre-r3.bak` (b051bfc).
+  - **iapd logs its packets** since the same restart: `PrintIapPackets`, `LogDeviceVolumeChanges` and
+    `LogLineOut` are set in `/var/mobile/Library/Preferences/com.apple.iapd.plist` (the file from before
+    is `/var/mobile/fidelio/com.apple.iapd.plist.pre-r3`). The lines go to `/var/log/syslog`, which grows
+    without rotation: every attach logs the dock's certificate. Remove the three keys when the volume
+    work is done (undocked iapd restart).
+  - After the install: the three jobs run, audiod got its AudioSession at the first attempt on the dock
+    route (`USB`), Spotify played through it, and the wake brought NowPlaying up.
+  - **The phone rebooted once that day**, about 20 s after a SpringBoard restart during playback
+    (§2.5, §3.2). It came back by itself with everything running.
 - **iPad** (installed by this session on 2026-11-22, on the owner's "Deploy to the dock"): the whole
   suite as built with toolchain revision 3, the first table of §2.3.
   - audiod `30eb78eb` (7330752, B1.16.10/11), lockctl `704c799f`, raop `baf304f6`, cspot `35de013e`
@@ -204,16 +223,10 @@ what is staged on the PC. A device report that shows one of them still identifie
     `Speaker`: the iPad was not on the dock), both producers connected to it, and the iPad answers a
     direct Bonjour query with both service names. SpringBoard was restarted for the lock bundle.
   - **Nothing was played.** B1.16.9, B1.16.10 and B1.16.11 are installed there and not yet exercised
-    (§3.2).
+    (§3.2). The hashes were read back again on 2026-11-22 before the phone's install: unchanged.
   - Settings unchanged: `dock_remote=on`, `wake_on_play=on`, `unlock_on_play=off`, `lock_plugin=on`,
     `keep_screen_on=on`; `wake_mode` at its default, `launch`. No `remote-control.stage` file, so
     NowPlaying 1.4.1 runs stage 1.
-- **The phone on 2026-11-22:** not reachable. Nothing answered at its usual address, no SSH host on the
-  network had its host key, and no device advertised its Spotify or AirPlay name. Nothing was installed
-  on it. It needs a look by the owner (power, Wi-Fi).
-- **Not yet installed on the phone:** audiod 7330752 (B1.16.10/11), DockRemote 4ed6a5a (B1.16.8),
-  NowPlaying 1.4.1 (B1.16.9), and every revision 3 build. The files for it are staged on the PC at
-  `C:\code\fidelio\cloud-build\deploy-r3\`.
 
 ### 2.5 Device-proven facts (keep; don't re-test)
 - **iPad, unlock on play** (5.1.1, no passcode). With the four keys, `SBSOpenSensitiveURLAndUnlock(nowplaying:, true)`
@@ -255,7 +268,57 @@ what is staged on the PC. A device report that shows one of them still identifie
   - The smoke set (§3.2) gave exactly the expected output for all five programs, including the dylib and
     the bundle loaded with `dlopen`.
   - The suite's own revision 3 builds start and run there (§2.4).
-  - Not yet shown on iPhone OS 3.1.3.
+- **Toolchain revision 3 on iPhone OS 3.1.3** (phone, 2026-11-22): the same smoke set gave exactly the
+  expected output for all five programs, and the notice is in all seven files. The suite's revision 3
+  builds run there and played Spotify through the dock (§2.4).
+- **The dock and the phone's volume: what the packet log shows** (phone docked, 2026-11-22, iapd's
+  `PrintIapPackets`; `Acc:` lines are the dock's, `iPod:` lines the phone's). This replaces the
+  inferences of §3.1 where they differ.
+  - The dock identifies the newer way (IDPS) and iapd then logs `setVolumeControlSupported - setting
+    non-legacy volume support 1`. `voltest` shows `iap: supported=1` while docked and `supported=0` off
+    the dock.
+  - The dock **subscribes to the phone's volume**: Display Remote lingo (3), command 0x08, event mask
+    `00000010`. The phone accepts it (ACK) and at once sends a notification, command 0x09 with
+    `04 00 <volume>`: event 4, mute 0, volume 0 to 255.
+  - The dock then **pushes its own level to the phone**: command 0x0E with `04 00 <volume> 01`. iapd logs
+    `SetVolumeMaster - volume changing from A to B, ... notifyApp=1`, the system volume follows
+    (`hwvolume: 'external'` in audiod), and the phone answers with the notification again. The dock does
+    this on attach and for every press of its volume buttons, in steps of 4 (52, 56, 48 ...).
+  - **Nothing on the phone sends the phone's volume to iapd.** `voltest set Audio/Video V` changes the
+    system volume and iapd's volume stays where it was, idle and while Spotify plays. That is why the
+    Spotify slider moves NowPlaying's display and not the dock.
+  - **`IAPAudioSetVolume` does reach the dock's wire.** `voltest iap set V` gives `SetVolumeMaster ...
+    notifyApp=0` and the notification `04 00 <V*255>` goes out to the dock (seen for 25, 76 and 47). The
+    dock sends nothing back. The system volume does not follow (notifyApp=0). **Whether the dock's
+    amplifier follows the notification is not known yet:** it needs the owner's ears (§3.1).
+  - Digital Audio lingo (10): the dock offers 32000, 44100 and 48000 Hz; the phone sends its
+    track-attributes message `0000ac44 00000000 00000000` (44100 Hz, sound check 0, volume offset 0) and
+    the dock acknowledges it.
+  - Readings: docked `route=USB`, `routeHasVolumeControl=0`, while playing too; off the dock
+    `route=Speaker`, `routeHasVolumeControl=1`.
+- **Dock keys as GraphicsServices events** (phone, DockRemote 4ed6a5a observing, 2026-11-22; four
+  presses, compared with iapd's own log of the same presses):
+  - The tweak's assumed layout is wrong. In the type-4001 record the word at offset 56 is not a 0/1
+    state: it read 22 for menu (iapd key 22) and 0 for play/pause (iapd key 0), on both events of a
+    press, and 21 on the single event logged for previous (iapd key 4). The half-word at offset 52 was
+    0 every time.
+  - Each press gave two type-4001 events that differ in the flags word: `0x400` first, `0x800` second
+    (previous: only the `0x800` one). A type-101 event comes before each press and before each volume
+    step.
+  - So the swallow of 4ed6a5a cannot work as built (§3.3). A clean pass over all seven keys is still
+    needed to map them.
+- **A SpringBoard restart during playback rebooted the phone** (2026-11-22, once): `killall SpringBoard`
+  while Spotify played on the dock; SpringBoard came up and loaded its tweaks, and about 20 s later the
+  phone restarted from the kernel up, with no line in the system log in between, no panic log, and the
+  flash layer recovering as after an unclean stop. The same restart 10 minutes earlier, with nothing
+  playing and the tweak of that day not yet loaded, was harmless. The cause is not established. What was
+  new in that session: audiod 7330752 (which re-enables the lock plugin after a SpringBoard restart),
+  DockRemote 4ed6a5a hooking `GSSendEvent` in iapd, and iapd's packet logging. **Do not restart
+  SpringBoard on a playing device again without the owner's word.**
+- **Wake on play on the phone** (2026-11-22, audiod 7330752, `wake_mode=launch`, no `unlock_on_play` line
+  so the default "on"): the event log read `wake: device locked, unlock accepted (nowplaying:)` and
+  NowPlaying was running afterwards. The older note below ("audiod never sees locked there") was written
+  for an earlier build; what the owner saw on the screen is not reported.
 - **Bonjour on the iPad** (2026-11-22, one session, from the PC over Wi-Fi): the iPad answered a DNS-SD
   query sent directly to it (both service names), and did not answer the same query sent to the
   multicast address in four tries, while three other devices on the network did. This bears on the
@@ -297,6 +360,21 @@ what is staged on the PC. A device report that shows one of them still identifie
   - So the record names the iPhone for B1.10's check that the slider "set the hardware level". It does not
     say on which device, or on which output, the dock's loudness was heard to follow. The earlier
     handoff's "B1.9/B1.10 must have run on a route with volume control" was an inference.
+- **State on 2026-11-22, after the first packet log** (the facts are in §2.5):
+  - The dock asks for the phone's volume and the phone agrees to send it. The dock is not refused, and
+    no hook in iapd is needed for the subscription.
+  - Nothing on the phone forwards the system volume to iapd, so the dock never hears of a change made
+    on the phone. `IAPAudioSetVolume` does send it.
+  - **One thing is open, and it decides the fix: does the dock's amplifier follow the notification?**
+    On 2026-11-22 three notifications went out while Spotify played (25, 76, then 47 of 255, at 16:47:35,
+    :42 and :50 phone time). The owner has not yet said whether the loudness changed.
+    - If it follows: audiod calls `IAPAudioSetVolume` whenever it sets the system volume (item 4 below).
+      That is the whole fix, and absolute volume works on this dock.
+    - If it does not: try the Digital Audio offset (step 5 below), then look at what the dock does
+      with the notification (it may only show it).
+  - Of the five readings below, 1 and 5 are done (§2.5); 2 is answered by the packet log (the dock's
+    buttons set the phone's volume with command 0x0E, so the system volume follows them); 3 is done for
+    `Audio/Video` (no forwarding); 4 is not done.
 - **The work is an investigation first:**
   1. **The five readings still owed** (asked 2026-11-15):
      1. `voltest` while **playing**.
@@ -393,42 +471,41 @@ what is staged on the PC. A device report that shows one of them still identifie
 ### 3.2 Device tests queued (on the owner's go-ahead)
 Hands-on work waits until the owner is at the dock. The volume readings of §3.1 are queued as well.
 
-**The start-up smoke test for toolchain revision 3** (queued 2026-11-22). It is needed before any binary
-of §2.3's first table is installed, and so before the packages of §3.5 are built for real.
-- **iPad: PASS on 2026-11-22** (§2.5), and the suite is installed there (§2.4).
-- **Phone: still to do.** It was not on the network that day (§2.4).
-- Seven small files linked with revision 3: a C, a C++ (libstdc++), a C++ (libc++) and an Objective-C
-  program, and a loader with a dylib and a bundle. They are in WSL at `/home/user/smoke-r3/` and on the
-  PC at `C:\code\fidelio\cloud-build\smoke-r3\`.
-- `README.txt` there has the five commands and the output that means success. That output is read
-  from the sources; it has not been observed.
-- Run it on the phone first (iPhone OS 3.1.3), then on the iPad.
-- What it shows: that the loader of each OS accepts a binary with the extra section, and that start-up
-  and lazy binding work as before. The static checks cannot show the first point.
-- The steps below do not wait for it. They can use the builds made with toolchain revision 1 or 2 (the
-  second table of §2.3): the files staged on the PC, or `/home/user/build.r2/arm-out` in WSL.
+**The start-up smoke test for toolchain revision 3: PASS on both devices** (iPad and phone,
+2026-11-22; §2.5). Seven small files linked with revision 3 (a C, a C++ on libstdc++, a C++ on libc++
+and an Objective-C program, and a loader with a dylib and a bundle); they are in WSL at
+`/home/user/smoke-r3/` and on the PC at `C:\code\fidelio\cloud-build\smoke-r3\`, with the commands
+and the expected output in `README.txt`. It shows that the loader of each OS accepts a binary with the
+extra section and that start-up and lazy binding work as before.
 
 1. Install audiod **7330752** on both devices. Set `wake_on_play=on`, and `wake_mode=launch` on the phone (the
    owner's choice).
-   - iPad: done on 2026-11-22 with the revision 3 build (§2.4); its settings already had `wake_on_play=on`.
-   - Phone: open. Smoke test first, then the files in `deploy-r3` (§2.4). DockRemote is not part of
-     that install: it needs the phone off the dock (step 3).
+   - Done on both on 2026-11-22 with the revision 3 builds (§2.4).
 2. **B1.16.11 check:** with the plugin on and music playing, respring. Within ~6 s the event log should
    show `lock-plugin re-enabled Fidelio after a SpringBoard restart`. Also flip "Lock-screen plugin" off
    and on while playing.
-3. **B1.16.8 DockRemote observe** (phone): install 4ed6a5a undocked, `killall iapd`, and check the load line
-   in `remote-events.log`.
-   - Then dock, `touch remote-tweak.observe`, and press all 7 keys.
-   - Read the `gs type=4001 … KEY key= state=` lines. Which state value is "down"? The swallow assumes 1.
+   - **Phone, 2026-11-22: not passed, and not safe to repeat as it is.** The respring during playback
+     ended in a reboot of the phone about 20 s later (§2.5); the line was never logged. Find the cause
+     first: the owner decides whether and how to reproduce it (one variable at a time: the tweak
+     disabled with `remote-tweak.disabled`, the lock plugin off, nothing playing).
+   - iPad: open. Ask the owner before doing it there, given the above.
+3. **B1.16.8 DockRemote observe** (phone): installed and loaded on 2026-11-22, `remote-tweak.observe`
+   set (§2.4).
+   - First data, four presses (§2.5): the layout the tweak assumes is wrong, so "which state value is
+     down" has no answer in that field.
+   - Still needed: one clean pass, a few seconds apart, in this order: play/pause, next, previous, menu,
+     select, up, down. Then read `remote-events.log` beside iapd's `SimpleRemoteEventHandler got
+     evKeyDown ... key:N` lines in the syslog.
 4. **B1.16.9** (iPad): NowPlaying 1.4.1, stages 1 → 2 → 3 via `remote-control.stage`.
    - Does `remote-control.log` fill from the dock keys, and with which subtypes?
    - Who gets the keys when the Music app was the last to play?
 5. Still never reported: iPad rotation and cover sharpness (sharp covers need cspot 47d4760 as well).
 
 ### 3.3 After those results
-- **DockRemote swallow:** if the state values match (down = 1), no rebuild is needed.
-  `touch /var/mobile/fidelio/remote-tweak.swallow` and set `audiod.dock_remote=on`.
-  If the values differ, change `KEY_STATE_DOWN` in `DockRemoteHook.mm` and rebuild.
+- **DockRemote swallow:** the values differ (§2.5), and by more than `KEY_STATE_DOWN`: the key is in the
+  word the tweak reads as the state, and down and up differ in the flags word. `DockRemoteHook.mm` needs
+  a new decode, built from the clean seven-key pass of §3.2. Do not set `remote-tweak.swallow` on the
+  4ed6a5a build.
 - **iPad dock remote:**
   - If a stage works, make it the default and drop the others.
   - If none works, the now-playing role needs real non-mixable playback, which would interrupt audiod's own
@@ -461,11 +538,13 @@ of §2.3's first table is installed, and so before the packages of §3.5 are bui
   2026-11-18). Nothing built.
 - It needs one version number for the whole suite, stamped into the app and the daemons at build time.
 - The owner's direction (2026-11-21): a release includes the packages and the toolchain tarball.
-  Nothing has been published yet.
-- The toolchain tarball of a release is the pack at the release commit (§6.1): the tarball recorded
-  there was packed at `c46beee`, before the last change to `LICENSE`.
+- **The toolchain tarball is published** since 2026-11-22 (the owner's word, §5.2): the release
+  `toolchain-r3` of this repository (§6.1). No package has been published.
 - Apple's SDK is no longer needed (§6.3), so the whole build can run on GitHub's runners (the owner
-  chose this way on 2026-11-22, §5.2). Open for CI: where the runner gets the toolchain (§4).
+  chose this way on 2026-11-22, §5.2). A runner downloads the toolchain from that release and checks
+  its sha256.
+- A later toolchain revision gets its own tag and release (`toolchain-r4` ...): pack at the commit the
+  tag will point at, verify as in §6.1, then publish.
 
 ---
 
@@ -488,19 +567,21 @@ of §2.3's first table is installed, and so before the packages of §3.5 are bui
    - Open: the GPL lets a program be combined with the system's own libraries. `cspot-ios3` also holds
      the start-up code that we now build ourselves from Apple's sources under Apple's licence. Whether
      that exception covers it has not been assessed.
-   - Open: four toolchain components ask for source to be offered (the linker tools, a disassembler
-     inside `otool`, ldid, libplist); the notices file points to their sources and our patches. ldid is
-     AGPL with a statically linked Apache-licensed libcrypto: upstream's combination, not assessed.
+   - Addressed with the publication (2026-11-22): four toolchain components ask for source to be
+     offered (the linker tools, a disassembler inside `otool`, ldid, libplist). The release that holds
+     the tarball also holds source archives of cctools-port and ldid at the commits that were built and
+     the Ubuntu source package of libplist, and the notices file and the release notes say so (§6.1).
+     The session added these archives on its own judgement; the owner can remove them. Still not
+     assessed: ldid is AGPL with a statically linked Apache-licensed libcrypto (upstream's combination);
+     OpenSSL's source is named by address only.
    - Open: the notices for the third-party code that is linked into the device binaries (the Spotify
      library and what it bundles, mbedTLS, the C++ runtime) have not been drawn up. The packages need
      them.
 4. **Release CI** (§3.7). Settled on 2026-11-22: the build needs no SDK any more (§6.3), so nothing of
    Apple's has to reach GitHub, and no runner on the owner's PC is needed. Open:
-   - **Where the runner gets the toolchain.** `tools/build-arm.sh` needs the toolchain tarball (the
-     host tools and the ARMv6 C++ runtime). Either the tarball is published first, as a release asset,
-     which needs the owner's word, or the workflow builds it from source (`spotify/BUILD.md` §2, §3c).
-     Building the C++ runtime against the project's own sysroot has not been tried: that build reads
-     more headers than the sysroot's allow-list holds today.
+   - Settled on 2026-11-22: the runner downloads the toolchain tarball from the release `toolchain-r3`
+     (§6.1). Building the toolchain from source in a workflow stays untried: the C++ runtime's build
+     reads more headers than the sysroot's allow-list holds today.
    - On a runner: Ubuntu 24.04 with the packages of §6.1. The first build fetches the pinned upstreams
      and Apple's published releases from GitHub.
 5. **The project's own framework headers: a licence judgement for the owner** (2026-11-22; facts
@@ -607,6 +688,10 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
     test: the switch is made only if every binary stays byte-identical. It did (§6.3).
   - Iterative build, compare and fix work is delegated to subagents on smaller models; the session
     plans, reviews the diffs and pushes (§6.1).
+  - "Let's publish the tool chain": the toolchain tarball is published as the release `toolchain-r3`
+    (§6.1). This word covers the toolchain only; packages and anything else still wait for the owner.
+  - "Update the iPhone and iPad and let's do some device tests": the go-ahead for the phone's install
+    and for the tests of §3.1 and §3.2, with the owner at the dock (§2.4, §2.5).
 - **Naming** (from before): the app is "NowPlaying"; new components get neutral names; the advertised device
   names stay. The full rename is B1.17 only.
 
@@ -647,12 +732,32 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   - The host clang is Ubuntu 24.04's `clang-18` (18.1.3).
 - **The toolchain's own files are in the repo** (`toolchain/`, since `5a2283c`); its tarball and the SDK
   are not.
-  - **Toolchain tarball, revision 3** (2026-11-22): `armv6-ios3-toolchain-linux-x86_64.tar.xz`,
-    3,978,908 bytes, sha256 `c635235bc75ba22882f0e1c80abd5b59808c76034fb20092791348e6d9252c7f`. On the PC
-    it is `C:\code\fidelio\cloud-build\armv6-ios3-toolchain-linux-x86_64-r3.tar.xz`; it is the one
-    installed in WSL. `toolchain/pack.sh --base <an unpacked toolchain>` rebuilds it, byte for byte, from
-    the repo at `c46beee` and the upstream-built parts of a base toolchain (`toolchain/README.md`,
-    `spotify/BUILD.md` §6). Revision 3 was packed with revision 2 as its base.
+  - **Toolchain tarball, revision 3, as published** (2026-11-22):
+    `armv6-ios3-toolchain-linux-x86_64.tar.xz`, 3,978,132 bytes, sha256
+    `6d97bee67d4897937694c43f9006f47288d756a2e106c7059da12ed309d5b94c`. It is the pack of commit
+    `b2a8ee3`, which the tag `toolchain-r3` points at, and it is the asset of the release
+    <https://github.com/azarzycki/fidelio/releases/tag/toolchain-r3>. It is the one installed in WSL
+    since that day. On the PC the release's files are in
+    `C:\code\fidelio\cloud-build\release-toolchain-r3\`.
+    - Checked before it went out: two packs gave the same bytes; `pack.sh`'s comparison with the SDK ran
+      (none of the 1,105 packed files has the sha256 of any of the SDK's 2,228 files); the tree holds no
+      address, host name, session id or path of the owner's PC or devices; `tools/build-arm.sh` with
+      this tarball installed gave `result: OK` and the hashes of §2.3; the asset was downloaded again
+      from GitHub, also without a login, and has the sha256 above.
+    - The same release holds `SHA256SUMS` and source archives: `cctools-port-904de2a71d4d.tar.gz`,
+      `ldid-af86971ae72e.tar.gz` (`git archive` of the pinned commits; the project's patches apply to
+      them) and the three files of Ubuntu's source package `libplist` 2.3.0-1~exp2build2. GitHub
+      replaced the `~` in two of those file names by a `.`; the release notes say so.
+      `lib/libplist-2.0.so.4` in the tarball has the sha256 of the library in Ubuntu's binary package of
+      that version.
+    - The pack of `c46beee` (3,978,908 bytes, sha256
+      `c635235bc75ba22882f0e1c80abd5b59808c76034fb20092791348e6d9252c7f`) was the installed one until
+      then. It is kept as `/home/user/opt/armv6-ios3-toolchain.r3-c46beee` and on the PC as
+      `C:\code\fidelio\cloud-build\armv6-ios3-toolchain-linux-x86_64-r3.tar.xz`. The two differ in
+      four text files only (`LICENSE`, `README.txt`, `THIRD-PARTY-NOTICES.md`, `BUILD.md`).
+    - `toolchain/pack.sh --base <an unpacked toolchain>` rebuilds a tarball, byte for byte, from the repo
+      at the same commit and the upstream-built parts of a base toolchain (`toolchain/README.md`,
+      `spotify/BUILD.md` §6). Revision 3 was first packed with revision 2 as its base.
     - **Its sha256 belongs to the commit it was packed at.** The tarball holds copies of repo files: the
       top-level `LICENSE`, the build notes, the toolchain's own sources. `LICENSE` changed afterwards
       (`d1b20a9`), so a pack at a later commit differs in that one file and has another sha256. Its
@@ -668,8 +773,8 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
     - Its wrapper puts the toolchain's start-up objects ahead of the SDK's on every link (unchanged
       since revision 2).
     - It contains no file of the SDK (checked by hash against all 2,228 SDK files) and no link to one.
-    - Binaries linked with it run on the iPad (iOS 5.1.1) since 2026-11-22; iPhone OS 3.1.3 is not
-      yet shown (§2.5, §3.2).
+    - Binaries linked with it run on the iPad (iOS 5.1.1) and on the phone (iPhone OS 3.1.3) since
+      2026-11-22 (§2.5).
   - **Revision 2** (2026-11-21; 3,976,540 bytes, sha256 `1f1cd630…b078`) is kept beside it as
     `…-r2.tar.xz` and as `/home/user/opt/armv6-ios3-toolchain.r2`. It is superseded: its start-up
     objects have no notice, and `tools/build-arm.sh` refuses it. Binaries linked with it were
@@ -1141,6 +1246,8 @@ Defaults are in brackets.
 
 ### 12.1 `main`, newest first (subjects shortened)
 ```
+b2a8ee3 Toolchain: name where revision 3 is published   (tag toolchain-r3)
+5ef0218 docs: the build without Apple's SDK in the handoff; the licence note names the sysroot patches
 b5e3106 tools: build against the project's own sysroot by default; IOS3_SDK optional
 831ac15 toolchain: framework headers of our own, build-sysroot.sh (sysroot stage 3)
 926ea54 toolchain: sysroot headers from Apple's open-source releases (sysroot stage 2)
