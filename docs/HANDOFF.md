@@ -159,9 +159,9 @@ toolchain changed, B1.16.12 changed audiod, and B1.16.13 changed DockRemote and 
 | fidelio-lockctl | 163,024 | `704c799f8b15122d8921cbdd9609c0e8136a85d038cc1a9c019b2c929db1ed12` | B1.16.6, aeed5b1 |
 | fidelio-raop | 942,112 | `baf304f686d4bc63b8737942e935ba812746eb5b5451efe7c725daef3f07d132` | B1.16, a5ba534 (old id bf61abb; raop unchanged since) |
 | cspot-ios3 | 2,290,160 | `35de013e2141c6a26cf8fe6a429f2f75cf99f9a75576c38720a1e1918e4b74fb` | B1.18, 47d4760 |
-| NowPlaying.app/NowPlaying | @SIZE_NP@ | `@HASH_NP@` | B1.16.13, branch `b11613-remote-keys` (1.4.2); before it, B1.16.9 8eec470 (1.4.1): 109,856, `35bfa2294eca5fe00cb9d5e08a0056fc0b839f6831ce6b411191b4cd9e4ef256` |
+| NowPlaying.app/NowPlaying | 127,296 | `09a4d05821cea611a87f00ddc0812721d41757a6733fe84571a7eba8cb732cad` | B1.16.13, branch `b11613-remote-keys` (1.4.2); before it, B1.16.9 8eec470 (1.4.1): 109,856, `35bfa2294eca5fe00cb9d5e08a0056fc0b839f6831ce6b411191b4cd9e4ef256` |
 | Fidelio.lockbundle/Fidelio = Fidelio.bundle/Fidelio | 56,304 | `e708fab07b256ab3ae39f19eff40d1ddfbf7f245bd42a04435ea2b2c728a2df6` | B1.16.7, e3e448e |
-| DockRemote.dylib | @SIZE_DR@ | `@HASH_DR@` | B1.16.13, branch `b11613-remote-keys`; before it, B1.16.8 4ed6a5a: 34,640, `8427742ca0e70a20c03c7d09884c47467169cb44d9c3efa0fedbb4981483621b` |
+| DockRemote.dylib | 35,104 | `6206f01478499936b815ecce6924abcd3375ef3531a84c2c55b3aa8a4c81da5b` | B1.16.13, branch `b11613-remote-keys`; before it, B1.16.8 4ed6a5a: 34,640, `8427742ca0e70a20c03c7d09884c47467169cb44d9c3efa0fedbb4981483621b` |
 | voltest | 51,200 | `c4d1c4246bfed1c829a7b21f1c7df804b60b7c61f0b6110b8eeb3bbe116e111d` | probe, b8d8976 |
 
 - All eight reproduce from nothing, on any day, at the reference paths of §6.1. Two builds from nothing
@@ -171,6 +171,10 @@ toolchain changed, B1.16.12 changed audiod, and B1.16.13 changed DockRemote and 
 - **B1.16.12's audiod is 16,720 bytes larger.** Its `__text` grew by about 3.7 KB and `__cstring` by
   about 0.8 KB, and `__TEXT` crossed a 16 KB segment boundary (368 KB to 384 KB). It imports no new
   symbol (the indirect symbol tables of the two builds list the same names).
+- **B1.16.13:** DockRemote.dylib grew by 464 bytes (34,640 to 35,104) and NowPlaying by 17,440 (109,856 to
+  127,296). Neither imports a symbol that was not in the stub manifest already; the manifest's
+  "imported by" fields were brought up to date (`imports.py update`, no symbol added). Every other
+  binary kept its sha256.
 - **Built without Apple's SDK since `b5e3106`** (§6.3): the same nine files, byte for byte, as the build
   against the SDK.
 - **What differs from the revision 2 build of the same sources:** one more section in each binary,
