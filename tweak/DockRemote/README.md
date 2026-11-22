@@ -8,7 +8,7 @@ select, up, down) and the volume keys always fall through. Built for a Philips F
 app with `MRMediaRemoteSendCommand`. The iPad route is therefore NowPlaying acting as a media
 controller, an app feature rather than this tweak.
 
-## Status (B1.16.13): the measured decode, a key log for NowPlaying; swallow staged behind a flag
+## Status (B1.16.15): the measured decode, a key log for NowPlaying; swallow staged behind a flag
 
 - **The hook point (B1.16.8).** b051bfc bound to `-[SimpleRemote sendEventRecord:toApp:]`, but no key ever
   called it, asleep or awake; `remote-events.log` stayed empty.
@@ -33,28 +33,34 @@ controller, an app feature rather than this tweak.
   | Key | Code | Events | With swallow (conditions met) |
   |---|---|---|---|
   | play/pause | 0 | `0x400`, `0x800` | both dropped; TOGGLE sent at the `0x400` |
-  | next (a tap) | 20 | one, `0x800` | dropped; NEXT sent |
-  | previous (a tap) | 21 | one, `0x800` | dropped; PREV sent |
+  | next (right) | 20 | one, `0x800` | dropped; NEXT sent |
+  | next (right) | 3 (assumed, not seen) | one, `0x800` expected | dropped; NEXT sent |
+  | previous (left) | 21 | one, `0x800` | dropped; PREV sent |
+  | previous (left) | 4 | one, `0x800` | dropped; PREV sent |
   | menu | 22 | `0x400`, `0x800` | passes |
   | select | 23 | `0x400`, `0x800` | passes |
   | up | 24 | `0x400`, `0x800` | passes |
-  | down | 25 (unverified) | not seen | passes |
-  | seek forward | 3 (unverified) | not seen | passes |
-  | rewind | 4 (unverified) | one, `0x800` (seen once) | passes |
+  | down | 25 | `0x400`, `0x800` | passes |
 
-  - menu, select and up equal iapd's own key numbers 22, 23, 24. Down is 25 in iapd's numbering but never
-    arrived, so 25 is an extrapolation.
-  - Codes 3 and 4 are iapd's key numbers for next and previous. Code 4 came once, as one `0x800` event,
-    when a previous press reached iapd twice. The reading that a held key becomes seek/rewind is
-    unverified.
+  - menu, select, up and down equal iapd's own key numbers 22 … 25 (down verified on 2026-11-22: three
+    presses).
+  - The left key comes in two forms, both measured: code 21 (once) and code 4 (four presses since), one
+    `0x800` event each. 4 is iapd's own key number for previous. Why iapd picks one form or the other is
+    not known; that a hold gives code 4 is a guess, not confirmed (the code-4 presses were ordinary taps).
+  - The right key came as code 20 on every press so far. Code 3, iapd's key number for next, has not been
+    seen; B1.16.15 takes it as next by symmetry with the left key, an assumption.
+  - Should 3 or 4 ever come as two events (`0x400`, `0x800`), the press is handled like play/pause: one
+    verb at the `0x400`, both events dropped.
+  - Some up and select presses were never sent by the dock (no packet in iapd's log). The tweak cannot
+    see those; every packet the dock did send was decoded and logged.
 - **Presses (`PressTracker`).** A press is an optional `0x400` event and a `0x800` event of the same code.
   It is decided at its first event, once, and the decision covers all its events: it is taken whole or
   passed whole, and the verb goes out once, at the first event. A `0x800` with no `0x400` before it is a
-  press of its own (next and previous always are).
+  press of its own (next and previous so far always are).
 - **Observe-only by default.** With no flags set, the hook passes every record straight through and writes
   nothing.
 - **Load line.** Every iapd start appends one line to `/var/mobile/fidelio/remote-events.log` (and
-  syslog): `DockRemote B1.16.13: hooked GSSendEvent with MSHookFunction from <library> ...` or `NOT hooked
+  syslog): `DockRemote B1.16.15: hooked GSSendEvent with MSHookFunction from <library> ...` or `NOT hooked
   (...)`.
 - **Observe:** `touch /var/mobile/fidelio/remote-tweak.observe`.
   - The hook appends one line per record to `remote-events.log`, and STILL passes it on: `gs type=
@@ -65,13 +71,14 @@ controller, an app feature rather than this tweak.
   OR `remote-tweak.swallow` exists. NowPlaying's Technical tab shows its last six lines.
   - One line per completed press, at its `0x800` event: `<unix seconds> <code> <name> <taken|passed>`,
     for example `1795369452 0 play-pause taken` or `1795369460 22 menu passed`.
-  - Names: `play-pause`, `next`, `previous`, `menu`, `select`, `up`, `down`, `seek-forward`, `rewind`, and
-    `code-N` for an unknown code.
+  - Names: `play-pause`, `next` (codes 20 and 3), `previous` (21 and 4), `menu`, `select`, `up`, `down`,
+    and `code-N` for an unknown code. The code in the line tells the two forms of next and previous
+    apart. (B1.16.13 named 3 `seek-forward` and 4 `rewind`.)
   - Open, append, close per line, one `write()`. Created mode 0644 by iapd, which runs as `mobile`. When the
     file is larger than 16 KB it is truncated before the line is appended.
 - **Swallow:** only once you also `touch /var/mobile/fidelio/remote-tweak.swallow`.
-  - Taken over: play/pause, next and previous (the table above). The verb goes to audiod, and the iPod
-    app sees nothing of the press.
+  - Taken over: play/pause, next and previous, with all their codes (the table above). The verb goes to
+    audiod, and the iPod app sees nothing of the press.
   - Only while `audiod.dock_remote=on`, a Fidelio source owns audiod, and audiod is reachable
     (`DockRemoteCore.cpp`, asked once per press). Otherwise the press passes as before.
   - Everything else always passes through.
@@ -91,8 +98,8 @@ press, exactly one verb and one log line per press, and the 16 KB cap.
 - iapd: thin armv6 `MH_EXECUTE`. Its GraphicsServices imports include `_GSSendEvent`, `_GSSendSystemEvent`
   and `_GSGetPurpleSystemEventPort`.
 - Keys in iapd's own log (`SimpleRemoteEventHandler got evKeyDown ... key:N`): play/pause 0, next 3, prev 4,
-  menu 22, select 23, up 24, down 25. In the GraphicsServices event, next and previous are codes 20 and 21
-  (the table above).
+  menu 22, select 23, up 24, down 25. In the GraphicsServices event, next is code 20 and previous code 21
+  or 4 (the table above).
 - Substrate: `/Library/MobileSubstrate/MobileSubstrate.dylib` is only the injection stub. `MSHook*` live in
   CydiaSubstrate (`/usr/lib/libsubstrate.dylib`). `MSHookFunction` is looked up where it is exported:
   first the images already loaded, then `libsubstrate.dylib`, `CydiaSubstrate.framework/CydiaSubstrate`

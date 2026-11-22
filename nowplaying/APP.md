@@ -93,7 +93,8 @@ firmer press), the Technical tab starts with a section **"Dock remote"**.
   only) while `remote-tweak.observe` or `remote-tweak.swallow` is set: one line per completed press,
   `<unix seconds> <code> <name> <taken|passed>` (`tweak/DockRemote/README.md`).
 - **Shown:** the last six presses, newest first, each as the local time `HH:MM:SS` and the key in words
-  (`play/pause`, `next`, `previous`, `menu`, `select`, `up`, `down`, `seek forward`, `rewind`, `code N`),
+  (`play/pause`, `next`, `previous`, `menu`, `select`, `up`, `down`, `code N`; any other name with its
+  dashes as spaces),
   with "(taken)" when the tweak swallowed the press and sent it to audiod.
 - **The newest press** is bold and white; for 3 s after it was logged it is green. The older ones are grey.
 - **No file, or no complete line in it:** one entry, "No key seen yet." with "The dock remote tweak logs

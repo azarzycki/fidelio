@@ -13,6 +13,8 @@
 // B1.16.13: the decode is the one measured on the phone (DockRemoteKeys.h): the word @56 is a command
 // code, the flags word says down (0x400) or up (0x800), next and previous arrive as one 0x800 event. The
 // B1.16.8 reading (key @52, state 0/1 @56) was wrong.
+// B1.16.15: codes 4 (measured for the left key) and 3 (assumed for the right key) are previous and next
+// as well (DockRemoteKeys.h).
 // Not used on the 5.1.1 iPad: its iapd imports no GSSendEvent and routes the keys with
 // MRMediaRemoteSendCommand to the now-playing app, so that is an app-level route (NowPlaying), not a tweak.
 //
@@ -22,7 +24,7 @@
 //    passed through).
 //  - /var/mobile/fidelio/remote-tweak.observe OR remote-tweak.swallow: one line per completed key press
 //    in remote-keys.log ("<unix seconds> <code> <name> <taken|passed>"), read by NowPlaying's Technical tab.
-//  - /var/mobile/fidelio/remote-tweak.swallow: take over play/pause (0), next (20) and previous (21):
+//  - /var/mobile/fidelio/remote-tweak.swallow: take over play/pause (0), next (20, 3) and previous (21, 4):
 //    the verb goes to audiod once, at the press's first event, and every event of the press is dropped.
 //    Only when DockRemoteCore's shouldForward() agrees (setting on, a Fidelio source active, audiod
 //    reachable); it is asked once per press. Everything else always passes through.
@@ -161,9 +163,9 @@ static void DockRemoteInit() {
     void* target = dlsym(RTLD_DEFAULT, "GSSendEvent");
     if (hook && target) {
       hook(target, (void*)new_GSSendEvent, (void**)&orig_GSSendEvent);
-      snprintf(line, sizeof line, "DockRemote B1.16.13: hooked GSSendEvent with MSHookFunction from %s (pass-through until the observe/swallow flags)", where);
+      snprintf(line, sizeof line, "DockRemote B1.16.15: hooked GSSendEvent with MSHookFunction from %s (pass-through until the observe/swallow flags)", where);
     } else {
-      snprintf(line, sizeof line, "DockRemote B1.16.13: NOT hooked (MSHookFunction %s, GSSendEvent %s): safe no-op",
+      snprintf(line, sizeof line, "DockRemote B1.16.15: NOT hooked (MSHookFunction %s, GSSendEvent %s): safe no-op",
                hook ? "found" : "not exported by any substrate library", target ? "found" : "missing");
     }
     syslog(LOG_NOTICE, "%s", line);

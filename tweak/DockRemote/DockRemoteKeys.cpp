@@ -28,24 +28,26 @@ KeyEvent decodeKey(const void* record) {
 
 uint8_t verbForCode(uint32_t code) {
   switch (code) {
-    case CODE_PLAYPAUSE: return AUDIOD_CTRL_TOGGLE;
-    case CODE_NEXT:      return AUDIOD_CTRL_NEXT;
-    case CODE_PREVIOUS:  return AUDIOD_CTRL_PREV;
-    default:             return 0;  // menu/select/up/down, seek and rewind (3, 4), unknown: always pass
+    case CODE_PLAYPAUSE:     return AUDIOD_CTRL_TOGGLE;
+    case CODE_NEXT:
+    case CODE_NEXT_IAPD:     return AUDIOD_CTRL_NEXT;
+    case CODE_PREVIOUS:
+    case CODE_PREVIOUS_IAPD: return AUDIOD_CTRL_PREV;
+    default:                 return 0;  // menu/select/up/down, unknown: always pass
   }
 }
 
 const char* keyName(uint32_t code, char* buf, size_t cap) {
   switch (code) {
-    case CODE_PLAYPAUSE:    return "play-pause";
-    case CODE_SEEK_FORWARD: return "seek-forward";
-    case CODE_REWIND:       return "rewind";
-    case CODE_NEXT:         return "next";
-    case CODE_PREVIOUS:     return "previous";
-    case CODE_MENU:         return "menu";
-    case CODE_SELECT:       return "select";
-    case CODE_UP:           return "up";
-    case CODE_DOWN:         return "down";
+    case CODE_PLAYPAUSE:     return "play-pause";
+    case CODE_NEXT:
+    case CODE_NEXT_IAPD:     return "next";
+    case CODE_PREVIOUS:
+    case CODE_PREVIOUS_IAPD: return "previous";
+    case CODE_MENU:          return "menu";
+    case CODE_SELECT:        return "select";
+    case CODE_UP:            return "up";
+    case CODE_DOWN:          return "down";
     default:
       if (!buf || !cap) return "code";
       snprintf(buf, cap, "code-%u", (unsigned)code);
@@ -64,8 +66,9 @@ Decision PressTracker::onKey(const KeyEvent& e, MayTakeFn mayTake, void* ctx) {
     d.swallow = take; d.verb = take ? verb : 0; d.taken = take;
     return d;
   }
-  // 0x800: the press is complete. Follow its down event's decision; a press without one (next, previous,
-  // or a down that was missed) is decided here. A 0x800 of another code leaves a pending press alone.
+  // 0x800: the press is complete. Follow its down event's decision; a press without one (next 20/3,
+  // previous 21/4, or a down that was missed) is decided here. A 0x800 of another code leaves a pending
+  // press alone.
   bool take;
   if (pending_ && pendingCode_ == e.code) {
     take = pendingTaken_;

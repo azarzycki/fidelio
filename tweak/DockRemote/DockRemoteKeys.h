@@ -1,5 +1,5 @@
 #pragma once
-// B1.16.13: the dock-key decode of the DockRemote tweak, its swallow decisions and the readable key log.
+// B1.16.13, B1.16.15: the dock-key decode of the DockRemote tweak, its swallow decisions and the readable key log.
 // Plain C++ with no Objective-C and no fixed paths, so the host test (hosttest/keys_test.cpp) runs the
 // same code the tweak runs inside iapd.
 //
@@ -8,8 +8,14 @@
 //   - header 52 bytes: type @0 (4001), subtype @4 (0), flags @40, infoSize @48 (8); info 8 bytes @52.
 //   - the 32-bit word @56 is a COMMAND code; the word @52 was 0 in every event.
 //   - flags 0x400 = the first event of a press (down), 0x800 = the second (up); both carry the same code.
-//   - play/pause, menu, select, up: two events (0x400, then 0x800). next and previous (taps): ONE event,
-//     flags 0x800. A type-101 event (flags 0, info all zero) precedes every press and every dock volume step.
+//   - play/pause, menu, select, up, down: two events (0x400, then 0x800). next and previous (taps): ONE
+//     event, flags 0x800. A type-101 event (flags 0, info all zero) precedes every press and every dock
+//     volume step.
+//   - B1.16.15: the left key (previous) arrives either as code 21 or as code 4 (iapd's own key number for
+//     previous), one 0x800 event either way (measured: code 21 once, then code 4 on four presses). Which
+//     form iapd picks is not known; that a hold produces code 4 is an unconfirmed guess. The right key
+//     (next) came as code 20 on every press so far; code 3 (iapd's key number for next) is assumed by
+//     symmetry and has not been seen.
 // The B1.16.8 layout (key as uint16 @52, state 0/1 @56) was wrong.
 #include <stddef.h>
 #include <stdint.h>
@@ -24,15 +30,15 @@ enum { KEY_FLAG_DOWN = 0x400, KEY_FLAG_UP = 0x800 };
 
 // The command codes of the word @56.
 enum {
-  CODE_PLAYPAUSE    = 0,   // two events (0x400, 0x800)
-  CODE_SEEK_FORWARD = 3,   // UNVERIFIED: iapd's own key number for next; read as a held next (fast-forward)
-  CODE_REWIND       = 4,   // UNVERIFIED: seen once, as one 0x800 event, when a previous press reached iapd twice
-  CODE_NEXT         = 20,  // a tap: one event, 0x800
-  CODE_PREVIOUS     = 21,  // a tap: one event, 0x800
-  CODE_MENU         = 22,  // two events; = iapd's key 22
-  CODE_SELECT       = 23,  // two events; = iapd's key 23
-  CODE_UP           = 24,  // two events; = iapd's key 24
-  CODE_DOWN         = 25,  // UNVERIFIED: iapd's key 25, extrapolated; down never arrived in the observe runs
+  CODE_PLAYPAUSE     = 0,   // two events (0x400, 0x800)
+  CODE_NEXT_IAPD     = 3,   // ASSUMED by symmetry with code 4 (iapd's key number for next); never seen. Next.
+  CODE_PREVIOUS_IAPD = 4,   // measured: the left key as one 0x800 event (4 presses on 2026-11-22). Previous.
+  CODE_NEXT          = 20,  // measured: the right key, one event, 0x800 (every press so far)
+  CODE_PREVIOUS      = 21,  // measured: the left key, one event, 0x800 (once)
+  CODE_MENU          = 22,  // two events; = iapd's key 22
+  CODE_SELECT        = 23,  // two events; = iapd's key 23
+  CODE_UP            = 24,  // two events; = iapd's key 24
+  CODE_DOWN          = 25,  // two events; = iapd's key 25 (measured, three presses)
 };
 
 struct KeyEvent {
@@ -46,12 +52,12 @@ struct KeyEvent {
 // (the header is 52 bytes and infoSize says 8 more follow); fields are read with memcpy.
 KeyEvent decodeKey(const void* record);
 
-// The audiod transport verb a code is taken over for (play/pause TOGGLE, next NEXT, previous PREV), or 0:
-// every other code always passes through.
+// The audiod transport verb a code is taken over for (play/pause 0 TOGGLE, next 20 or 3 NEXT, previous 21
+// or 4 PREV), or 0: every other code always passes through.
 uint8_t verbForCode(uint32_t code);
 
-// The key's log name, without spaces: play-pause, next, previous, menu, select, up, down, seek-forward,
-// rewind, or code-N (written into buf) for an unknown code.
+// The key's log name, without spaces: play-pause, next (20 and 3), previous (21 and 4), menu, select, up,
+// down, or code-N (written into buf) for an unknown code. The log line's code tells the two forms apart.
 const char* keyName(uint32_t code, char* buf, size_t cap);
 
 // What the hook does with one key event.
@@ -70,7 +76,8 @@ typedef bool (*MayTakeFn)(uint32_t code, void* ctx);
 // decision is made at the press's first event and applies to all its events, so a press is either taken
 // whole or passed whole, and the verb goes out once, at the first event:
 //   play/pause: 0x400 decides and sends TOGGLE, its 0x800 follows that decision.
-//   next / previous: the single 0x800 event decides and sends NEXT / PREV.
+//   next / previous (20, 21, 3, 4): the single 0x800 event decides and sends NEXT / PREV; should one come as
+//   0x400 + 0x800, it is handled like play/pause (one verb at the 0x400, both events dropped).
 //   any other code: always passed.
 // A 0x400 replaces any press still pending; a 0x800 of another code is a press of its own and leaves the
 // pending one alone.

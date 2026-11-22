@@ -1,4 +1,4 @@
-// B1.16.13 host test of the DockRemote key decode, the swallow decisions and the key log
+// B1.16.13, B1.16.15 host test of the DockRemote key decode, the swallow decisions and the key log
 // (tweak/DockRemote/DockRemoteKeys.cpp, the same C++ the tweak runs inside iapd). The records are built
 // the way the phone sent them on 2026-11-22 (remote-events.log of the second observe pass).
 #include <stdio.h>
@@ -59,11 +59,11 @@ int main() {
     { down(22), true, 22, "menu 0x400" },     { up(22), false, 22, "menu 0x800" },
     { down(23), true, 23, "select 0x400" },   { up(23), false, 23, "select 0x800" },
     { down(24), true, 24, "up 0x400" },       { up(24), false, 24, "up 0x800" },
-    { down(25), true, 25, "down 0x400 (unverified)" },
+    { down(25), true, 25, "down 0x400" },     { up(25), false, 25, "down 0x800" },
     { up(20), false, 20, "next: one 0x800 event, code 20" },
     { up(21), false, 21, "previous: one 0x800 event, code 21" },
-    { up(4), false, 4, "code 4 (rewind, unverified): one 0x800 event" },
-    { up(3), false, 3, "code 3 (seek forward, unverified)" },
+    { up(4), false, 4, "previous: one 0x800 event, code 4 (measured)" },
+    { up(3), false, 3, "next: one 0x800 event, code 3 (assumed by symmetry)" },
   };
   for (auto& x : rows) {
     KeyEvent k = decodeKey(x.r.b);
@@ -87,15 +87,16 @@ int main() {
   CHECK(!strcmp(keyName(0, nb, sizeof nb), "play-pause") && !strcmp(keyName(20, nb, sizeof nb), "next") &&
         !strcmp(keyName(21, nb, sizeof nb), "previous") && !strcmp(keyName(22, nb, sizeof nb), "menu") &&
         !strcmp(keyName(23, nb, sizeof nb), "select") && !strcmp(keyName(24, nb, sizeof nb), "up") &&
-        !strcmp(keyName(25, nb, sizeof nb), "down") && !strcmp(keyName(3, nb, sizeof nb), "seek-forward") &&
-        !strcmp(keyName(4, nb, sizeof nb), "rewind"), "names: play-pause next previous menu select up down seek-forward rewind");
+        !strcmp(keyName(25, nb, sizeof nb), "down") && !strcmp(keyName(3, nb, sizeof nb), "next") &&
+        !strcmp(keyName(4, nb, sizeof nb), "previous"), "names: play-pause next previous menu select up down; 3 next, 4 previous");
   CHECK(!strcmp(keyName(7, nb, sizeof nb), "code-7") && !strcmp(keyName(4000000000u, nb, sizeof nb), "code-4000000000"),
         "an unknown code is named code-N");
-  CHECK(verbForCode(0) == AUDIOD_CTRL_TOGGLE && verbForCode(20) == AUDIOD_CTRL_NEXT && verbForCode(21) == AUDIOD_CTRL_PREV,
-        "verbs: play/pause TOGGLE, next NEXT, previous PREV");
+  CHECK(verbForCode(0) == AUDIOD_CTRL_TOGGLE && verbForCode(20) == AUDIOD_CTRL_NEXT && verbForCode(21) == AUDIOD_CTRL_PREV &&
+        verbForCode(3) == AUDIOD_CTRL_NEXT && verbForCode(4) == AUDIOD_CTRL_PREV,
+        "verbs: play/pause TOGGLE, next (20, 3) NEXT, previous (21, 4) PREV");
   bool none = true;
-  for (uint32_t c : { 3u, 4u, 22u, 23u, 24u, 25u, 1u, 26u, 999u }) none = none && verbForCode(c) == 0;
-  CHECK(none, "no verb for seek (3), rewind (4), menu, select, up, down or unknown codes");
+  for (uint32_t c : { 22u, 23u, 24u, 25u, 1u, 2u, 5u, 19u, 26u, 999u }) none = none && verbForCode(c) == 0;
+  CHECK(none, "no verb for menu, select, up, down or unknown codes");
 
   // ---- the swallow decisions ----
   {
@@ -115,12 +116,50 @@ int main() {
     CHECK(join(h.lines) == "1000 20 next taken|1000 21 previous taken|", "swallow: one line each: %s", join(h.lines).c_str());
   }
   {
+    // B1.16.15: the left key as code 4 (measured) and the right key as code 3 (assumed), one 0x800 event.
+    Hook h; h.swallow = true;
+    h.send(ev101()); h.send(up(4));
+    CHECK(h.dropped == 1 && h.passed == 1 && h.verbs.size() == 1 && h.verbs[0] == AUDIOD_CTRL_PREV && h.asked == 1,
+          "swallow: previous as (0x800, 4) is dropped and sends one PREV; the 101 passes");
+    h.send(ev101()); h.send(up(3));
+    CHECK(h.dropped == 2 && h.passed == 2 && h.verbs.size() == 2 && h.verbs[1] == AUDIOD_CTRL_NEXT && h.asked == 2,
+          "swallow: next as (0x800, 3) is dropped and sends one NEXT");
+    CHECK(join(h.lines) == "1000 4 previous taken|1000 3 next taken|", "swallow: lines '4 previous taken', '3 next taken': %s",
+          join(h.lines).c_str());
+  }
+  {
+    // Should code 4 or 3 ever come as a two-event press: one verb, both events dropped, one line.
+    Hook h; h.swallow = true;
+    h.send(down(4));
+    CHECK(h.dropped == 1 && h.verbs.size() == 1 && h.verbs[0] == AUDIOD_CTRL_PREV && h.lines.empty(),
+          "swallow: (0x400, 4) is dropped and sends PREV, no line yet");
+    h.send(up(4));
+    CHECK(h.dropped == 2 && h.passed == 0 && h.verbs.size() == 1 && h.asked == 1 && join(h.lines) == "1000 4 previous taken|",
+          "swallow: its (0x800, 4) is dropped too, no second verb, one line");
+    h.send(down(3)); h.send(up(3));
+    CHECK(h.dropped == 4 && h.passed == 0 && h.verbs.size() == 2 && h.verbs[1] == AUDIOD_CTRL_NEXT && h.asked == 2,
+          "swallow: (0x400, 3) + (0x800, 3): one NEXT, both events dropped");
+    CHECK(join(h.lines) == "1000 4 previous taken|1000 3 next taken|", "two-event presses: one line each: %s", join(h.lines).c_str());
+  }
+  {
+    // Without the swallow flag (observe only) codes 3 and 4 pass, one or two events, and the lines say passed.
+    Hook h; h.observe = true;
+    h.send(up(4)); h.send(up(3)); h.send(down(4)); h.send(up(4)); h.send(down(3)); h.send(up(3));
+    CHECK(h.dropped == 0 && h.passed == 6 && h.verbs.empty(), "observe only: codes 3 and 4 pass, no verb");
+    CHECK(join(h.lines) == "1000 4 previous passed|1000 3 next passed|1000 4 previous passed|1000 3 next passed|",
+          "observe only: '4 previous passed', '3 next passed': %s", join(h.lines).c_str());
+    Hook g; g.swallow = true; g.conditions = false;
+    g.send(up(4)); g.send(down(3)); g.send(up(3));
+    CHECK(g.dropped == 0 && g.passed == 3 && g.verbs.empty() && join(g.lines) == "1000 4 previous passed|1000 3 next passed|",
+          "conditions not met: codes 4 and 3 pass, lines say passed");
+  }
+  {
     Hook h; h.swallow = true;
     for (uint32_t c : { 22u, 23u, 24u, 25u }) { h.send(down(c)); h.send(up(c)); }
-    h.send(up(3)); h.send(up(4));
-    CHECK(h.dropped == 0 && h.passed == 10 && h.verbs.empty() && h.asked == 0,
-          "swallow: menu, select, up, down, codes 3 and 4 all pass, no verb, conditions never asked");
-    CHECK(join(h.lines) == "1000 22 menu passed|1000 23 select passed|1000 24 up passed|1000 25 down passed|1000 3 seek-forward passed|1000 4 rewind passed|",
+    h.send(up(7));
+    CHECK(h.dropped == 0 && h.passed == 9 && h.verbs.empty() && h.asked == 0,
+          "swallow: menu, select, up, down and an unknown code all pass, no verb, conditions never asked");
+    CHECK(join(h.lines) == "1000 22 menu passed|1000 23 select passed|1000 24 up passed|1000 25 down passed|1000 7 code-7 passed|",
           "swallow: one 'passed' line per press, at its 0x800 event");
   }
   {
@@ -179,10 +218,24 @@ int main() {
     h.send(ev101()); h.send(down(22)); h.send(up(22));
     h.send(ev101()); h.send(down(23)); h.send(up(23)); h.send(ev101()); h.send(down(23)); h.send(up(23));
     h.send(ev101()); h.send(down(24)); h.send(up(24)); h.send(ev101()); h.send(down(24)); h.send(up(24));
-    CHECK(h.verbs.size() == 3 && h.verbs[0] == AUDIOD_CTRL_TOGGLE && h.verbs[1] == AUDIOD_CTRL_TOGGLE && h.verbs[2] == AUDIOD_CTRL_NEXT,
-          "the measured pass: verbs TOGGLE, TOGGLE, NEXT and nothing else");
-    CHECK(h.dropped == 5 && h.passed == 20, "the measured pass: 5 events dropped (2 x play/pause, next), 20 passed (%d/%d)", h.dropped, h.passed);
-    CHECK(h.lines.size() == 9, "the measured pass: 9 presses, 9 key lines (%zu)", h.lines.size());
+    // B1.16.15: the code-4 press of that pass (the left key) is previous now, and taken.
+    CHECK(h.verbs.size() == 4 && h.verbs[0] == AUDIOD_CTRL_TOGGLE && h.verbs[1] == AUDIOD_CTRL_TOGGLE &&
+          h.verbs[2] == AUDIOD_CTRL_NEXT && h.verbs[3] == AUDIOD_CTRL_PREV,
+          "the measured pass: verbs TOGGLE, TOGGLE, NEXT, PREV and nothing else");
+    CHECK(h.dropped == 6 && h.passed == 19,
+          "the measured pass: 6 events dropped (2 x play/pause, next, previous), 19 passed (%d/%d)", h.dropped, h.passed);
+    CHECK(h.lines.size() == 9 && h.lines[3] == "1000 4 previous taken",
+          "the measured pass: 9 presses, 9 key lines (%zu), the fourth '4 previous taken'", h.lines.size());
+  }
+  {
+    // The later passes of 2026-11-22 (B1.16.13 on the phone): left as (0x800, 4), right as (0x800, 20),
+    // down as (0x400, 25) + (0x800, 25); here with swallow on.
+    Hook h; h.swallow = true;
+    h.send(ev101()); h.send(up(4)); h.send(ev101()); h.send(up(20)); h.send(ev101()); h.send(down(25)); h.send(up(25));
+    CHECK(h.verbs.size() == 2 && h.verbs[0] == AUDIOD_CTRL_PREV && h.verbs[1] == AUDIOD_CTRL_NEXT && h.dropped == 2 && h.passed == 5,
+          "the later passes: PREV, NEXT; down passes (%d dropped, %d passed)", h.dropped, h.passed);
+    CHECK(join(h.lines) == "1000 4 previous taken|1000 20 next taken|1000 25 down passed|", "the later passes: %s",
+          join(h.lines).c_str());
   }
 
   // ---- the key log ----

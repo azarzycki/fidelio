@@ -42,7 +42,7 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 434 ok, 0 FAIL, at B1.16.14)
+# name | baseline ok count | command (baseline: 447 ok, 0 FAIL, at B1.16.15)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -68,7 +68,7 @@ layout       30 $HOST/nowplaying/layout_test
 lock_layout  10 $HOST/nowplaying/lock_layout_test
 cover_url     6 $HOST/cspot/cover_url_test
 keylog       17 $HOST/nowplaying/keylog_test
-remote_keys  52 $HOST/dockremote/keys_test
+remote_keys  65 $HOST/dockremote/keys_test
 "
 
 case "$BUILD_ROOT$REPO" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
