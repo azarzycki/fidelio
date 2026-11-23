@@ -164,6 +164,11 @@ resolved at run time.
 
 Install **undocked** (observe-only is safe to install):
 1. Copy `DockRemote.dylib` and `DockRemote.plist` to `/Library/MobileSubstrate/DynamicLibraries/`.
+   To **replace** an installed `DockRemote.dylib`, never copy over it: the running iapd has it mapped,
+   and on the phone a file that has run is killed when new content is written into the same inode
+   (measured with audiod, 2026-11-22; `docs/HANDOFF.md` §8). Copy it to a temporary name that does not
+   end in `.dylib` (MobileSubstrate would load it), give it the old file's owner and mode, check its
+   sha256, then `mv -f` it over `DockRemote.dylib`.
 2. With the phone undocked, restart iapd (`killall iapd`; launchd relaunches it) or reboot.
 3. Check `/var/mobile/fidelio/remote-events.log` for the `hooked GSSendEvent ... from ...` line.
 4. Dock the phone, `touch /var/mobile/fidelio/remote-tweak.observe`, press the buttons, and watch
@@ -174,7 +179,7 @@ Install **undocked** (observe-only is safe to install):
 6. B1.16.16 (needs audiod B1.16.16): play/pause to pause, wait more than 2 s (audiod releases the
    source; `remote-target` still says `spotify`), play/pause again: Spotify resumes, both presses show
    "taken", and the iPod app does not start. Then start the Music app by hand: `remote-target` becomes
-   `none` and the keys pass to it again.
+   `none` and the keys pass to it again. Passed on the phone on 2026-11-22 (`docs/HANDOFF.md` §2.5).
 
 Remove: delete the two files (or `touch /var/mobile/fidelio/remote-tweak.disabled` to disable without
 removing), then restart iapd undocked and reseat.
