@@ -1,4 +1,4 @@
-# HANDOFF — the dock-receiver stack (`azarzycki/fidelio`), state as of 2026-11-22, evening
+# HANDOFF — the dock-receiver stack (repository `azarzycki/fidelio`), state as of 2026-11-22, night (B1.17 built, not yet on a device)
 
 This file is written for a fresh session that has none of the conversation behind it. It lives in the
 repo and is the one record of the project's state: **update it in the same commit as each round**
@@ -14,6 +14,14 @@ repo and is the one record of the project's state: **update it in the same commi
   keeping is in this directory.
 - The facts below were checked against the repo or a device report when they were first written down.
   Device-reported facts say so.
+- **Names.** Since B1.17 (2026-11-22) the project's own names no longer use "Fidelio", which is Philips'
+  product name: the project is `dock-receiver`, the programs are `dock-audiod`, `dock-raop`,
+  `dock-lockctl` (and `cspot-ios3`), the ids are `com.dockreceiver.*`, the data directory is
+  `/var/mobile/dockreceiver`. The full old → new list is [`RENAME.md`](../RENAME.md). **The devices
+  still run the old names** (`fidelio-audiod`, `/var/mobile/fidelio`, `com.fidelio.*`, `Fidelio.bundle`)
+  until they are migrated by the packages (§2.4, §3.0). This file uses the new names for the tree and
+  the build, and the old ones where it describes what a device runs today or quotes what a device
+  logged.
 
 **Read in this order:**
 1. §0, the resume checklist.
@@ -23,7 +31,13 @@ repo and is the one record of the project's state: **update it in the same commi
 5. §6 and §7, the build conventions and the round checklist.
 
 §8–§12 are reference. Other documents:
-- [`docs/RENAME-PLAN.md`](RENAME-PLAN.md): the plan for B1.17, the rename (on hold).
+- [`docs/RENAME-PLAN.md`](RENAME-PLAN.md): the plan for B1.17, the rename, and what was delivered
+  against it (done in the tree; the devices not yet migrated).
+- [`RENAME.md`](../RENAME.md): every old name and its new one.
+- [`packaging/README.md`](../packaging/README.md): the two packages, the install that is the migration,
+  rollback and cleanup, the Spotify credentials file.
+- [`packaging/THIRD-PARTY-NOTICES.md`](../packaging/THIRD-PARTY-NOTICES.md): the third-party code linked
+  into each device binary, from the link maps (facts, no judgement).
 - [`docs/history/STATUS-2026-11-18.md`](history/STATUS-2026-11-18.md): the frozen per-round record with every
   earlier hash. Tasks 36 … 23 come first, newest on top; the older tasks follow.
 - Component docs: [`spotify/BUILD.md`](../spotify/BUILD.md) (the toolchain),
@@ -35,20 +49,26 @@ repo and is the one record of the project's state: **update it in the same commi
 
 ## 0. Resume checklist (one session, on the owner's Windows PC)
 
-1. **The repo:** the Windows clone is `C:\code\fidelio\github\fidelio`; its `origin` is GitHub
-   (`azarzycki/fidelio`). Run `git fetch` first and compare with `origin/main` (§2.1).
+1. **The repo:** the Windows clone is `C:\code\fidelio\github\fidelio` (the folder keeps its old name on
+   purpose, §6.1); its `origin` is GitHub (`azarzycki/fidelio`; the repository's rename is a question for
+   the owner, §4). Run `git fetch` first and compare with `origin/main` (§2.1).
 2. **The build environment** is a WSL2 distro on the same PC (§6.1): toolchain, a second clone and
-   `BUILD_ROOT` at the reference paths. Apple's SDK is no longer needed to build (§6.3).
+   `BUILD_ROOT` at the reference paths. Since B1.17 the reference clone is `/home/user/dock-receiver`
+   (the old `/home/user/fidelio` is kept but no longer the reference). Apple's SDK is no longer needed
+   to build (§6.3).
    - Bring the WSL clone up to date: fetch and fast-forward on the Windows side first, then `git pull` in
      WSL.
    - Builds and test runs go in subagents, one at a time (§6.1).
    - Since 2026-11-22 all work goes to background subagents, device work and log analysis included; the
      session plans, briefs, reviews and talks with the owner, and ends its turns at once (§5.2, §6.1).
 3. **Prove the baseline:**
-   - `tools/build-arm.sh` → `result: OK` with the hashes in §2.3.
-   - `tools/run-host-tests.sh` → `TOTAL host: 447 ok, 0 FAIL`, 25 suites, about 10 minutes. Run it alone
-     (§6.4).
-4. Then work through §3 in order.
+   - `tools/build-arm.sh` → `result: OK` with the hashes in §2.3 (first). The host suite needs its output
+     (`pkg_debs` packages `$BUILD_ROOT/arm-out`).
+   - `tools/build-debs.sh` → the two packages and their `SHA256SUMS` in `$BUILD_ROOT/debs` (§2.3, §6.7).
+   - `tools/run-host-tests.sh` → `TOTAL host: 849 ok, 0 FAIL`, 30 suites, about 11 minutes. Run it alone,
+     with nothing else heavy on the PC (§6.4).
+4. Then work through §3 in order. First: B1.17 is built and **not yet on a device**; the devices still
+   run the old names (§2.4, §3.0).
 
 ---
 
@@ -59,30 +79,47 @@ A headless audio receiver for two jailbroken devices docked in a **Philips Fidel
 
 | Device | Model | OS | CPU | Notes |
 |---|---|---|---|---|
-| the **phone** | iPhone 2G (iPhone1,1) | iPhone OS 3.1.3 | ARMv6 (ARM1176) | MobileSubstrate present (stub + libsubstrate); **no cycript**; has syslog |
-| the **iPad** | iPad1,1 | iOS 5.1.1 | ARMv7 (A4); runs our armv6 binaries | **no MobileSubstrate** (deliberately; the install was stopped); **has cycript**; **no syslog** (use file traces); ~13 MB free RAM; lacks head/tail/tr/cut/sort/awk/nohup |
+| the **phone** | iPhone 2G (iPhone1,1) | iPhone OS 3.1.3 | ARMv6 (ARM1176) | MobileSubstrate present (stub + libsubstrate; not registered with dpkg); **no cycript**; has syslog; no `ps` |
+| the **iPad** | iPad1,1 | iOS 5.1.1 | ARMv7 (A4); runs our armv6 binaries | **no MobileSubstrate** (deliberately; the install was stopped); **has cycript**; **no syslog** (use file traces); ~13 MB free RAM; lacks head/tail/tr/cut/sort/uniq/awk/nohup/expr/stat/id/wc/basename/env/tee/du |
+
+Both have dpkg 1.18.10 (`iphoneos-arm`), `/bin/sh` = bash 4.0.17, gzip/bzip2/lzma but no xz, and no
+awk, plutil or defaults (the survey of 2026-11-22, §2.5).
 
 **Components** (one monorepo, everything built ARMv6 for iPhone OS 3.1; since 2026-11-22 against the
-project's own sysroot, before that against Apple's iPhoneOS 3.1.2 SDK, with identical binaries; §6.3):
-- **`fidelio-audiod`** (`audiod/`): the arbiter daemon.
-  - It owns the AudioQueue output. Sources stream PCM to it over the Unix socket `/var/mobile/fidelio/audiod.sock`.
+project's own sysroot, before that against Apple's iPhoneOS 3.1.2 SDK, with identical binaries; §6.3).
+Names as in the tree since B1.17; the old name of each is in brackets (what the devices run today, §2.4):
+- **`dock-audiod`** (`audiod/`; was `fidelio-audiod`): the arbiter daemon.
+  - It owns the AudioQueue output. Sources stream PCM to it over the Unix socket
+    `/var/mobile/dockreceiver/audiod.sock` (was `/var/mobile/fidelio/audiod.sock`). The data directory is
+    one compile-time default, `DOCKRECEIVER_DIR` in `common/DataDir.h`.
   - It picks the active source, applies volume, wakes and unlocks the display on play, enables the lock
     plugin, and routes transport controls.
   - It is signed with the 4 SpringBoard entitlements.
 - **`cspot-ios3`** (`spotify/cli-src`, on a patched upstream cspot): the Spotify Connect receiver.
-- **`fidelio-raop`** (`airplay/`): the AirPlay v1 (RAOP) receiver, with DACP for transport.
-- **`NowPlaying.app`** (`nowplaying/src`): the dock display.
+- **`dock-raop`** (`airplay/`; was `fidelio-raop`): the AirPlay v1 (RAOP) receiver, with DACP for
+  transport.
+- **`NowPlaying.app`** (`nowplaying/src`): the dock display, version 1.5.0 since B1.17.
   - Tabs: Now Playing, Technical, and Settings (built from the daemons' manifests).
   - One universal binary (B1.18).
-  - Bundle id `com.fidelio.nowplaying`; URL scheme `nowplaying:`.
-- **`fidelio-lockctl`**: a CLI to enable/disable the lock plugin; entitled like audiod.
-- **Lock-screen plugin** (`nowplaying/lockplugin`): `Fidelio.lockbundle` on the iPad, `Fidelio.bundle` on
-  the phone; same binary. It shows the track on the lock screen and keeps it lit.
+  - Bundle id `com.dockreceiver.nowplaying` (was `com.fidelio.nowplaying`); URL scheme `nowplaying:`
+    (unchanged).
+  - 1.5.0 shows "Daemons not running" when the data directory is missing or nothing in it is fresh.
+- **`dock-lockctl`** (was `fidelio-lockctl`): a CLI to enable/disable the lock plugin; entitled like
+  audiod.
+- **Lock-screen plugin** (`nowplaying/lockplugin`): `NowPlaying.lockbundle` on the iPad,
+  `NowPlaying.bundle` on the phone (were `Fidelio.lockbundle` and `Fidelio.bundle`); same binary, bundle
+  id `com.dockreceiver.lockplugin`. It shows the track on the lock screen and keeps it lit.
 - **`DockRemote.dylib`** (`tweak/DockRemote`, phone only): a MobileSubstrate tweak in iapd that turns the
   dock's IR remote play/pause/next/prev into audiod controls.
 - **`voltest`** (`audiod/probe`): a device probe of the system-volume categories (diagnosis tool).
-- The daemons run on the devices under the **owner's own launchd jobs** (`com.fidelio.audiod`, `.cspot`,
-  `.raop`, `.keepalive`). We never deploy them (B2 is on hold, §5).
+- **Today** the daemons run on the devices under the **owner's own hand-made launchd jobs**
+  (`com.fidelio.audiod`, `.cspot`, `.raop`, `.keepalive`), installed by hand (§2.4, §8).
+- **Since B1.17 the suite is packaged** (`packaging/`, `tools/build-debs.sh`): two Debian packages,
+  version 1.5.0-1, `dock-receiver` (every supported OS: the daemons, the jobs
+  `com.dockreceiver.audiod`, `.cspot`, `.raop`, `.keepalive`, the app, the lock plugin, the
+  `dock-receiver-setup` command) and `dock-receiver-dockremote` (the tweak; iPhone OS 3.x only). Their
+  install scripts are the migration from the hand-installed setup (§2.4, §3.0, §8). Not yet installed on
+  a device.
 
 The **dock**:
 - It plays the phone over a USB digital route, which reports **no volume control** (§3.1).
@@ -98,8 +135,15 @@ The **dock**:
   into the repo), `b8d8976` (the volume probe extended), `5a2283c` (toolchain revision 2), `c46beee`
   (toolchain revision 3, §6.1), `d1b20a9` (the licence note for the Spotify receiver, §5.2) and the docs
   commits around them, `e590ef1` (B1.16.12), `619c552` and `8af19cb` (B1.16.13), `5f519ec` and `23f407d`
-  (B1.16.14), `86ce0b7` (B1.16.15) and `59d03a1` (B1.16.16). **`main` is at `59d03a1`** since 2026-11-22
-  (before this docs commit).
+  (B1.16.14), `86ce0b7` (B1.16.15), `59d03a1` (B1.16.16) and its docs commit `51b22fe`.
+  **Before B1.17, `main` was at `51b22fe`** (2026-11-22).
+- **B1.17** (2026-11-22, the rename and the packages) was made on the branch `b117-rename`: `8ab46f4`
+  (part A, the rename in the tree), `7d1ced6`, `307be01`, `1f7d18d` (part B, the third-party notices,
+  the packages, their host suites) and the docs commit that follows them (this record under the new
+  names). **B1.17 = `8ab46f4`..`1f7d18d` plus that docs commit.** Right after the docs commit the
+  session fast-forwards `main` to the branch and pushes it with the marker branch `audiod-b117`
+  (§3.0); `git log` and `git ls-remote --heads origin` show whether that has happened. Nothing of
+  B1.17 has run on a device.
   - No source of a binary that is installed on a device changed since `5dc865f`, until B1.16.12 (audiod,
     e590ef1, below).
   - Since `c46beee` every binary builds to a new sha256, because the toolchain puts a notice into it
@@ -123,6 +167,8 @@ The **dock**:
 - **B1.16.16** (2026-11-22, §2.5, §3.2) is on `main` (59d03a1, marker `audiod-b11616`). Installed on the
   phone that evening (19:28–19:32 phone time); the owner's paused-target test passed the same evening
   (§2.5, §3.2). `fidelio-audiod`, `DockRemote.dylib` and `NowPlaying.app/NowPlaying` changed (§2.3).
+- In the B1.16.x items above and in §2.2 the binaries keep the names they had then (`fidelio-audiod`
+  is today's `dock-audiod`, and so on; `RENAME.md`).
 - The owner said "You do the git updates": each round, fast-forward `main` and add a marker branch (§7).
 - **Marker branches**, one per round:
   - Earliest rounds: `audiod-b11`, `-b12`, `-b13`, `-b15` … `-b19`, `-b110` … `-b116`. There is no `-b14`.
@@ -130,12 +176,13 @@ The **dock**:
   - The second cloud session's: `-b1164` (ab0c7aa), `-b118`, `-b1165`, `-b1166`, `-b1167`, `-b1168`,
     `-b1169`, `-b11610`, `-b11611`.
   - This session's: `-b11612` (e590ef1), `-b11613` (8af19cb), `-b11614` (23f407d), `-b11615` (86ce0b7),
-    `-b11616` (59d03a1).
+    `-b11616` (59d03a1), and `-b117` (B1.17's docs commit, set when `main` is fast-forwarded to it).
+  - The working branch `b117-rename` holds B1.17 until `main` is fast-forwarded to it.
   - voltest (5dc865f, b8d8976) and the tools and toolchain commits (6721da9, 5a2283c, c46beee, and the
     four sysroot commits 55d1a82, 926ea54, 831ac15, b5e3106) have no marker. Check with `git ls-remote --heads origin`.
 - The old cloud session branch `ccr-afef93fb-x0jdve` is history, at `5dc865f`.
-- **Patches:** the series `diffs/fidelio-0001…0049`, one per commit, existed only in the retired private
-  store. The commits are the record.
+- **Patches:** the series `diffs/fidelio-0001…0049` (its old name), one per commit, existed only in the
+  retired private store. The commits are the record.
 - **Old ids:** the first session's local commit ids appear in old binary names and do not exist on
   GitHub. Map (old → GitHub): bf61abb→a5ba534, 49ec495→32af243, e1ae8c3→272c7e5, fedec9b→0b90521,
   3aaba31→9698db9. The full table is in the history file, Task 23.
@@ -165,8 +212,51 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | B1.16.14 | 5f519ec, 23f407d | none | audiod ignores a source's echo of a level it reported to that source (within 3 s and one dock step, 1/255): no set, no dock call; a held dock level is dropped at its flush when the hardware level changed outside meanwhile, even before the poll has seen it; host suite `dockvol` 14 → 25 checks (§2.5, §3.1, §10.4) | installed on the phone 2026-11-22 evening; Spotify played through it without a problem; the AirPlay echo test is still owed (§3.1) |
 | B1.16.16 | 59d03a1 | none | the remote keeps a paused source: audiod's **remote target** (the active source, or the paused last one until it disconnects, sends STOP, another source of ours plays, or audio not ours plays), written to `remote-target`; with nothing active every CONTROL verb goes to it (TOGGLE/PLAY as PLAY); DockRemote takes play/pause, next and previous while a target exists (falls back to `active-source` without the file); NowPlaying 1.4.3 keeps the paused source's track on screen; host suites `remote_core`, `remote_tgt`, `np_source` (§2.5, §5.2, §10.1, §10.5, §10.6) | installed on the phone 2026-11-22 19:28–19:32, DockRemote loaded 19:34:20; **phone PASS** 19:35–19:37: play/pause paused and resumed Spotify (both taken), and the Music app started by hand took the remote back (§2.5, §3.2); next/previous while paused, AirPlay, the iPad not yet tested |
 | B1.16.15 | 86ce0b7 | none | DockRemote: codes 4 (the left key, measured) and 3 (the right key, assumed by symmetry when built; measured since, §2.5) are previous and next as well: taken like 21 and 20 under swallow, logged as `previous` and `next` (the names `rewind` and `seek-forward` are gone); host suite `remote_keys` 52 → 65 checks (§2.5, §10.5) | installed on the phone 2026-11-22, loaded 18:35:49; first swallow test 18:42: previous and next taken and sent to Spotify (§2.5); what was heard not yet reported; play/pause, AirPlay, no source active not yet tested (§3.2) |
+| B1.17 | 8ab46f4, 7d1ced6, 307be01, 1f7d18d, and the docs commit after them | none | the rename `fidelio` → `dock-receiver` in the tree (`RENAME.md`): `dock-audiod`, `dock-raop`, `dock-lockctl`, `NowPlaying.bundle`/`.lockbundle`, `com.dockreceiver.*`, the data directory `/var/mobile/dockreceiver` as one compile-time default (`common/DataDir.h`), NowPlaying 1.5.0 with a "Daemons not running" state; the third-party notices (`packaging/THIRD-PARTY-NOTICES.md`); two reproducible Debian packages 1.5.0-1 whose install scripts are the migration (`packaging/`, `tools/build-debs.sh`); host suites `np_source` 15 → 23, new `pkg_setup` (243) and `pkg_debs` (77), 849 ok in 30 suites (§2.3, §6.4, §6.7) | **not yet run on a device**; staged on the PC in `C:/code/fidelio/cloud-build/deploy-b117/` (the two `.deb` files and `SHA256SUMS`); the migration is the first open item (§3.0) |
 
-### 2.3 Current builds: `tools/build-arm.sh`, toolchain revision 3 (the binaries of c46beee; audiod, DockRemote and NowPlaying of B1.16.16)
+### 2.3 Builds
+
+#### 2.3.1 Current: B1.17 at `1f7d18d` (`tools/build-arm.sh`, toolchain revision 3, the project's own sysroot)
+
+Not yet run on a device. From `/home/user/build/arm-out/SHA256SUMS` and `report.txt` of the build at
+`1f7d18d` in the reference clone `/home/user/dock-receiver` (`result: OK`, `git status` clean):
+
+| Binary | Size | sha256 |
+|---|---|---|
+| dock-audiod | 483,312 | `05e52c1347d6faa55036125b100162455d51ccea7eb4330e3d0fd7b239575276` |
+| dock-lockctl | 163,024 | `b0d00be2f0cf82feae31ffdab4515e434b1038a463bf1fcfc65af4e3e9fdec29` |
+| dock-raop | 942,208 | `5e38bd1e760984de33c8fbaee1c04522f85be39fff523ec5e9cd06d24bca9d43` |
+| cspot-ios3 | 2,290,256 | `3c3370567df2a9075ae7c3712dbe2df888be77826a5fddd7ad3758f5efbaa074` |
+| NowPlaying.app/NowPlaying (1.5.0) | 127,472 | `ea218110523c6f8a9660e53f10004ac913e7e1b21147d624f6edf04b81c13033` |
+| NowPlaying.lockbundle/NowPlaying = NowPlaying.bundle/NowPlaying | 56,368 | `46d1133759ff3dcbb3cfa6a6062a8995b5424e62074dacb446b9ff7a0af04288` |
+| DockRemote.dylib | 35,344 | `1b7232bd04934aefbdbddafb547b44e924d5f8eacc624713a96e9926dc4de175` |
+| voltest | 51,200 | `c4d1c4246bfed1c829a7b21f1c7df804b60b7c61f0b6110b8eeb3bbe116e111d` (unchanged since b8d8976) |
+
+- Every binary except voltest has a new sha256: the names, ids and paths inside them changed. Sizes
+  against B1.16.16: audiod +976 bytes, raop +96, cspot-ios3 +96, the lock plugin +64; lockctl,
+  NowPlaying and DockRemote kept their sizes. The lock bundles report `FAIL(2 by-design)` as before; no
+  new warning.
+- The ARM build at `8ab46f4` ran twice from nothing with identical hashes (`result: OK`); part B
+  (`7d1ced6` … `1f7d18d`) changed no binary.
+- `cspot-ios3`'s hash depends on the repo path, which is now `/home/user/dock-receiver` (§6.1, §6.3);
+  DockRemote.dylib's depends on `$BUILD_ROOT/arm/dockremote` as before.
+
+**The packages** (`tools/build-debs.sh` at `1f7d18d`, from that build; staged on the PC in
+`C:/code/fidelio/cloud-build/deploy-b117/` with `SHA256SUMS`). They may still change if the review of
+the install scripts brings a fix before a device sees them (§3.0); these are the hashes **at `1f7d18d`**:
+
+| Package | Size | sha256 |
+|---|---|---|
+| `dock-receiver_1.5.0-1_iphoneos-arm.deb` | 1,816,434 | `65c55587805d96834b6ee2cf76365a2d334d71a4d1df3b5c4ddf663358af0689` |
+| `dock-receiver-dockremote_1.5.0-1_iphoneos-arm.deb` | 25,356 | `7df460423d1dadc30d51f6f840b0e624f9e32ca3d0f1d6f9f26fb8528467091e` |
+
+Built twice by the script with the same sha256 (reproducible, §6.7); the binaries inside are those of
+the table above, byte for byte.
+
+#### 2.3.2 The binaries on the devices today (B1.16.16 and revision 3, old names)
+
+The devices still run these (§2.4). This is the record of B1.16.16 and earlier, kept with the old file
+names, because a device report shows them.
 
 The sources of each binary are those of the round named in the last column. Since c46beee only the
 toolchain changed, B1.16.12 changed audiod, B1.16.13 changed DockRemote and NowPlaying, B1.16.14
@@ -184,10 +274,11 @@ since the evening of 2026-11-22; the hashes marked "on the phone" below are what
 | DockRemote.dylib | 35,344 | `6a0acbd0a22dd703ee7251cab6e48fec2bd73908201a8c289acffce6e605b38e` | B1.16.16 (on the phone); before it, B1.16.15 86ce0b7 (on the phone until B1.16.16): 35,104, `66d34a6e5db58e8b7b0392082fa90ff436b68b8c9b023b563ad913d89e075537`; before it, B1.16.13 619c552: 35,104, `6206f01478499936b815ecce6924abcd3375ef3531a84c2c55b3aa8a4c81da5b`; before that, B1.16.8 4ed6a5a: 34,640, `8427742ca0e70a20c03c7d09884c47467169cb44d9c3efa0fedbb4981483621b` |
 | voltest | 51,200 | `c4d1c4246bfed1c829a7b21f1c7df804b60b7c61f0b6110b8eeb3bbe116e111d` | probe, b8d8976 |
 
-- All eight reproduce from nothing, on any day, at the reference paths of §6.1. Two builds from nothing
-  on 2026-11-22 gave the same nine files. cspot-ios3's and DockRemote.dylib's hashes depend on those
-  paths (§6.3).
-- After a build the same list is in `$BUILD_ROOT/arm-out/SHA256SUMS`.
+- All eight reproduce from nothing, on any day, at the reference paths of that time (the clone
+  `/home/user/fidelio` at `59d03a1`, §6.1). Two builds from nothing on 2026-11-22 gave the same nine
+  files. cspot-ios3's and DockRemote.dylib's hashes depend on those paths (§6.3).
+- That build's list is kept in `/home/user/build.b11616-fidelio/arm-out/SHA256SUMS` (the last build
+  under the old names).
 - **B1.16.12's audiod is 16,720 bytes larger.** Its `__text` grew by about 3.7 KB and `__cstring` by
   about 0.8 KB, and `__TEXT` crossed a 16 KB segment boundary (368 KB to 384 KB). It imports no new
   symbol (the indirect symbol tables of the two builds list the same names).
@@ -237,6 +328,14 @@ identical bytes. They are what the cloud session published and what was installe
 | voltest | `8c9f1f0372f05643f34d088fc4d6b16538dbf5eefd2fb8354d16e851754299f1` (the 5dc865f one was 51,056, `bb956992…f956b9`) |
 
 ### 2.4 What runs on each device (the last device reports)
+
+**Both devices still run the hand-installed setup under the OLD names: B1.17 changed nothing on them.**
+What follows is true of the devices today: `fidelio-audiod`, `fidelio-raop`, `fidelio-lockctl` and
+`cspot-ios3` in `/var/mobile/fidelio/b1/`, the data directory `/var/mobile/fidelio`, the owner's jobs
+`com.fidelio.*` in `/Library/LaunchDaemons`, the lock plugin `Fidelio.bundle` (phone) or
+`Fidelio.lockbundle` (iPad), the app id `com.fidelio.nowplaying`. Nothing of B1.17 has run on a device.
+The layout after the migration is at the end of this section.
+
 - **Phone, as of the evening of 2026-11-22 (19:40):** all eight files of §2.3's first table, each sha256
   read back on the device: audiod B1.16.16 `9328a974`, lockctl `704c799f`, raop `baf304f6`, cspot
   `35de013e` (47d4760), voltest `c4d1c424` (b8d8976), NowPlaying 1.4.3 `bc8de26e`, `Fidelio.bundle`
@@ -316,8 +415,48 @@ identical bytes. They are what the cloud session published and what was installe
   - Settings unchanged: `dock_remote=on`, `wake_on_play=on`, `unlock_on_play=off`, `lock_plugin=on`,
     `keep_screen_on=on`; `wake_mode` at its default, `launch`. No `remote-control.stage` file, so
     NowPlaying 1.4.1 runs stage 1.
+- **Read-only survey of both devices** (2026-11-22, for the packages; nothing changed): §2.5, "What the
+  packages rely on".
+
+**After the migration (B1.17 packages; not yet installed on either device).** From
+`packaging/README.md`, which has the full table:
+- Programs, root-owned: `/usr/libexec/dock-receiver/` (`dock-audiod`, `dock-raop`, `cspot-ios3`,
+  `cspot-run`, `keepalive`), `/usr/bin/dock-lockctl`, `/usr/sbin/dock-receiver-setup`.
+- Jobs `com.dockreceiver.audiod`, `.raop`, `.cspot`, `.keepalive`: shipped in
+  `/usr/share/dock-receiver/launchd/` and copied into `/Library/LaunchDaemons` by the postinst at the
+  switch (so a failed install or a reboot mid-install cannot start two audiods). They run as `mobile`,
+  with no options on the command line; their output goes to `/var/mobile/dockreceiver/logs/`.
+- The app `/Applications/NowPlaying.app` (`com.dockreceiver.nowplaying`, 1.5.0); the lock plugin under
+  both names, `/System/Library/SpringBoardPlugins/NowPlaying.bundle` and `NowPlaying.lockbundle`; on the
+  phone, from the second package, `DockRemote.dylib`/`.plist` in
+  `/Library/MobileSubstrate/DynamicLibraries/` as before.
+- The data directory `/var/mobile/dockreceiver` (owner `mobile`), with the same file names as before
+  (§9), plus `spotify-credentials.conf` (mobile, 600), optional `keepalive.conf`, `logs/` and
+  `install.log`.
+- `/var/dockreceiver-migration/` (root, 700): the old job plists, app, lock plugin and tweak, kept for
+  `dock-receiver-setup rollback` until `dock-receiver-setup cleanup --yes`. `/var/mobile/fidelio` is
+  copied from, never changed; it goes only with the cleanup.
+- Licence material in `/usr/share/doc/dock-receiver/` (and `/usr/share/doc/dock-receiver-dockremote/`).
 
 ### 2.5 Device-proven facts (keep; don't re-test)
+All of these were measured before B1.17, under the old names, and keep their recorded wording and the
+log lines as the devices wrote them: `fidelio-audiod` is today's `dock-audiod` (likewise `-raop`,
+`-lockctl`), `/var/mobile/fidelio` is `/var/mobile/dockreceiver`, `com.fidelio.*` is
+`com.dockreceiver.*`, the lock plugin base name `Fidelio` is `NowPlaying`, `FidelioLockPluginController`
+is `NowPlayingLockPluginController` (`RENAME.md` has the full list).
+
+- **What the packages rely on** (read-only survey of both devices, 2026-11-22; nothing changed):
+  - dpkg 1.18.10, architecture `iphoneos-arm`, on both; gzip, bzip2 and lzma, no xz; Cydia's `firmware`
+    pseudo-package registered (3.1.3 on the phone, 5.1.1 on the iPad).
+  - `/bin/sh` is bash 4.0.17 on both; `sed -r` works, `sed -E` does not.
+  - The iPad lacks head, tail, tr, cut, sort, uniq, nohup, expr, stat, id, wc, basename, env, tee, du;
+    the phone lacks ps; both lack awk, plutil, defaults.
+  - The phone's MobileSubstrate is not registered with dpkg (it came with the firmware).
+  - The phone has no `creds.env` (the Spotify credentials are inside its launcher scripts); the iPad has
+    one.
+  - The lock plugin is `Fidelio.bundle` on the phone and `Fidelio.lockbundle` on the iPad, beside
+    Apple's `NowPlayingArtLockScreen.lockbundle`.
+  - Free space on the root partition: 134 MB (phone), 249 MB (iPad).
 - **iPad, unlock on play** (5.1.1, no passcode). With the four keys, `SBSOpenSensitiveURLAndUnlock(nowplaying:, true)`
   → true, and the iPad is unlocked with NowPlaying in front within 2 s (SpringBoard's `isLocked` read 0 at 2, 6
   and 12 s).
@@ -580,6 +719,54 @@ identical bytes. They are what the cloud session published and what was installe
 
 ## 3. Open work, in order
 
+### 3.0 B1.17 on the devices: the migration (first; built, not yet run on a device)
+B1.17 (§2.1, §2.2) is built and checked on the host; nothing of it has run on a device, and both devices
+still run the old setup (§2.4). In order:
+1. **The independent review of the install scripts** (`packaging/dock-receiver/setup.sh`,
+   `packaging/install.sh`, the dock-remote package's scripts) is running. Its must-fix findings, if any,
+   are fixed before a device sees the packages; the package hashes of §2.3.1 may then change (they are
+   recorded as "at `1f7d18d`").
+2. **`main`** is fast-forwarded to `b117-rename` and pushed, with the marker branch `audiod-b117` (§2.1,
+   §7).
+3. **With the owner at the dock**, on each device:
+   1. the dry run: `packaging/install.sh --debs <dir> --check root@<device>` (changes nothing; prints
+      what it found, where the Spotify credentials were found but never their values, and `result:
+      ready` or `NOT ready`);
+   2. the install: `packaging/install.sh --debs <dir> root@<device>` (the phone gets
+      `dock-receiver-dockremote` too);
+   3. only on the owner's word and with nothing playing: the SpringBoard restart,
+      `dock-receiver-setup respring` (the install never does it by itself; §2.5, the reboot after a
+      respring during playback);
+   4. on the phone: the lift off the dock for the tweak (undocked `killall iapd`, then dock again; the
+      packages never restart iapd);
+   5. verify: the install's summary and `/var/mobile/dockreceiver/install.log` (`packaging/README.md`,
+      "What the install does"); the jobs `com.dockreceiver.*` loaded and the old ones not; one
+      `dock-audiod` and no `fidelio-audiod` (`killall -0`); `active-source` written; NowPlaying 1.5.0
+      not showing "Daemons not running"; Spotify (the credentials carried over) and AirPlay play; the
+      lock plugin after the respring; on the phone the load line `DockRemote B1.17: hooked ...` in
+      `remote-events.log` and the remote's keys.
+   - Rollback: `dock-receiver-setup rollback` (removes both packages; the old setup comes back from
+     `/var/dockreceiver-migration`). `dock-receiver-setup cleanup --yes` only when the owner is
+     satisfied: after it no rollback is possible.
+4. **Only a device can confirm** (the host suites run the scripts under GNU bash 4.0.0 with stand-ins):
+   - that the old dpkg reads the hand-assembled archives;
+   - `dpkg -s` from inside a maintainer script;
+   - the output formats of `launchctl list`, `killall -0` and `df` on both OS versions;
+   - `sed -r` with the `I` flag on sed 4.1.5, and `grep -o` on grep 2.5.4;
+   - bash 4.0.17 against the 4.0.0 of the tests;
+   - whether launchd opens the job logs in append mode (the log trimming relies on it);
+   - the UDP keepalive;
+   - whether `uicache` alone picks up the new app id;
+   - whether each OS ignores the other's plugin bundle name (both are installed);
+   - the real form of the credentials in the phone's launchers (the dry run shows where they were found,
+     never the values).
+- **Still owed from before B1.17** (unchanged by it; they can run on the migrated setup, the owner
+  decides the order): the AirPlay tests on the phone (B1.16.14's volume echo fix, §3.1; AirPlay as the
+  paused remote target, next/previous while paused, the no-source case, §3.2); everything on the iPad
+  since the morning of 2026-11-22 (§3.2); the status-bar play icon idea (§3.4); the cause of the phone's
+  reboot after a respring during playback (§2.5, §3.2 item 2); removing the three iapd logging keys on
+  the phone (§2.4).
+
 ### 3.1 B1.16.12: the phone's volume must move the dock (phone PASS for Spotify; AirPlay reaches the dock, its echo fix B1.16.14 installed on the phone and not yet tested with AirPlay; iPad and the relabel open)
 - **Report:** phone docked, `spotify_volume=absolute`. The Spotify slider moves NowPlaying's display and
   audiod logs `hwvolume: 'spotify' -> X (set X by 'spotify' slider Y)`, but the loudness doesn't change.
@@ -783,7 +970,8 @@ extra section and that start-up and lazy binding work as before.
    owner's choice).
    - Done on both on 2026-11-22 with the revision 3 builds (§2.4).
 2. **B1.16.11 check:** with the plugin on and music playing, respring. Within ~6 s the event log should
-   show `lock-plugin re-enabled Fidelio after a SpringBoard restart`. Also flip "Lock-screen plugin" off
+   show `lock-plugin re-enabled Fidelio after a SpringBoard restart` (`... NowPlaying ...` once the
+   device runs B1.17). Also flip "Lock-screen plugin" off
    and on while playing.
    - **Phone, 2026-11-22: not passed, and not safe to repeat as it is.** The respring during playback
      ended in a reboot of the phone about 20 s later (§2.5); the line was never logged. Find the cause
@@ -887,22 +1075,38 @@ owner's word on a playing device.
 - Old device reads, never reported: B1.13 AirPlay volume and `dmcp.device-volume`; B1.12 Spotify pausing
   on an AirPlay takeover; the B1.5 `--no-backpressure` A/B.
 
-### 3.5 B1.17: the rename `fidelio` → `dock-receiver`, with packaging (HOLD until the owner says device testing is done)
-- The plan is in [`docs/RENAME-PLAN.md`](RENAME-PLAN.md): the name map, the compatibility constraints, the
-  migration and the deliverable, and since 2026-11-18 the packaging (§6 there).
-- It is one round, the last in the queue. Re-run it mechanically on the final tree.
-- Still on HOLD until the owner says device testing is done.
+### 3.5 B1.17: the rename `fidelio` → `dock-receiver`, with packaging (done in the tree; the devices in §3.0)
+- Released by the owner on 2026-11-22 (§5.2); it had been on HOLD until the owner said device testing
+  was done. Built the same day: `8ab46f4` (the rename), `7d1ced6`, `307be01`, `1f7d18d` (the notices,
+  the packages, their suites) and the docs commit after them (§2.1).
+- The plan and what was delivered against it, deviations included: [`docs/RENAME-PLAN.md`](RENAME-PLAN.md)
+  §7. Every name: [`RENAME.md`](../RENAME.md).
+- Left after the round: the devices (§3.0); the GitHub repository's rename (§4); the cleanup of the old
+  files on the devices (`dock-receiver-setup cleanup --yes`, after the owner is satisfied; it leaves the
+  `.pre-*` backups, `com.fidelio.syslogd` and iapd's logging keys alone, `packaging/README.md`); the old
+  WSL clone `/home/user/fidelio` and the old build trees (§6.1), kept for now.
 
-### 3.6 B2: lifted for packaging only
+### 3.6 B2: lifted for packaging only (packaging done)
 - The owner decided on 2026-11-18 that packaging (Debian packages with the launchd jobs and the install
-  scripts) is built in the rename round (§3.5). Until that round: no deploy automation, no launchd plists.
+  scripts) is built in the rename round (§3.5). **Done in B1.17** (`307be01`, `1f7d18d`;
+  `packaging/README.md`, §6.7); not yet installed on a device (§3.0).
 - Hardware switch-test automation stays on HOLD until the owner says go.
 
-### 3.7 After the rename: release CI
+### 3.7 After the rename: release CI (next, after the devices)
 - GitHub CI that makes a release on every merge to `main`, with an automatic version bump (the owner,
   2026-11-18). Nothing built.
 - It needs one version number for the whole suite, stamped into the app and the daemons at build time.
+  Since B1.17 there is one: `packaging/VERSION` (`1.5.0-1`, NowPlaying's version and a packaging
+  revision; `tools/build-debs.sh` checks that its first part equals the app's
+  `CFBundleShortVersionString`). The daemons do not carry it yet.
+- **What the package builder gives it:** `tools/build-debs.sh` turns a verified `$BUILD_ROOT/arm-out`
+  into the two `.deb` files and `SHA256SUMS`, reproducibly (fixed mtimes from
+  `PACKAGE_SOURCE_DATE_EPOCH`, a second build compared), with only `tar`, `gzip`, `sha256sum`, `md5sum`,
+  `find`, `sed` and `git`; and the suite `pkg_debs` checks the result. A workflow is then:
+  `tools/build-arm.sh`, `tools/build-debs.sh`, `tools/run-host-tests.sh` (in that order, §6.4), and
+  the release assets from `$BUILD_ROOT/debs`.
 - The owner's direction (2026-11-21): a release includes the packages and the toolchain tarball.
+  Publishing the packages waits for the owner's word; nothing was published in B1.17.
 - **The toolchain tarball is published** since 2026-11-22 (the owner's word, §5.2): the release
   `toolchain-r3` of this repository (§6.1). No package has been published.
 - Apple's SDK is no longer needed (§6.3), so the whole build can run on GitHub's runners (the owner
@@ -915,20 +1119,24 @@ owner's word on a playing device.
 
 ## 4. Questions waiting for the owner
 1. **Bonjour keep-warm** (§3.4): build it or not.
-2. **B1.17:** go, once the owner is satisfied with the device tests.
+2. *(Answered 2026-11-22: B1.17 was released by the owner and built the same day; §5.2. The number is
+   kept so that references to the later questions stay valid.)*
 3. **Licence points found while preparing the release** (2026-11-21 and 11-22; facts gathered, not
-   judged). Two are settled by the owner's decisions of 11-22 (§5.2); the rest are open.
+   judged). Two are settled by the owner's decisions of 11-22 (§5.2); the rest are open. The
+   open licence judgements stay with the owner; they did not block the rename (§5.2).
    - **Settled: the notice for the start-up code.** Apple's open-source licence asks, for object code,
      for "a prominent notice, in the code itself as well as in related documentation" saying where the
      source is. Since toolchain revision 3 the notice is in the code (§6.3);
-     `toolchain/THIRD-PARTY-NOTICES.md` §9 is the documentation notice. The packages need the
-     documentation notice as well. Whether a text section counts as "prominent" has not been judged.
+     `toolchain/THIRD-PARTY-NOTICES.md` §9 is the documentation notice. The packages carry it since
+     B1.17 (`packaging/THIRD-PARTY-NOTICES.md`, "The start-up code notice", in `/usr/share/doc/`).
+     Whether a text section counts as "prominent" has not been judged.
    - **Settled: the terms of `cspot-ios3`.** The tree we build the Spotify library from has no licence
      file, while its original upstream states GPL-3.0-or-later. The top-level `LICENSE` now says that
      this binary as a whole is distributed under GPL-3.0-or-later. What its package must then carry is
      in `docs/RENAME-PLAN.md` §6.
    - Open: `bell`, the library cspot is built on and which is linked into `cspot-ios3`, has no licence
-     file, neither in the tree we build from nor in its upstream repository (checked on 2026-11-22).
+     file, neither in the tree we build from nor in its upstream repository (checked on 2026-11-22; the
+     upstream was not re-checked in B1.17).
    - Open: the GPL lets a program be combined with the system's own libraries. `cspot-ios3` also holds
      the start-up code that we now build ourselves from Apple's sources under Apple's licence. Whether
      that exception covers it has not been assessed.
@@ -939,9 +1147,18 @@ owner's word on a playing device.
      The session added these archives on its own judgement; the owner can remove them. Still not
      assessed: ldid is AGPL with a statically linked Apache-licensed libcrypto (upstream's combination);
      OpenSSL's source is named by address only.
-   - Open: the notices for the third-party code that is linked into the device binaries (the Spotify
-     library and what it bundles, mbedTLS, the C++ runtime) have not been drawn up. The packages need
-     them.
+   - **Drawn up in B1.17: the notices for the third-party code linked into the device binaries**
+     (`packaging/THIRD-PARTY-NOTICES.md`, `7d1ced6`, read from the link maps; shipped in both packages
+     under `/usr/share/doc/`). Facts it records for the owner's judgement, not judgements:
+     - cspot and bell have no licence file in the tree that is built (bell's upstream not re-checked);
+     - civetweb and picohttpparser have their licence text in file headers only (MIT; picohttpparser
+       "MIT or the Perl license"), collected into notice files;
+     - the ALAC decoder in `dock-raop`: its version is not recorded, and its headers say Apache-2.0 while
+       the licence file beside them holds the APSL 2.0 text;
+     - the AirPort Express key compiled into `dock-raop` has no licence statement;
+     - the origin of bell's `utilities/aes.c` (linked into `cspot-ios3`) is not established; it has no
+       copyright or licence line;
+     - compiler-rt is not linked (only the project's own `ios3compat.o` from `libios3compat.a`).
 4. **Release CI** (§3.7). Settled on 2026-11-22: the build needs no SDK any more (§6.3), so nothing of
    Apple's has to reach GitHub, and no runner on the owner's PC is needed. Open:
    - Settled on 2026-11-22: the runner downloads the toolchain tarball from the release `toolchain-r3`
@@ -984,6 +1201,24 @@ owner's word on a playing device.
      a resume (no wake) (§3.3).
 7. **DockRemote swallow as the default** under `dock_remote=on`, or a flag as now (§3.3): once the rest of
    the swallow test is done.
+8. **Rename the GitHub repository** `azarzycki/fidelio` → `dock-receiver`, as `docs/RENAME-PLAN.md` §1
+   says (asked on 2026-11-22, not yet answered). Until then the tree keeps the old repository URLs
+   (the release `toolchain-r3` included); after it, they are updated in one commit.
+9. **The AirPlay model string `am=Fidelio1,1`**: kept in B1.17 as part of the advertisement, with the
+   advertised device names. Keep it, or change it?
+10. **The Spotify credentials arrangement** (B1.17, a deviation from the plan's "root-only file"):
+    `/var/mobile/dockreceiver/spotify-credentials.conf`, owner `mobile`, mode 600, read by the wrapper
+    `cspot-run`. The job runs as `mobile`, and `cspot-ios3` takes the client id and secret only as
+    command-line options, so they are visible in the device's process list while it runs, as before.
+    Accept this, or add a cspot option that reads them from a file (a cspot change)?
+11. **`dpkg --purge dock-receiver` deletes the data directory** `/var/mobile/dockreceiver` (settings,
+    credentials file, logs). Keep that, or leave the directory on purge?
+12. **The old device names and the bitrate carried into `settings.conf`**: the migration copies
+    `cspot.name`, `raop.name` and `cspot.bitrate` from the old launchers' command lines (the new jobs
+    have no options, so a value there would otherwise be lost). Keep that, or start from the defaults?
+
+Publishing the packages as a release also waits for the owner's word (§3.7); nothing was published in
+B1.17.
 
 The volume default is no longer a question: the owner decided on 2026-11-18 (§3.1, §5.2).
 
@@ -994,7 +1229,8 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
 ### 5.1 Rules (verbatim intent; never break)
 1. **Never** put the Spotify client-id/secret or ANY credential in any file. "Scripts are ok, no secrets."
 2. **Never write the devices' root password** in any file, commit, log excerpt or message.
-3. **B2 on HOLD** until the owner says go.
+3. **B2 on HOLD** until the owner says go. Lifted for packaging only (2026-11-18; built in B1.17, §3.6);
+   installing on a device still needs the owner's go-ahead (§8).
 4. **VERIFY** every finding (code review, device report, a peer's diagnosis) **against the code** before
    changing anything. Peers have been wrong:
    - the "false negative" was right, but "unify on the hook" was wrong;
@@ -1009,7 +1245,8 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
    rule 9 is the exception the harness prescribes.
 9. **Commit trailers:** use the lines the current session's system reminder gives. Commits carry the
    owner's git identity from the PC.
-10. **`main` moves by fast-forward only;** add a marker branch `audiod-b116NN` per device round.
+10. **`main` moves by fast-forward only;** add a marker branch `audiod-b116NN` per device round
+    (`audiod-b117` for B1.17).
 
 ### 5.2 Decisions log
 - **11-15**, the queue: B1.16.4 first, then B1.18, then **B1.17 last**. "Wait for device results before B1.17."
@@ -1038,7 +1275,8 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
     version, not the device type: a main package for every supported OS, and the dock-remote tweak for
     iPhone OS 3.x.
   - Spotify credentials: a root-only file on the device, never in a package or the repo, with a README
-    that says how to fill it.
+    that says how to fill it. (B1.17 made it a `mobile`-owned 0600 file instead, and says why; the
+    choice is back with the owner, §4 question 10.)
   - After the rename: release CI on every merge to `main`, with an automatic version bump (§3.7).
   - Apple: avoid any exposure. Never put the SDK, or a link to a copy of it, in the repo, a release, a CI
     artifact, a cache or a log. `spotify/BUILD.md` carried a download link until 2026-11-18; it is removed
@@ -1089,13 +1327,29 @@ The volume default is no longer a question: the owner decided on 2026-11-18 (§3
     until then. The lock-screen plugin is not part of it (no keep-lit while paused). B1.16.16 (§10.5,
     §10.6). B1.16.16 also clears the target when the source sends STOP (raop: the AirPlay sender left;
     cspot: the playlist ended), since nothing is left to resume.
+  - **B1.17 released** (2026-11-22; it had been on HOLD "until the owner says device testing is
+    done", §4 question 2). The owner: "Are we settled on the clean room work? Can we kick off rename ?"
+    The session answered that the SDK-free work (§6.3) is technically settled, that the open licence
+    judgements (§4 question 3, question 5) stay with the owner and do not block the rename, and started
+    the round. Built that day (§2.1, §3.5); not yet on a device.
+  - **Decided by the session in B1.17, and told to the owner:** the reference clone in WSL is
+    `/home/user/dock-receiver` (the old `/home/user/fidelio` and the old build trees are kept for now,
+    §6.1); the Windows clone's folder `C:\code\fidelio\github\fidelio` is deliberately not renamed (the
+    session's own notes are keyed to it). Also the session's, within the plan, recorded in
+    `docs/RENAME-PLAN.md` §7: the credentials file owned by `mobile`, the job plists copied by the
+    postinst, the old device names and bitrate carried into `settings.conf`, `--purge` deleting the
+    data directory, `am=Fidelio1,1` kept (§4 questions 9–12).
 - **Naming** (from before): the app is "NowPlaying"; new components get neutral names; the advertised device
-  names stay. The full rename is B1.17 only.
+  names stay. The full rename is B1.17 only (done in the tree, 2026-11-22).
 
 ### 5.3 Naming rule
 Describe the software by function. Use "Fidelio" only as Philips' dock name, with the
-not-affiliated-with-Philips line in the README. Do not rename existing binaries, directories, classes or
-`/var/mobile/fidelio` before B1.17.
+not-affiliated-with-Philips line in the README, and in the device names the receivers advertise ("iPhone
+Fidelio", "iPad Fidelio", "Fidelio (AirPlay)") and the AirPlay model `am=Fidelio1,1` (§4 question 9).
+**The rename is done in the tree** (B1.17, `8ab46f4`; `RENAME.md`): new code uses `dock-*`,
+`com.dockreceiver.*`, `dockreceiver`, `NP*` and `DOCKRECEIVER_DIR`, never "fidelio". The devices keep
+the old names until the packages migrate them (§3.0). Git history and
+`docs/history/STATUS-2026-11-18.md` keep the old names; they are not rewritten.
 
 ---
 
@@ -1110,12 +1364,24 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   |---|---|
   | toolchain | `/home/user/opt/armv6-ios3-toolchain` |
   | Apple's SDK (optional since `b5e3106`, §6.3) | `/home/user/sdk/iPhoneOS3.1.2.sdk` |
-  | repo | `/home/user/fidelio` |
+  | repo | `/home/user/dock-receiver` (since B1.17; before it `/home/user/fidelio`) |
   | `BUILD_ROOT` (left unset) | `/home/user/build` |
 
-- **The WSL clone** `/home/user/fidelio` is a git clone of the Windows clone, so its `origin` is
+- **The WSL clone** `/home/user/dock-receiver` is a git clone of the Windows clone, so its `origin` is
   `/mnt/c/code/fidelio/github/fidelio`. Fetch and fast-forward on the Windows side first, then `git pull`
   in WSL.
+  - **The reference path changed in B1.17** (the session's decision, the owner told): `cspot-ios3`'s
+    hash depends on it, so the hashes of §2.3.1 hold at `/home/user/dock-receiver` only. The old clone
+    `/home/user/fidelio` is kept for now (it reproduces the hashes of §2.3.2); it is no longer the
+    reference and is not updated.
+  - The Windows clone's folder `C:\code\fidelio\github\fidelio` is deliberately **not** renamed: the
+    session's own notes are keyed to it. Likewise `C:\code\fidelio\cloud-build\` and the other folders
+    under `C:\code\fidelio\`.
+  - Build trees kept beside `/home/user/build`: `/home/user/build.b11616-fidelio` (the last build under
+    the old names, B1.16.16 at `59d03a1`), `/home/user/build.b117-run1` (the first of the two
+    from-nothing builds of `8ab46f4`) and `/home/user/build.b117-dirty` (a build of the uncommitted
+    rename, before `8ab46f4`). The last two have the same `SHA256SUMS` as today's `/home/user/build`
+    (§2.3.1). Remove them when the owner no longer needs them.
 - **Build only inside the distro's own filesystem,** never under `/mnt/c`.
 - **Builds and test runs go in subagents, one at a time** (the owner's wish; the scripts share one
   `BUILD_ROOT`). Since 2026-11-22 the iterative build, compare and fix work goes to subagents on
@@ -1128,6 +1394,8 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
   - `g++` gives the host suite its `cc` and `c++`.
   - `unifdef`, `flex` and `bison` are needed when `tools/build-arm.sh` makes the sysroot itself (§6.3).
     Ubuntu 24.04's flex 2.6.4 and bison 3.8.2 were tested.
+  - Since B1.17 the host suite also uses `curl`, `make`, `ar` (binutils) and `dpkg-deb` (for GNU bash
+    4.0 and the package suites, §6.4); the runner checks for them.
   - `tools/_common.sh` prints the list if something is missing.
   - The host clang is Ubuntu 24.04's `clang-18` (18.1.3).
 - **The toolchain's own files are in the repo** (`toolchain/`, since `5a2283c`); its tarball and the SDK
@@ -1221,7 +1489,17 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
     the two runs and to the build against the SDK. Warm: 14 s, with no network.
   - `tools/run-host-tests.sh`: `TOTAL host: 340 ok, 0 FAIL`, 22 of 22 suites on the first run, 576 s.
   - Trees kept in WSL: `/home/user/build.r3-sdk` is the last tree built against Apple's SDK,
-    `/home/user/build.own-a` the first of the two built without it, and `/home/user/build` the second.
+    `/home/user/build.own-a` the first of the two built without it, and `/home/user/build` was the second
+    (it has since been rebuilt by later rounds).
+- **Baseline of B1.17, 2026-11-22** (at `/home/user/dock-receiver`):
+  - At `8ab46f4`: `tools/build-arm.sh` twice from nothing, `result: OK`, the same hashes both times.
+    Host suite: 529 ok, 0 FAIL, 28 suites (521 + the 8 new `np_source` checks). The first host run was
+    stopped from outside at 16 of 28 suites, all passed up to then, because the PC ran low on memory
+    (not a test failure; §11); the rerun, alone, was clean.
+  - At `1f7d18d`: `tools/build-arm.sh` `result: OK`, every binary's hash unchanged from `8ab46f4`
+    (§2.3.1); `tools/build-debs.sh` built both packages twice with the same sha256;
+    `tools/run-host-tests.sh`: `TOTAL host: 849 ok, 0 FAIL`, 30 of 30 suites on the first run, 659 s
+    (3 s build + 656 s tests).
 - **BUILD.md** (`spotify/BUILD.md`) documents the toolchain in full: the tarball contents, the wrapper
   flags, the float ABI, `libios3compat`, the patches, and what was verified.
 - **cspot's nanopb generator** needs a python3 whose protobuf still has `reflection.MakeClass`.
@@ -1259,7 +1537,8 @@ not-affiliated-with-Philips line in the README. Do not rename existing binaries,
     a reseat.
 - **Signing:** strip, then `armv6-ios3-ldid -S<plist>` (no space after `-S`; `-e` dumps the entitlements),
   then `armv6-ios3-check`.
-  - audiod and lockctl are signed in CMake POST_BUILD with `common/fidelio-springboard.entitlements.plist`
+  - audiod and lockctl are signed in CMake POST_BUILD with `common/dock-springboard.entitlements.plist` (was
+    `common/fidelio-springboard.entitlements.plist`)
     (4 keys: launchapplications, activateawayviewplugins, opensensitiveurl, openurlswhenlocked).
   - `LINK_DEPENDS` relinks them when the plist changes.
 - **Lock plugin:** linked `-bundle` with `-Wl,-U` for the two `SBAwayViewPluginController` class symbols.
@@ -1357,9 +1636,12 @@ About the script itself:
 - **Each round, rebuild once from the clean commit** for the report (`repo: … @ <sha> (git status clean)`).
 
 ### 6.4 tools/run-host-tests.sh (the host suites)
-It builds the host targets (`$BUILD_ROOT/host/...`) and runs **28 suites one after another**. They share
+It builds the host targets (`$BUILD_ROOT/host/...`) and runs **30 suites one after another**. They share
 `/tmp/audiod-*` dirs and ports: never run two at once, and **don't run CPU-heavy work alongside**, since
 the suites are timing-sensitive.
+
+**Run `tools/build-arm.sh` first** (since B1.17): `pkg_debs` builds the packages from
+`$BUILD_ROOT/arm-out` and fails without it.
 
 | suite | checks | suite | checks | suite | checks |
 |---|---|---|---|---|---|
@@ -1372,9 +1654,10 @@ the suites are timing-sensitive.
 | control | 8 | arbiter | 13 | lock_layout | 10 |
 | cover_url | 6 | dockvol | 25 | keylog | 17 |
 | remote_keys | 65 | remote_core | 22 | remote_tgt | 37 |
-| np_source | 15 | | | | |
+| np_source | 23 | pkg_setup | 243 | pkg_debs | 77 |
 
-- **Baseline: 521 ok, 0 FAIL** (447 before B1.16.16 added `remote_core`, `remote_tgt` and `np_source`; 434 before B1.16.15 extended `remote_keys`; 423 before B1.16.14 extended `dockvol`; 354 before B1.16.13 added `keylog` and `remote_keys`; 340 before B1.16.12
+- **Baseline: 849 ok, 0 FAIL, 30 suites** (B1.17; 529 at `8ab46f4`, when `np_source` grew 15 → 23;
+  521 before B1.17 added `pkg_setup` and `pkg_debs` and extended `np_source`; 447 before B1.16.16 added `remote_core`, `remote_tgt` and `np_source`; 434 before B1.16.15 extended `remote_keys`; 423 before B1.16.14 extended `dockvol`; 354 before B1.16.13 added `keylog` and `remote_keys`; 340 before B1.16.12
   added `dockvol`).
 - **It needs `cc` and `c++`** (apt `g++`): the plain tests call them by name, and they are CMake's default
   compilers. Since `6721da9` the script checks for both.
@@ -1390,8 +1673,20 @@ the suites are timing-sensitive.
   - `HOST_CC` / `HOST_CXX` apply to a fresh configure only.
 - **Logs:** `$BUILD_ROOT/host-test-logs/<timestamp>/` (`latest` links to it), with `summary.txt`. A failed
   run's `/tmp/audiod-*` dirs are copied there.
-- About **9.5 minutes** (575 s on the owner's PC): run it in the background, alone, and wait for it to
-  finish.
+- About **11 minutes** (659 s on the owner's PC at B1.17; 575 s before it): run it in the background,
+  alone, and wait for it to finish. Do not run it while other heavy work runs on the PC: on 2026-11-22
+  a run was stopped from outside at 16 of 28 suites for low memory on the PC (§11).
+- **The package suites (B1.17):**
+  - `pkg_setup` (`packaging/hosttest/test_setup.sh`, 243 checks) runs the install scripts in fake
+    device roots under **GNU bash 4.0**, the devices' `/bin/sh` (they have 4.0.17). The runner builds it
+    once from the release tarball, pinned by sha256 (`BASH40_URL`, `BASH40_SHA256` in
+    `tools/_common.sh`; `ensure_bash40`, into `$BUILD_ROOT/host/bash-4.0`), with a `PATH` of only the
+    tools both devices have plus stand-ins for `launchctl`, `killall`, `uicache`, `su`, `dpkg` and `df`.
+  - `pkg_debs` (`packaging/hosttest/test_debs.sh`, 77 checks) builds the packages from
+    `$BUILD_ROOT/arm-out` and checks format, owners, modes, paths, the binaries byte for byte, control
+    fields, no secret or private address, reproducibility, and `install.sh` against stand-ins for ssh
+    and scp.
+  - The runner needs `curl make tar gzip dpkg-deb ar md5sum` for them.
 - **Adding a suite:** add a row to `SUITE_TABLE` (name, baseline count, command), update the baseline
   comment, and if it is a plain C test, add its build line to `build_host` and to the existence check.
 
@@ -1427,11 +1722,12 @@ the suites are timing-sensitive.
 
 ### 6.6 Per-component notes
 - **audiod:** CMake (`audiod/CMakeLists.txt`), host and ARM, via the scripts.
-  - `fidelio-audiod --help` lists every flag.
+  - `dock-audiod --help` lists every flag.
   - The registry (§10.2) is bound to the real options: `read()`/`write()`, `selfCheck()` logs drift.
 - **NowPlaying:** `nowplaying/src/build.sh` (the file list is inside). `gen_images.py` makes the icons,
   tab glyphs, placeholders and launch images, and the build fails if one is missing.
-  - The version is in `FidelioStatus.h` and `Info.plist` (1.4.3).
+  - The version is in `NPStatus.h` (`NP_APP_VERSION`) and `Info.plist` (1.5.0 since B1.17), and
+    `packaging/VERSION` must start with it (§6.7).
   - After installing on a device, run `su mobile -c uicache` (device family, icons, URL scheme). On
     2026-11-22 the update from 1.4.1 to 1.4.2 on the phone was a swap of the bundle directory without
     `uicache` and without a SpringBoard restart, and the new app ran at once (§2.4).
@@ -1441,6 +1737,25 @@ the suites are timing-sensitive.
   are in `DockRemoteKeys.cpp` (no Objective-C, host-tested).
 - **voltest:** `audiod/probe/build.sh`.
 
+### 6.7 tools/build-debs.sh (the packages, since B1.17)
+- `tools/build-debs.sh [--arm-out DIR] [--out DIR] [--no-repro-check]`, after `tools/build-arm.sh`:
+  writes `dock-receiver_<version>_iphoneos-arm.deb`, `dock-receiver-dockremote_<version>_iphoneos-arm.deb`
+  and `SHA256SUMS` to `$BUILD_ROOT/debs`. The layout and the install scripts are in
+  `packaging/README.md`; the maintainer scripts and `dock-receiver-setup` are one script,
+  `packaging/dock-receiver/setup.sh`.
+- **Version:** `packaging/VERSION` (`1.5.0-1`): NowPlaying's version and a packaging revision. The script
+  refuses a first part that is not the app's `CFBundleShortVersionString`.
+- **Format:** what the devices' dpkg 1.18 reads: an ar archive of `debian-binary` (`2.0`),
+  `control.tar.gz` and `data.tar.gz`, gzip only (no xz on the devices). Assembled by the script, not by
+  `dpkg-deb`, so every byte is fixed: mtimes `PACKAGE_SOURCE_DATE_EPOCH` (`tools/_common.sh`,
+  1795348800 = 2026-11-22 12:00 UTC), sorted members, owners 0:0, explicit modes, `gzip -9n`. It builds a
+  second time and compares the sha256.
+- **Input checks:** it packages only an `arm-out` that passed `build-arm.sh`'s verification
+  (`verify/.bad` = 0), and each binary must match its line in `arm-out/SHA256SUMS`.
+- **Exit codes:** 0 built and reproducible; 1 the second build differs; 3 setup error.
+- **Installing from the PC:** `packaging/install.sh [--check] [--debs DIR] root@<device>` over OpenSSH
+  (it adds the legacy `ssh-rsa` options the devices' OpenSSH 6.7 needs, and `scp -O`); §8.
+
 ---
 
 ## 7. Round checklist
@@ -1449,25 +1764,30 @@ the suites are timing-sensitive.
    fails against the old binary when practical.
 2. **ARM build** (`tools/build-arm.sh`): check warnings (`grep -i warning` in `$BUILD_ROOT/logs/arm-*.log`;
    only the toolchain's `-mllvm -fast-isel=0` notes are expected).
-3. **Full host suite** in the background (§6.4).
-4. **Commit.** Message: a subject `B1.16.N: …`, a body saying what was verified and why, then the trailers
+3. **The packages** (`tools/build-debs.sh`, §6.7): both `.deb` files and `SHA256SUMS` in
+   `$BUILD_ROOT/debs`, reproducible. If the app's version changed, change `packaging/VERSION` with it.
+   Stage them for the devices in `C:/code/fidelio/cloud-build/deploy-<round>/`.
+4. **Full host suite** in the background, after the ARM build (§6.4; `pkg_debs` needs `arm-out`).
+5. **Commit.** Message: a subject `B1.N…: …`, a body saying what was verified and why, then the trailers
    (§5.1.9).
    - **Never claim test results that haven't finished.** If the commit comes before the suite ends, word
      the message accordingly.
-5. **Rebuild ARM from the clean commit** (pull it into the WSL clone first, §6.1), then fast-forward `main`
+6. **Rebuild ARM from the clean commit** (pull it into the WSL clone first, §6.1), then fast-forward `main`
    and add the marker in one push from the Windows clone, whose `origin` is GitHub:
    ```sh
    git fetch -q origin main && git merge-base --is-ancestor origin/main <sha> && git push origin <sha>:refs/heads/main <sha>:refs/heads/audiod-b116NN
    ```
-   A tools-only round gets no marker (voltest and `6721da9` have none).
-6. **`docs/HANDOFF.md`:** make sure it is current. §5.1.6 puts the update in the round's own commit: the
-   state (§2), the rounds table, the hashes, the open work (§3).
-7. **Install** from `/home/user/build/arm-out`, on the owner's go-ahead (§8).
-   - The app: `su mobile -c uicache` afterwards.
-   - The lock bundles need a respring.
-   - DockRemote is installed undocked, then `killall iapd` (on the phone, `redock.sh` does the wait and
-     the restart, §8).
-8. **Tell the owner the outcome in plain words.**
+   (`audiod-b117` for B1.17.) A tools-only round gets no marker (voltest and `6721da9` have none).
+7. **`docs/HANDOFF.md`:** make sure it is current. §5.1.6 puts the update in the round's own commit: the
+   state (§2), the rounds table, the hashes (binaries and packages), the open work (§3).
+8. **Install**, on the owner's go-ahead (§8). From B1.17 on, by package: `packaging/install.sh --check`,
+   then `packaging/install.sh`, from the staged `.deb` files (§8). The respring and, on the phone, the
+   undocked iapd restart for the tweak stay manual steps.
+   - Until a device is migrated, the old hand install of §8 applies to it (from `/home/user/build/arm-out`;
+     the app: `su mobile -c uicache` afterwards; the lock bundles need a respring; DockRemote is installed
+     undocked, then `killall iapd`, on the phone with `redock.sh`). Do not mix: a hand-copied binary
+     under a new name does not replace the old one the old jobs start.
+9. **Tell the owner the outcome in plain words.**
 
 ---
 
@@ -1476,12 +1796,29 @@ the suites are timing-sensitive.
 - It runs device tests **only on the owner's go-ahead**. Hands-on steps wait until the owner is at the
   dock.
 - **Logs only, trimmed. Never credentials** (§5.1.1, §5.1.2).
+- **Installs are by package since B1.17** (`packaging/README.md`; not yet done on either device, §3.0):
+  - From the PC: `packaging/install.sh --debs <dir> --check root@<device>` (the dry run; changes
+    nothing), then `packaging/install.sh --debs <dir> root@<device>` (copies, dry run, asks, `dpkg -i`;
+    on iPhone OS 3 also `dock-receiver-dockremote`). It uses OpenSSH with the legacy options the
+    devices need; ssh asks for the password, which is never written anywhere (§5.1.2).
+  - On the device, `dock-receiver-setup` (`/usr/sbin`): `check` (dry run), `migrate` (the postinst
+    again), `rollback` (remove both packages; the old setup comes back), `cleanup [--yes]` (removes
+    `/var/mobile/fidelio` and `/var/dockreceiver-migration`; after it no rollback), `respring` (refuses
+    while a source plays; `--even-if-playing` overrides).
+  - The install never restarts SpringBoard or iapd by itself. The respring waits for the owner's word
+    and nothing playing (§2.5); the tweak loads at the next undocked `killall iapd` (or a reboot).
+  - The install puts every file in place under a new name and renames it, and a failure before its point
+    of no return undoes the run and leaves the old setup running.
+- **The hand install below is the old way, and still what both devices have today** (§2.4). It applies
+  to a device until the packages have migrated it.
 - **cycript only standalone,** never `-p SpringBoard` (§2.5).
 - **Never restart iapd while the phone is docked.** It half-negotiates the accessory, and only reseating
   the phone fixes it.
   - On the phone, `/var/mobile/fidelio/b1/redock.sh` (2026-11-22) does it safely with the owner at the
     dock: it waits for the owner to lift the phone off, restarts iapd only when the route is neither
     `USB` nor `LineOut`, and waits for the re-dock. Both DockRemote loads of that evening went this way.
+    (It is a hand-made helper on the phone, not part of the packages; `cleanup --yes` removes it with
+    `/var/mobile/fidelio`.)
 - **Replace a file that has run by rename, never by writing new content into it** (§2.5, measured on the
   phone 2026-11-22). Copying a new audiod over the installed path (`cp`, the same inode) got it killed at
   every launch (launchd `Exited: Killed`, no line from the binary). The procedure that works: stage the
@@ -1499,7 +1836,19 @@ the suites are timing-sensitive.
 
 ---
 
-## 9. Files on the devices (`/var/mobile/fidelio/`, all user `mobile`-readable)
+## 9. Files on the devices (the data directory, all user `mobile`-readable)
+**Today, on both devices, the data directory is `/var/mobile/fidelio/`** (the old setup, §2.4). The
+B1.17 code uses **`/var/mobile/dockreceiver/`** (`DOCKRECEIVER_DIR`, `common/DataDir.h`), with the same
+file names; the packages create it and copy the settings and flag files over at the migration (§2.4,
+`packaging/README.md`). The list below holds for either directory unless it says otherwise.
+- **New with the packages** (in `/var/mobile/dockreceiver/` only):
+  - `spotify-credentials.conf` (mobile, 600): `SPOTIFY_CLIENT_ID=` and `SPOTIFY_CLIENT_SECRET=`, read by
+    `cspot-run`; filled by the migration from the old setup, never printed. Without values the Spotify
+    job waits and reads the file again every 30 s. (The old setup keeps them in the iPad's `creds.env`
+    and in the phone's launcher scripts: never print those, §11.)
+  - `keepalive.conf` (optional): `KEEPALIVE_HOST=<address on the LAN>`.
+  - `logs/{audiod,raop,cspot,keepalive}.log`: the jobs' output, moved to `<log>.1` above 1 MB.
+  - `install.log` (root): what the install scripts did, never a credential.
 - **Written by the daemons:**
   - `audiod.sock`; `active-source` (rewritten every 10 s; "none" when idle).
   - `remote-target` (B1.16.16): the dock remote's target, one line, `spotify`, `airplay` or `none`;
@@ -1520,14 +1869,26 @@ the suites are timing-sensitive.
     last six.
   - On the phone, as of the evening of 2026-11-22, `remote-tweak.observe` and `remote-tweak.swallow` are
     both set (§2.4).
-- **`b1/redock.sh`** (phone): the undock, iapd restart, re-dock helper of §8.
+- **`b1/`** (old setup only, `/var/mobile/fidelio/b1/`): the hand-installed binaries
+  (`fidelio-audiod`, `fidelio-raop`, `fidelio-lockctl`, `cspot-ios3`), launcher scripts,
+  the `.bak` backups and the stage directories; on the phone `redock.sh`, the undock, iapd restart,
+  re-dock helper of §8.
 - **NowPlaying 1.4.1 and later:** `remote-control.stage` (1–3), `remote-control.log`; and the old probe
   `remote-probe.on`, which logs to `remote-events.log` from the app.
-- **Installed elsewhere:**
-  - The lock bundles: `/System/Library/SpringBoardPlugins/`. Respring afterwards.
+- **Installed elsewhere, today (old setup):**
+  - The lock bundles `Fidelio.bundle` (phone) and `Fidelio.lockbundle` (iPad) in
+    `/System/Library/SpringBoardPlugins/`. Respring afterwards.
   - DockRemote: `/Library/MobileSubstrate/DynamicLibraries/DockRemote.{dylib,plist}` (filter: iapd).
     Replace it by rename (§8), then restart iapd undocked (`b1/redock.sh` on the phone).
-  - The app: `/Applications/NowPlaying.app`.
+  - The app: `/Applications/NowPlaying.app` (`com.fidelio.nowplaying`).
+  - The owner's jobs `com.fidelio.audiod`, `.raop`, `.cspot`, `.keepalive` in `/Library/LaunchDaemons`;
+    on the phone also `com.fidelio.syslogd` (a debugging aid the packages leave alone).
+- **Installed elsewhere, after the migration (packages):** `/usr/libexec/dock-receiver/`,
+  `/usr/bin/dock-lockctl`, `/usr/sbin/dock-receiver-setup`, the jobs `com.dockreceiver.*` in
+  `/Library/LaunchDaemons` (copies of `/usr/share/dock-receiver/launchd/`), `/Applications/NowPlaying.app`
+  (`com.dockreceiver.nowplaying`), `NowPlaying.bundle` and `NowPlaying.lockbundle` in
+  `/System/Library/SpringBoardPlugins/`, DockRemote as before (phone), `/usr/share/doc/dock-receiver*/`,
+  and `/var/dockreceiver-migration/` (the old setup, for rollback). `voltest` is not packaged.
 
 ---
 
@@ -1585,19 +1946,20 @@ Defaults are in brackets.
 ### 10.3 Wake, unlock, lock plugin (audiod `Server.cpp`, `DisplayWakeApple.cpp`)
 - **Playback start from nothing** (not a switch, not a reconnect), debounced to one wake per 5 s:
   - **`wake_mode=launch`:** `SBDimScreen(port,false)`, `GSEventResetIdleTimer`, then
-    `SBSLaunchApplicationWithIdentifier(com.fidelio.nowplaying)`.
+    `SBSLaunchApplicationWithIdentifier(com.dockreceiver.nowplaying)` (B1.16.x builds: `com.fidelio.nowplaying`).
     - On 3, with `unlock_on_play` on: `SBSOpenSensitiveURLAndUnlock(nowplaying:, true)` once.
     - true → `wake: device locked, unlock accepted (nowplaying:)`, and the plugin stays off for that start.
     - false → `unlock request failed`, and the plugin goes on.
   - **`wake_mode=screen`:** undim and reset the idle timer only, with the plugin enabled first:
     `wake (screen only)`.
-- **The plugin (`lock_plugin`):** `SBEnableLockScreenBundle(port, 1/0, "Fidelio")`.
+- **The plugin (`lock_plugin`):** `SBEnableLockScreenBundle(port, 1/0, "NowPlaying")` (B1.16.x builds: `"Fidelio"`,
+  which is what the devices log today: `lock-plugin enabled Fidelio`).
   - Disabled when nothing is active. B1.16.16 leaves this as it is: a paused remote target does not keep
     the plugin on (§5.2).
   - **B1.16.11 `syncLockPlugin`:** applies a live setting change, keeping the unlock rule; it disables
     under the enabled name. While enabled, it polls SpringBoard's pid every 2 s (sysctl `KERN_PROC_ALL`)
     and re-enables 4 s after a new pid.
-- **The plugin itself** (`FidelioLockPluginController`):
+- **The plugin itself** (`NowPlayingLockPluginController`; was `FidelioLockPluginController`):
   - `+rootViewController` returns a retained singleton.
   - The 1 Hz refresh runs only while visible: it reads `active-source` and `status-*.plist`, and does
     keep-lit (§2.5).
@@ -1692,7 +2054,7 @@ Defaults are in brackets.
   - The tweak reads `remote-target` (one `stat` and one small read); without it, or with one older than
     30 s, it reads `active-source` as before. The socket check still gates every take, so a file left by
     a dead audiod takes nothing.
-  - Device trace and rule: §2.5, §5.2. Load line `DockRemote B1.16.16: hooked GSSendEvent ...`.
+  - Device trace and rule: §2.5, §5.2. Load line `DockRemote B1.16.16: hooked GSSendEvent ...` (B1.17: `DockRemote B1.17: hooked ...`).
 - **iPad, B1.16.9:**
   - NowPlaying's `NPRemoteControl.m`: the window class `NPWindow` can become first responder.
   - `NPApplication` (the principal class, `NPEventProbe.m`) catches remote-control events (type 2, subtypes
@@ -1702,9 +2064,9 @@ Defaults are in brackets.
 
 ### 10.6 NowPlaying
 - **Structure:**
-  - `FidelioAppDelegate` sets `setIdleTimerDisabled:YES` at launch, so an unlocked device with the app in
+  - `NPAppDelegate` (was `FidelioAppDelegate`) sets `setIdleTimerDisabled:YES` at launch, so an unlocked device with the app in
     front never auto-locks.
-  - The 1 Hz tick refreshes `FidelioStatus`.
+  - The 1 Hz tick refreshes `NPStatus` (was `FidelioStatus`).
   - The cspot watchdog runs `killall -9` on a stale status.
 - **Layout:** `NPLayout.c`; the phone is pinned to the B1.16.1 frames, and the tablet layout is size-driven
   with rotation.
@@ -1715,6 +2077,10 @@ Defaults are in brackets.
   active but a target: that source's track, cover, title and artist stay, the line reads "Paused via ...",
   the buttons stay enabled. Target cleared: "Idle". Another source takes over: that one. No
   `remote-target` (an older audiod): as 1.4.2 (`nowplaying/APP.md`).
+- **"Daemons not running"** (1.5.0, B1.17): when the data directory is missing, or nothing in it is
+  fresh (no `active-source` within 30 s and no status file modified within 30 s), the Now Playing tab
+  says so and which case it is, instead of an empty screen. The decision is plain C (`NPDaemonsState`,
+  `NPIsDirectory` in `NPSource.c`), host suite `np_source` (23 checks).
 - **Technical tab, "Dock remote"** (1.4.2): the last six lines of `remote-keys.log`, newest first, polled at
   2 Hz while the tab is visible (`NPKeyLog.c`; `nowplaying/APP.md`).
 
@@ -1733,11 +2099,22 @@ Defaults are in brackets.
   line and the defaults; the file is read afterwards (`audiod/src/main.cpp`). The effective values are
   in `settings-audiod.manifest.plist` (`value`, `origin`). Seen on the iPad on 2026-11-22: the log said
   `unlock-on-play: on` while the file's `off` was in force.
-- **Installing over SSH:** never print the launcher scripts, `creds.env` or a process list with
-  arguments: they hold the Spotify credentials. Check a process with `killall -0 NAME`. Replace an
+- **Installing over SSH:** never print the launcher scripts, `creds.env` (old setup),
+  `spotify-credentials.conf` (packaged setup) or a process list with arguments: they hold the Spotify
+  credentials (`cspot-ios3` still takes them on its command line, §4 question 10). Check a process with `killall -0 NAME`. Replace an
   installed binary or dylib by rename, never with `cp` over it: on the phone the new content in the old
   inode is killed at every start (§8).
-- **Phone:** no cycript, so ship a probe binary.
+- **Phone:** no cycript, so ship a probe binary. No `ps` either.
+- **The packages' scripts and the devices' tools** (B1.17, §2.5): `/bin/sh` is bash 4.0; use `sed -r`,
+  never `sed -E`; no awk, plutil or defaults anywhere, and the iPad lacks most of coreutils. The host
+  suite `pkg_setup` enforces this with GNU bash 4.0 and a restricted `PATH`, but only a device confirms
+  the exact tool versions (§3.0).
+- **The repo path is part of a hash** (§6.3): `cspot-ios3` built in `/home/user/fidelio` and in
+  `/home/user/dock-receiver` from the same commit differ. Compare hashes only between builds at the same
+  path; the reference since B1.17 is `/home/user/dock-receiver`.
+- **Memory on the PC** (2026-11-22): a host-suite run was stopped from outside at 16 of 28 suites
+  because the PC ran low on memory (nothing had failed). Run the suite alone, with no build, test run or
+  other heavy work beside it, and rerun it whole if it is cut short (§6.4).
 - **`voltest`'s first line has two `route=` fields:** Audio/Video's and MediaPlayback's. On the dock they
   normally read `USB` and `LineOut`. A script that reads the wrong one reports `LineOut` although nothing
   is wrong. This happened once (2026-11-22, 18:30): iapd had not restarted and the dock had not
@@ -1770,7 +2147,15 @@ Defaults are in brackets.
 ## 12. Appendix
 
 ### 12.1 `main`, newest first (subjects shortened)
+The first five lines are B1.17, on the branch `b117-rename` when this was written; `main` is
+fast-forwarded to them right after the docs commit, with the marker `audiod-b117` (§2.1).
 ```
+(docs)  docs: B1.17, the rename and the packages: the record under the new names   (marker audiod-b117)
+1f7d18d B1.17 (part B 3/3) host suites pkg_setup and pkg_debs
+307be01 B1.17 (part B 2/3) two Debian packages whose install scripts are the migration
+7d1ced6 B1.17 (part B 1/3) third-party notices of the device binaries
+8ab46f4 B1.17 (part A) the rename fidelio -> dock-receiver in the source tree, NowPlaying 1.5.0
+51b22fe docs: B1.16.16 on the phone: install by rename, the paused-target test
 59d03a1 B1.16.16 the dock remote keeps a paused source (remote target), NowPlaying 1.4.3   (marker audiod-b11616)
 fb57a59 docs: the phone's evening of 2026-11-22: B1.16.12 to B1.16.15 installed, the key display, the first takeover test
 86ce0b7 B1.16.15 DockRemote takes code 4 as previous and code 3 as next   (marker audiod-b11615)

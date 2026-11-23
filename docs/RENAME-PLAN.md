@@ -1,7 +1,13 @@
-# B1.17: the project rename, `fidelio` → `dock-receiver` (the plan; on HOLD)
+# B1.17: the project rename, `fidelio` → `dock-receiver` (the plan, and what was delivered)
 
-**Status, 2026-11-18: on HOLD until the owner says device testing is done.** It is the last queued round.
-The project's current state is in [`docs/HANDOFF.md`](HANDOFF.md) (§3.5).
+**Status, 2026-11-22: done in the tree; the devices not yet migrated.** The owner released the round on
+2026-11-22 (it had been on HOLD since 2026-11-18 "until the owner says device testing is done"). It is
+the commits `8ab46f4` (part A, the rename), `7d1ced6`, `307be01`, `1f7d18d` (part B, the notices and the
+packages) and the docs commit after them. What was delivered, the deviations from this plan and what
+remains are in §7. The project's current state is in [`docs/HANDOFF.md`](HANDOFF.md) (§3.0, §3.5); every
+old → new name is in [`RENAME.md`](../RENAME.md).
+
+§1–§6 below are kept unchanged as the record of what was planned.
 
 "Fidelio" is Philips' dock product name; the project is renamed so it is used only descriptively. **New
 project name: `dock-receiver`.**
@@ -146,3 +152,85 @@ only.
 - **To check on the devices first:** the `dpkg` versions; whether Cydia's `firmware` pseudo-package is
   registered, so a package can declare its OS range as a dependency; which shell tools the install scripts
   can rely on.
+
+---
+
+## 7. Delivered (2026-11-22)
+
+### 7.1 What was delivered
+- **Part A, `8ab46f4`: the rename in the tree** per §1, §4 and §5. Programs `dock-audiod`, `dock-raop`,
+  `dock-lockctl` (`cspot-ios3` unchanged); the lock plugin `NowPlaying.bundle` / `NowPlaying.lockbundle`,
+  class `NowPlayingLockPluginController`, id `com.dockreceiver.lockplugin`; the app id
+  `com.dockreceiver.nowplaying`, classes `NP*`, NowPlaying 1.5.0; every `com.fidelio.*` →
+  `com.dockreceiver.*`; the C++ namespace `dockreceiver`; ONE compile-time data directory,
+  `DOCKRECEIVER_DIR` = `"/var/mobile/dockreceiver"` in `common/DataDir.h`;
+  `common/dock-springboard.entitlements.plist`; the tweak's load line `DockRemote B1.17: hooked ...`; the
+  app's "Daemons not running" state (§2; plain C in `NPSource.c`, 8 new `np_source` checks); the
+  component READMEs and a top-level README as the project's entry point; `RENAME.md`.
+  - Kept on purpose: the advertised device names; the AirPlay model string `am=Fidelio1,1` (kept as part
+    of the advertisement; the owner may decide otherwise); the wire protocol (`audiod/proto.h`: only its
+    comment, include guard and the spelling of the default socket path changed); the `AUDIOD_*`
+    variables; the `nowplaying:` URL scheme; the frozen history file; the repository URLs.
+  - Regression at `8ab46f4`: the ARM build twice from nothing, `result: OK`, identical hashes; host
+    suite 529 ok, 0 FAIL, 28 suites (521 + 8). The first host run was stopped from outside at 16 of 28
+    suites for low memory on the PC (no failure up to then); the rerun, alone, was clean.
+- **The reference build path** (§5's open point; decided by the session, the owner told): the WSL clone
+  is `/home/user/dock-receiver` (the old `/home/user/fidelio` is kept for now); `cspot-ios3`'s hash
+  depends on that path. The Windows clone's folder `C:\code\fidelio\github\fidelio` is deliberately not
+  renamed.
+- **Part B, `7d1ced6`, `307be01`, `1f7d18d`: the packaging of §6.** `packaging/THIRD-PARTY-NOTICES.md`
+  (from the link maps); `tools/build-debs.sh`, two reproducible gzip `.deb` files, version 1.5.0-1
+  (`packaging/VERSION`: NowPlaying's version and a packaging revision): `dock-receiver` (every supported
+  OS) and `dock-receiver-dockremote` (iPhone OS 3.x; MobileSubstrate checked by its files, because the
+  phone has no dpkg record for it). One script, `packaging/dock-receiver/setup.sh`, is all four
+  maintainer scripts and the `dock-receiver-setup` command (check = dry run, migrate, rollback,
+  cleanup, respring). The install is the migration of §2: it copies (never moves) settings and flags
+  from `/var/mobile/fidelio`, carries the Spotify credentials over on the device without printing them,
+  stops the old jobs, moves the old plists, the hand-installed app and the old lock plugin to
+  `/var/dockreceiver-migration`, loads the new jobs and refreshes the icon cache; a failure before its
+  point of no return undoes the run. It never restarts SpringBoard or iapd by itself.
+  `packaging/install.sh <device>` runs it from a PC over OpenSSH. `packaging/README.md` has the layout
+  and the procedures.
+  - Host suites `pkg_setup` (243 checks, under a pinned GNU bash 4.0 with only the tools both devices
+    have) and `pkg_debs` (77); the full host suite at `1f7d18d`: 849 ok, 0 FAIL, 30 suites. ARM build
+    at `1f7d18d`: `result: OK`, the binaries' hashes unchanged from `8ab46f4`.
+- The §3 deliverable's final `grep -ri fidelio`, with the reason each remaining hit is allowed, is the
+  "Kept" list of `8ab46f4`'s commit message and the "Unchanged" section of `RENAME.md`; the rule is
+  `docs/HANDOFF.md` §5.3.
+
+### 7.2 Deviations from the plan
+- **The Spotify credentials** (§6 asked for "a root-only file"): the file is
+  `/var/mobile/dockreceiver/spotify-credentials.conf`, owner `mobile`, mode 600, read by the wrapper
+  `cspot-run`. The job runs as `mobile`, and `cspot-ios3` takes the client id and secret only as
+  command-line options, so they are visible in the device's process list while it runs, as before; a
+  root-only file would protect nothing more. Closing that needs a cspot change (an option that reads
+  them from a file). Without credentials the Spotify job waits and re-reads the file every 30 s. Back
+  with the owner (`docs/HANDOFF.md` §4).
+- **The job plists are copied by the postinst** into `/Library/LaunchDaemons`, not unpacked there by
+  dpkg (they ship in `/usr/share/dock-receiver/launchd/`), so a failed install or a reboot mid-install
+  cannot start two audio daemons.
+- **The old device names and the bitrate** that the old launchers passed on their command lines are
+  carried into `settings.conf` (the new jobs pass no options).
+- **`dpkg --purge dock-receiver` deletes the data directory** `/var/mobile/dockreceiver`.
+- **Removing the package restores the old setup** from `/var/dockreceiver-migration` (`dpkg -r`, or
+  `dock-receiver-setup rollback` for both packages). §2 said "move" the data directory; the install
+  copies it instead, so `/var/mobile/fidelio` is never changed by the install and the old setup stays
+  restartable; it goes only with `dock-receiver-setup cleanup --yes`.
+
+### 7.3 What remains
+- **The devices.** Both still run the hand-installed setup under the old names; nothing of B1.17 has run
+  on a device. After the review of the install scripts (its must-fix findings fixed first): the dry run
+  and the install on each device with the owner at the dock, the SpringBoard restart only on the owner's
+  word with nothing playing, on the phone the undocked iapd restart for the tweak
+  (`docs/HANDOFF.md` §3.0, which also lists what only a device can confirm).
+- **The repository rename** `azarzycki/fidelio` → `dock-receiver` (§1): asked on 2026-11-22, not yet
+  answered; the tree keeps the old URLs until then.
+- **The cleanup of the old files on the devices** (`/var/mobile/fidelio`, `/var/dockreceiver-migration`)
+  with `dock-receiver-setup cleanup --yes`, only when the owner is satisfied; it leaves the older
+  `.pre-*` backups, `com.fidelio.syslogd` and iapd's logging preferences alone.
+- **The old WSL clone `/home/user/fidelio` and the old build trees** (`/home/user/build.b11616-fidelio`,
+  `/home/user/build.b117-run1`, `/home/user/build.b117-dirty`): kept for now.
+- Questions for the owner from the round (`docs/HANDOFF.md` §4): `am=Fidelio1,1`; the credentials
+  arrangement; whether `--purge` should delete the data directory; whether the old device names and
+  bitrate should be carried over. Publishing the packages waits for the owner's word; nothing was
+  published.
