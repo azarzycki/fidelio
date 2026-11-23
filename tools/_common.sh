@@ -43,6 +43,15 @@ MBEDTLS_COMMIT="068ff080b369adfac81509f9b57b2afabaf82dc5"
 # 1794744000 = 2026-11-15 12:00 UTC = "Nov 15 2026", the date already inside the published
 # cspot-ios3 of B1.18 (sha256 2979aedd...), so that file stays byte-identical to a fresh build.
 CSPOT_SOURCE_DATE_EPOCH=1794744000
+# tools/build-debs.sh: every mtime in the two .deb files (tar members and ar headers) is SOURCE_DATE_EPOCH,
+# by default this value, so that building the packages twice gives the same bytes.
+# 1795348800 = 2026-11-22 12:00 UTC, the day of the first packages (B1.17).
+PACKAGE_SOURCE_DATE_EPOCH=1795348800
+# The devices' /bin/sh is bash 4.0 (4.0.17). run-host-tests.sh builds GNU bash 4.0 from its release
+# tarball and runs the packages' install scripts under it (packaging/hosttest/test_setup.sh), so that a
+# feature of a later bash fails on the host as it would on the devices.
+BASH40_URL="https://ftp.gnu.org/gnu/bash/bash-4.0.tar.gz"
+BASH40_SHA256="9793d394f640a95030c77d5ac989724afe196921956db741bcaf141801c50518"
 # The toolchain's start-up objects, <toolchain>/armv6-ios3/lib/startfiles/{crt1.o,dylib1.o,bundle1.o}:
 # one of them is the first object of every executable, dylib and bundle. They are built from Apple's
 # open-source Csu release (tag Csu-79) by toolchain/startfiles/build-startfiles.sh, which pins the same
@@ -248,6 +257,27 @@ ensure_mbedtls_src() {
     logged "$LOGS/deps-mbedtls-clone.log" git clone -q --depth 1 -b "$MBEDTLS_TAG" --recurse-submodules --shallow-submodules "$MBEDTLS_URL" "$d"
     [ "$(git -C "$d" rev-parse HEAD)" = "$MBEDTLS_COMMIT" ] || die "$MBEDTLS_TAG is not $MBEDTLS_COMMIT any more"
   fi
+}
+
+# GNU bash 4.0 for the host (see BASH40_URL): $BUILD_ROOT/host/bash-4.0/bash, built once. Today's
+# compilers need the old C dialect and a few warnings that are errors now turned off again.
+ensure_bash40() {  # sets BASH40
+  local d="$BUILD_ROOT/host/bash-4.0" tgz="$DEPS/bash-4.0.tar.gz"
+  BASH40="$d/src/bash-4.0/bash"
+  [ -x "$BASH40" ] && [ "$(cat "$d/stamp" 2>/dev/null)" = "$BASH40_SHA256" ] && return 0
+  mkdir -p "$DEPS" "$LOGS"
+  if [ ! -f "$tgz" ] || [ "$(sha256sum < "$tgz" | cut -d' ' -f1)" != "$BASH40_SHA256" ]; then
+    note "fetching $BASH40_URL"
+    logged "$LOGS/deps-bash40-fetch.log" curl -fsSL -o "$tgz.part" "$BASH40_URL"
+    [ "$(sha256sum < "$tgz.part" | cut -d' ' -f1)" = "$BASH40_SHA256" ] || die "$BASH40_URL does not have the pinned sha256"
+    mv "$tgz.part" "$tgz"
+  fi
+  note "building bash 4.0 for the install-script tests"
+  rm -rf "$d"; mkdir -p "$d/src"
+  tar -xzf "$tgz" -C "$d/src"
+  logged "$LOGS/host-bash40-build.log" bash -c 'cd "$1" && CFLAGS="-O1 -std=gnu89 -fcommon -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types" ./configure --without-bash-malloc --disable-nls && make -j4' _ "$d/src/bash-4.0"
+  "$BASH40" -c 'case "$BASH_VERSION" in 4.0.*) exit 0;; esac; exit 1' || die "$BASH40 is not bash 4.0"
+  echo "$BASH40_SHA256" > "$d/stamp"
 }
 
 # mbedTLS build flags from spotify/CSPOT.md "Build commands"; extra args = toolchain file for ARM.

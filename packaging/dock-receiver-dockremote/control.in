@@ -1,0 +1,15 @@
+Package: dock-receiver-dockremote
+Name: Dock Receiver: dock remote (iPhone OS 3)
+Version: @VERSION@
+Architecture: iphoneos-arm
+Maintainer: dock-receiver project
+Installed-Size: @INSTALLED_SIZE@
+Depends: dock-receiver (= @VERSION@), firmware (>= 3.0), firmware (<< 4.0)
+Section: Tweaks
+Priority: optional
+Homepage: https://github.com/azarzycki/fidelio
+Description: the speaker dock's IR remote drives dock-receiver (iPhone OS 3.x)
+ DockRemote, a MobileSubstrate tweak in iapd: the dock remote's play/pause,
+ next and previous go to dock-audiod. Needs MobileSubstrate (checked by its
+ files, not by a dependency). It takes effect after an undocked
+ `killall iapd` or a reboot; the package never restarts iapd itself.

@@ -1,0 +1,19 @@
+Package: dock-receiver
+Name: Dock Receiver
+Version: @VERSION@
+Architecture: iphoneos-arm
+Maintainer: dock-receiver project
+Installed-Size: @INSTALLED_SIZE@
+Depends: firmware (>= 3.0)
+Section: Multimedia
+Priority: optional
+Homepage: https://github.com/azarzycki/fidelio
+Description: Spotify Connect and AirPlay receiver for a speaker dock
+ A headless audio receiver for a jailbroken iPhone OS 3 / iOS 5 device in a speaker
+ dock: dock-audiod (the audio arbiter), cspot-ios3 (Spotify Connect), dock-raop
+ (AirPlay v1), their launchd jobs and a Wi-Fi keepalive, dock-lockctl, the
+ NowPlaying app and its lock-screen plugin. The install scripts migrate a device
+ from the hand-installed setup of before B1.17 and keep it restorable:
+ dock-receiver-setup check | rollback | cleanup | respring.
+ cspot-ios3 is distributed under GPL-3.0-or-later, the rest under MIT;
+ /usr/share/doc/dock-receiver has the licences and notices.

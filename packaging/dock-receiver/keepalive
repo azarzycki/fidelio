@@ -1,0 +1,56 @@
+#!/bin/bash
+# /usr/libexec/dock-receiver/keepalive: launchd com.dockreceiver.keepalive (user mobile).
+#
+# 1. Keeps Wi-Fi awake. With no audio flowing, iPhone OS 3 lets the radio sleep: the device stops
+#    answering and stops advertising over Bonjour, so Spotify and AirPlay lose it. One small UDP datagram
+#    every 2 s to the discard port (9) of a host on the LAN prevents that (the iPad's setup before B1.17 did
+#    the same through bash's /dev/udp; the phone's pinged the router).
+#    The host: KEEPALIVE_HOST in /var/mobile/dockreceiver/keepalive.conf (the migration copies it from the
+#    old keepalive.sh), otherwise the router that `ipconfig getoption en0 router` reports, looked up again
+#    each minute until one is known. No address is built in.
+# 2. Keeps the jobs' logs (/var/mobile/dockreceiver/logs/*.log) small: every 5 minutes a log above 1 MB is
+#    copied to <log>.1 (replacing the previous one) and emptied. launchd keeps the log open; the daemons'
+#    next lines go to the emptied file.
+R="${DOCKRECEIVER_ROOT:-}"
+DIR="$R/var/mobile/dockreceiver"
+CONF="$DIR/keepalive.conf"
+INTERVAL_S="${KEEPALIVE_INTERVAL_S:-2}"
+LOOPS="${KEEPALIVE_LOOPS:-0}"      # host tests: stop after this many rounds (0 = never)
+
+host=""
+lookup() {
+  host=""
+  if [ -r "$CONF" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in KEEPALIVE_HOST=*) host="${line#*=}" ;; esac
+    done < "$CONF"
+  fi
+  if [ -z "$host" ] && command -v ipconfig >/dev/null 2>&1; then
+    host="$(ipconfig getoption en0 router 2>/dev/null)"
+  fi
+  case "$host" in *[!0-9.]*) host="" ;; esac
+}
+
+trim_logs() {
+  local f
+  for f in "$DIR"/logs/*.log; do
+    [ -f "$f" ] || continue
+    [ -n "$(find "$f" -size +1024k 2>/dev/null)" ] || continue
+    cp "$f" "$f.1.new" && mv -f "$f.1.new" "$f.1" && : > "$f"
+  done
+}
+
+n=0; said=""
+while :; do
+  n=$((n + 1))
+  # Look the host up at once, every minute while none is known, and every 30 minutes (a new router).
+  if [ $((n % 900)) = 1 ] || { [ -z "$host" ] && [ $((n % 30)) = 1 ]; }; then
+    lookup
+    if [ -z "$host" ] && [ "$said" != none ]; then echo "keepalive: no host yet (keepalive.conf or ipconfig)"; said=none; fi
+    if [ -n "$host" ] && [ "$said" != ok ]; then echo "keepalive: sending to the discard port every ${INTERVAL_S} s"; said=ok; fi
+  fi
+  [ -n "$host" ] && { printf 'k' > "/dev/udp/$host/9"; } 2>/dev/null
+  [ $((n % 150)) = 1 ] && trim_logs
+  [ "$LOOPS" != 0 ] && [ "$n" -ge "$LOOPS" ] && exit 0
+  sleep "$INTERVAL_S"
+done

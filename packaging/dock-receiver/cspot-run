@@ -1,0 +1,50 @@
+#!/bin/bash
+# /usr/libexec/dock-receiver/cspot-run: the Spotify job's start (launchd com.dockreceiver.cspot, user mobile).
+#
+# cspot-ios3 takes the Spotify developer app's client id and secret only on its command line
+# (--client-id / --client-secret; spotify/cli-src/main.cpp). This script reads them from the owner's file
+# and replaces itself with cspot-ios3 (exec), so launchd supervises cspot-ios3 itself and NowPlaying's
+# `killall -9 cspot-ios3` restarts it. No other option is passed: the name, bitrate and the rest come from
+# settings.conf, so the Settings tab can change them.
+#
+# Without both values cspot-ios3 could be selected in Spotify but could not play (it needs them for its Web
+# API token), so this script waits instead: it says so once in the log and looks at the file again every
+# 30 s. The values are never printed. Note: while cspot-ios3 runs, its command line (with the values) is
+# visible to processes on the device, as it was before (spotify/REVIEW.md, "Secrets on the command line").
+R="${DOCKRECEIVER_ROOT:-}"
+CONF="$R/var/mobile/dockreceiver/spotify-credentials.conf"
+BIN="$R/usr/libexec/dock-receiver/cspot-ios3"
+WAIT_S="${DOCKRECEIVER_CREDS_WAIT_S:-30}"
+
+unquote() {  # strip one pair of surrounding quotes
+  case "$1" in
+    \"*\") v="${1#\"}"; printf '%s' "${v%\"}" ;;
+    \'*\') v="${1#\'}"; printf '%s' "${v%\'}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+said=0
+while :; do
+  id=""; secret=""
+  if [ -r "$CONF" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        SPOTIFY_CLIENT_ID=*) id="$(unquote "${line#*=}")" ;;
+        SPOTIFY_CLIENT_SECRET=*) secret="$(unquote "${line#*=}")" ;;
+      esac
+    done < "$CONF"
+  fi
+  [ -n "$id" ] && [ -n "$secret" ] && break
+  if [ "$said" = 0 ]; then
+    echo "cspot-run: no Spotify client id and secret in $CONF: waiting (see /usr/share/doc/dock-receiver/README.md)"
+    said=1
+  fi
+  sleep "$WAIT_S"
+done
+case "$(ls -ln "$CONF" 2>/dev/null)" in
+  -rw-------*) ;;
+  *) echo "cspot-run: WARNING: $CONF should be mode 600 (chmod 600 it)" ;;
+esac
+[ "$said" = 1 ] && echo "cspot-run: credentials found: starting cspot-ios3"
+exec "$BIN" --client-id "$id" --client-secret "$secret"
