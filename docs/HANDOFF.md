@@ -65,7 +65,7 @@ repo and is the one record of the project's state: **update it in the same commi
    - `tools/build-arm.sh` → `result: OK` with the hashes in §2.3 (first). The host suite needs its output
      (`pkg_debs` packages `$BUILD_ROOT/arm-out`).
    - `tools/build-debs.sh` → the two packages and their `SHA256SUMS` in `$BUILD_ROOT/debs` (§2.3, §6.7).
-   - `tools/run-host-tests.sh` → `TOTAL host: 849 ok, 0 FAIL`, 30 suites, about 11 minutes. Run it alone,
+   - `tools/run-host-tests.sh` → `TOTAL host: 928 ok, 0 FAIL`, 30 suites, about 13 minutes. Run it alone,
      with nothing else heavy on the PC (§6.4).
 4. Then work through §3 in order. First: B1.17 is built and **not yet on a device**; the devices still
    run the old names (§2.4, §3.0).
@@ -216,7 +216,7 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 
 ### 2.3 Builds
 
-#### 2.3.1 Current: B1.17 at `1f7d18d` (`tools/build-arm.sh`, toolchain revision 3, the project's own sysroot)
+#### 2.3.1 Current: B1.17 at `c8b1475` (`tools/build-arm.sh`, toolchain revision 3, the project's own sysroot)
 
 Not yet run on a device. From `/home/user/build/arm-out/SHA256SUMS` and `report.txt` of the build at
 `1f7d18d` in the reference clone `/home/user/dock-receiver` (`result: OK`, `git status` clean):
@@ -241,14 +241,14 @@ Not yet run on a device. From `/home/user/build/arm-out/SHA256SUMS` and `report.
 - `cspot-ios3`'s hash depends on the repo path, which is now `/home/user/dock-receiver` (§6.1, §6.3);
   DockRemote.dylib's depends on `$BUILD_ROOT/arm/dockremote` as before.
 
-**The packages** (`tools/build-debs.sh` at `1f7d18d`, from that build; staged on the PC in
-`C:/code/fidelio/cloud-build/deploy-b117/` with `SHA256SUMS`). They may still change if the review of
-the install scripts brings a fix before a device sees them (§3.0); these are the hashes **at `1f7d18d`**:
+**The packages** (`tools/build-debs.sh` at `c8b1475`, from that build; staged on the PC in
+`C:/code/fidelio/cloud-build/deploy-b117/` with `SHA256SUMS`). These are the hashes **at `c8b1475`**
+(after the review's fixes, §3.0):
 
 | Package | Size | sha256 |
 |---|---|---|
-| `dock-receiver_1.5.0-1_iphoneos-arm.deb` | 1,816,434 | `65c55587805d96834b6ee2cf76365a2d334d71a4d1df3b5c4ddf663358af0689` |
-| `dock-receiver-dockremote_1.5.0-1_iphoneos-arm.deb` | 25,356 | `7df460423d1dadc30d51f6f840b0e624f9e32ca3d0f1d6f9f26fb8528467091e` |
+| `dock-receiver_1.5.0-1_iphoneos-arm.deb` | 1,844,346 | `413e70cec5dea4ae10197592e171698e3b235193d800c0d5f97988f7421c28a3` |
+| `dock-receiver-dockremote_1.5.0-1_iphoneos-arm.deb` | 25,522 | `cbc455490f09e57029348dfe9b933b1364bd57b1c5e5eb6369944814932a8614` |
 
 Built twice by the script with the same sha256 (reproducible, §6.7); the binaries inside are those of
 the table above, byte for byte.
@@ -722,10 +722,12 @@ is `NowPlayingLockPluginController` (`RENAME.md` has the full list).
 ### 3.0 B1.17 on the devices: the migration (first; built, not yet run on a device)
 B1.17 (§2.1, §2.2) is built and checked on the host; nothing of it has run on a device, and both devices
 still run the old setup (§2.4). In order:
-1. **The independent review of the install scripts** (`packaging/dock-receiver/setup.sh`,
-   `packaging/install.sh`, the dock-remote package's scripts) is running. Its must-fix findings, if any,
-   are fixed before a device sees the packages; the package hashes of §2.3.1 may then change (they are
-   recorded as "at `1f7d18d`").
+1. **The independent review of the install scripts** (at `1f7d18d`) took place. It found three must-fix
+   problems (a failed install followed by a rollback could strip the old app, an undo or rollback could
+   start the old audiod beside a dock-audiod that would not stop, and a failed re-run left the new jobs
+   unloaded) and a number of smaller ones; together with the facts of the devices' first dry run (the
+   links into `/var/stash`, the old Spotify job's chain of files) they were fixed at `c8b1475`, each with
+   host tests that fail against `1f7d18d`; the package hashes of §2.3.1 are those of `c8b1475`.
 2. **`main`** is fast-forwarded to `b117-rename` and pushed, with the marker branch `audiod-b117` (§2.1,
    §7).
 3. **With the owner at the dock**, on each device:
@@ -1654,9 +1656,9 @@ the suites are timing-sensitive.
 | control | 8 | arbiter | 13 | lock_layout | 10 |
 | cover_url | 6 | dockvol | 25 | keylog | 17 |
 | remote_keys | 65 | remote_core | 22 | remote_tgt | 37 |
-| np_source | 23 | pkg_setup | 243 | pkg_debs | 77 |
+| np_source | 23 | pkg_setup | 316 | pkg_debs | 83 |
 
-- **Baseline: 849 ok, 0 FAIL, 30 suites** (B1.17; 529 at `8ab46f4`, when `np_source` grew 15 → 23;
+- **Baseline: 928 ok, 0 FAIL, 30 suites** (B1.17 after the review, `c8b1475`; 849 at `1f7d18d`; 529 at `8ab46f4`, when `np_source` grew 15 → 23;
   521 before B1.17 added `pkg_setup` and `pkg_debs` and extended `np_source`; 447 before B1.16.16 added `remote_core`, `remote_tgt` and `np_source`; 434 before B1.16.15 extended `remote_keys`; 423 before B1.16.14 extended `dockvol`; 354 before B1.16.13 added `keylog` and `remote_keys`; 340 before B1.16.12
   added `dockvol`).
 - **It needs `cc` and `c++`** (apt `g++`): the plain tests call them by name, and they are CMake's default
