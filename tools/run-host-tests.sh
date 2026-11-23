@@ -42,7 +42,7 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 447 ok, 0 FAIL, at B1.16.15)
+# name | baseline ok count | command (baseline: 521 ok, 0 FAIL, at B1.16.16; 447 at B1.16.15)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -69,6 +69,9 @@ lock_layout  10 $HOST/nowplaying/lock_layout_test
 cover_url     6 $HOST/cspot/cover_url_test
 keylog       17 $HOST/nowplaying/keylog_test
 remote_keys  65 $HOST/dockremote/keys_test
+remote_core  22 $HOST/dockremote/core_test
+remote_tgt   37 $PYTHON $T/test_remote_target.py $AUDIOD $HOST/dockremote/dockremote_probe
+np_source    15 $HOST/nowplaying/source_test
 "
 
 case "$BUILD_ROOT$REPO" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
@@ -137,6 +140,14 @@ build_host() {
   mkdir -p "$HOST/dockremote"
   logged "$LOGS/host-dockremote-keys-build.log" c++ -O2 -Wall -std=c++17 -I"$REPO" -o "$HOST/dockremote/keys_test" \
     "$REPO/tweak/DockRemote/DockRemoteKeys.cpp" "$REPO/tweak/DockRemote/hosttest/keys_test.cpp"
+  # B1.16.16: the tweak's take-or-pass condition (the same C++ the tweak compiles), as a unit test and as
+  # the probe the remote_tgt suite runs against a host audiod; and the Now Playing tab's source pick.
+  logged "$LOGS/host-dockremote-core-build.log" c++ -O2 -Wall -std=c++17 -I"$REPO" -o "$HOST/dockremote/core_test" \
+    "$REPO/tweak/DockRemote/DockRemoteCore.cpp" "$REPO/tweak/DockRemote/DockRemoteKeys.cpp" "$REPO/tweak/DockRemote/hosttest/core_test.cpp"
+  logged "$LOGS/host-dockremote-probe-build.log" c++ -O2 -Wall -std=c++17 -I"$REPO" -o "$HOST/dockremote/dockremote_probe" \
+    "$REPO/tweak/DockRemote/DockRemoteCore.cpp" "$REPO/tweak/DockRemote/DockRemoteKeys.cpp" "$REPO/tweak/DockRemote/hosttest/probe.cpp"
+  logged "$LOGS/host-np-source-build.log" cc -O2 -Wall -Wextra -std=c99 -I"$REPO/nowplaying/src" -o "$HOST/nowplaying/source_test" \
+    "$REPO/nowplaying/src/NPSource.c" "$REPO/nowplaying/hosttest/source_test.c"
 }
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
@@ -145,7 +156,7 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
   note "host build done after ${SECONDS}s"
 fi
 BUILD_SECS=$SECONDS
-for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/nowplaying/lock_layout_test" "$HOST/cspot/cover_url_test" "$HOST/nowplaying/keylog_test" "$HOST/dockremote/keys_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
+for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/nowplaying/lock_layout_test" "$HOST/cspot/cover_url_test" "$HOST/nowplaying/keylog_test" "$HOST/dockremote/keys_test" "$HOST/dockremote/core_test" "$HOST/dockremote/dockremote_probe" "$HOST/nowplaying/source_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
          "$HOST/audiod/aqsink_bare_test" "$HOST/audiod/writeframe_test" "$HOST/audiod/settings_test"; do
   [ -x "$f" ] || die "missing host binary $f (run without SKIP_BUILD=1)"
 done

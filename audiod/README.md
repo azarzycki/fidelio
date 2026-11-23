@@ -563,3 +563,74 @@ and the phone out of step.
   flush comes after an outside change the poll has not seen (dropped). The mock hardware volume now shows
   a change-file value to `get()` at once and to `takeChange()` at the next poll; `AUDIOD_MOCK_HW_POLL_MS`
   sets the poll interval.
+
+## B1.16.16 (the dock remote keeps a paused source: the remote target)
+
+Device-found on the phone (2026-11-22, DockRemote B1.16.15 with swallow, Spotify playing; `docs/HANDOFF.md`
+§2.5): the remote's play/pause paused Spotify, audiod released it 1.5 s later (`quiet 1516 ms`) and wrote
+`none` to `active-source`, and the next play/pause, meant to resume, was passed by the tweak because no
+source was active: the built-in iPod app started instead (`audio interruption began (was idle)`).
+
+- **The remote target** (`Server::updateRemoteTarget`, `setRemoteTarget`): the source the dock remote's
+  keys belong to. It is:
+  - the active source, whenever one is active (set on every takeover, including a reconnect);
+  - with nothing active, the source that was last active, paused and resumable, until one of these clears
+    it: it **disconnects** from audiod (its client is gone: cspot exits when its Spotify session ends); it
+    sends **STOP** (raop: the AirPlay session was torn down, the sender left; cspot: the playlist ended),
+    whether it was active or already released; **another source of ours becomes active** (that one is then
+    the target); **audio that is not ours plays** while nothing of ours is active (the built-in Music app,
+    any other app).
+  - No time limit. Once cleared it comes back only when a source of ours is active again: the Music app
+    keeps the keys after it stops playing.
+- **"Audio that is not ours"** (`OtherAudio.h`): `AudioSessionGetProperty(kAudioSessionProperty_OtherAudioIsPlaying)`,
+  the query the sink's yield already uses, polled every 500 ms while a paused target exists and nothing is
+  active. It answers for other processes, never for audiod's own queue (which still plays silence until
+  the idle stop). What it can miss: other audio that starts and stops within one poll (under 0.5 s); and
+  anything while the AudioSession is not initialised (bare mode, or AudioSessionInitialize still being
+  retried at boot), when the call fails and counts as "no". The sink's interruption callback (`audio
+  interruption began`) is not used: it lives in `AudioQueueSink`, which raop and cspot compile too, and
+  changing it would change their binaries. A mixable app that plays (NowPlaying's iPad stage 3 silence
+  player, for one) also counts as other audio.
+- **Routing** (`Server::handleControl`): with nothing active and a target, every verb goes to the target.
+  TOGGLE and PLAY are sent as PLAY: it is paused, and PLAY is a no-op for a source that is in fact still
+  playing through a silent gap, where TOGGLE would pause it. NEXT, PREV and PAUSE go as they are. With no
+  target, B1.16's rule is unchanged (PLAY/TOGGLE resume the last source if it is still connected, the
+  rest is ignored), so NowPlaying's play button still resumes after the Music app took over.
+  - cspot (`spotify/cli-src/CliPlayer.cpp`): PLAY while paused → `setPause(false)`, Spotify resumes and
+    the controller shows it. NEXT/PREV → `nextSong()`/`previousSong()`, which move the track queue and
+    reset the track player without touching the pause state (cspot's `SpircHandler::skipSong`): from the
+    code, the next track is loaded and stays paused until play. Not yet seen on the device.
+  - raop (`airplay/src/RtspServer.cpp`): every verb becomes a DACP command to the sender (`play`,
+    `nextitem`, `previtem`, ...), if the sender offered DACP; what happens then is the sender's choice.
+- **The file `<status-dir>/remote-target`**: one line, the target's name or `none`. Written through a
+  temporary file and `rename()` at once on every change, and again every 10 s (as `active-source`), so a
+  reader never sees a partial file and can tell a dead audiod by the mtime. `none` at start-up (before
+  any client is accepted) and at a clean stop; a crash leaves the last value, and the tweak's socket check
+  covers that. Readers: the DockRemote tweak (take or pass a key) and NowPlaying 1.4.3 (keep the paused
+  source on screen).
+- **`active-source`:** written in the same pass of the run loop as every arbiter change (no stale window
+  found). One small fix: a failed write or rename is no longer remembered as written, so it is retried on
+  the next pass instead of after 10 s.
+- **Log lines** (stdout trace; no new event kind):
+  - start-up: `remote target (B1.16.16): /var/mobile/fidelio/remote-target (the active source, or the
+    paused last one until it disconnects, stops or other audio plays; other audio: AudioSession
+    OtherAudioIsPlaying, polled every 500 ms while paused)`;
+  - `remote target: 'none' -> 'spotify' (active)`, `'spotify' -> 'airplay' ('airplay' took over)`,
+    `'spotify' -> 'none' ('spotify' disconnected)`, `('airplay' sent STOP: nothing to resume)`,
+    `(other audio is playing (not ours): the remote's keys go back to the system)`;
+  - `control: play -> 'spotify' (resume) (paused remote target)`, `control: next -> 'spotify' (paused
+    remote target)`.
+- **Later, if wanted:** the release and re-take after a silent skip (§2.5 of the handoff: wake on play runs
+  again) passes through this state unchanged: the source stays the target across the gap. A takeover
+  `none -> X` where X is still the remote target is a resume, not a start from nothing, and
+  `onStartFromNone` could skip the wake for it. Not changed in this round.
+- **Tests:** `hosttest/test_remote_target.py` (suite `remote_tgt`, 37 checks), with the tweak's own
+  condition built as `dockremote_probe` and other audio mocked by `AUDIOD_MOCK_OTHER_AUDIO_FILE` (a file
+  whose first character `1` means "playing"): the trace's sequence (take, pause, release, the target kept,
+  play/pause taken and resumed with PLAY, next and previous delivered, 11 s later still the target and the
+  file rewritten); disconnect; other audio while playing (kept) and while paused (cleared, not taken back
+  when it stops, back when spotify plays); two sources; STOP while paused and while active; a reader that
+  never sees a partial file; audiod killed (the leftover file does not make the key taken).
+  `test_control.py`'s check "NEXT with nothing active is ignored" became "NEXT goes to the paused remote
+  target". Against the audiod of fb57a59: the resume press is passed (`pass, [3]`) and the new
+  `test_control` check fails.

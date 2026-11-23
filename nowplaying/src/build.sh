@@ -17,6 +17,7 @@ for f in main FidelioAppDelegate FidelioStatus NowPlayingViewController Technica
 done
 armv6-ios3-clang -O2 -Wall -c NPLayout.c -o "$OUT/NPLayout.o"   # B1.18: the layout core (plain C, also host-tested)
 armv6-ios3-clang -O2 -Wall -c NPKeyLog.c -o "$OUT/NPKeyLog.o"   # B1.16.13: the dock remote's key log (plain C, host-tested)
+armv6-ios3-clang -O2 -Wall -c NPSource.c -o "$OUT/NPSource.o"   # B1.16.16: which source the Now Playing tab shows (plain C, host-tested)
 armv6-ios3-clang "$OUT"/*.o -o "$APP/NowPlaying" \
   -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore \
   -framework AVFoundation -framework AudioToolbox   # B1.16.9: stage 3's silent mixable player

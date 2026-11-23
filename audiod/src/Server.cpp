@@ -16,6 +16,7 @@
 
 #include <vector>
 
+#include "OtherAudio.h"
 #include "ios3_trace.h"
 
 #ifdef __APPLE__
@@ -71,6 +72,11 @@ Server::Server(const ServerOptions& o, const Tunables& tn, AudioOutput* output, 
   IOS3_TRACE("airplay volume: %s (B1.13)%s", opts.airplayAbsolute ? "absolute" : "software",
              opts.airplayAbsolute && !hwReady() ? " requested but hardware unavailable -> software fallback" : "");
   IOS3_TRACE("dock volume (B1.16.12): %s", hw ? hw->describeDock().c_str() : "unavailable (no hardware volume backend)");
+  if (opts.statusDir.empty())
+    IOS3_TRACE("remote target (B1.16.16): no status dir, so no remote-target file (the dock remote falls back to active-source)");
+  else
+    IOS3_TRACE("remote target (B1.16.16): %s/remote-target (the active source, or the paused last one until it disconnects, stops or other audio plays; other audio: %s, polled every %llu ms while paused)",
+               opts.statusDir.c_str(), otherAudioDescribe().c_str(), (unsigned long long)kOtherAudioPollMs);
   IOS3_TRACE("wake-on-play: %s%s%s", opts.wakeOnPlay && waker ? "on (" : "off", opts.wakeOnPlay && waker ? waker->describe().c_str() : "",
              opts.wakeOnPlay && waker ? (", mode " + std::string(opts.wakeLaunch ? "launch, app " + opts.wakeBundle : "screen only") + ")").c_str() : "");
   IOS3_TRACE("unlock-on-play: %s (url %s; %s)", opts.unlockOnPlay ? "on" : "off", opts.unlockUrl.c_str(),
@@ -447,6 +453,7 @@ bool Server::listen() {
              arbiter.tunables().silenceThreshold, opts.leadMs);
   IOS3_TRACE("backpressure on the active source: %s; crossfade %u ms", opts.backpressure ? "on" : "off (b14 behaviour)", opts.crossfadeMs);
   writeActiveSourceFile("none");
+  writeRemoteTargetFile(true);  // B1.16.16: "none" until a source plays (a leftover of an earlier audiod is replaced)
   return true;
 }
 
@@ -551,6 +558,9 @@ void Server::handle(Client& c, const Message& m) {
     case AUDIOD_MSG_STOP:
       if (getenv("AUDIOD_TRACE_RING")) IOS3_TRACE("ring: STOP from #%d (%zu frames in ring)", c.id, c.ringFrames);
       arbiter.onStop(c.id, now);
+      // B1.16.16: STOP means no more audio for a while (raop: the AirPlay session was torn down; cspot:
+      // the playlist ended): nothing left to resume, so a paused source that stops is no longer the target.
+      if (remoteTarget == c.name && arbiter.activeName() != c.name) setRemoteTarget("", "'" + c.name + "' sent STOP: nothing to resume");
       afterTick();
       break;
     case AUDIOD_MSG_CONTROL:
@@ -581,18 +591,65 @@ void Server::logEvent(const Event& e) {
   }
 }
 
+// Write "<line>\n" to a temporary file and rename it into place: a reader sees the old or the new
+// content, never a partial one. False if any step failed (the caller then tries again next pass).
+bool Server::writeAtomicLine(const std::string& path, const std::string& line) {
+  std::string tmp = path + ".tmp";
+  FILE* f = fopen(tmp.c_str(), "w");
+  if (!f) return false;
+  bool ok = fprintf(f, "%s\n", line.c_str()) > 0;
+  ok = fclose(f) == 0 && ok;
+  if (!ok || rename(tmp.c_str(), path.c_str()) != 0) { unlink(tmp.c_str()); return false; }
+  return true;
+}
+
 void Server::writeActiveSourceFile(const std::string& name) {
   if (opts.statusDir.empty()) return;
   uint64_t now = nowMs();
   if (name == lastActiveWritten && now - lastActiveWriteMs < 10000) return;  // rewritten every 10 s so a reader can tell a dead audiod by the mtime
   lastActiveWriteMs = now;
-  std::string path = opts.statusDir + "/active-source", tmp = path + ".tmp";
-  FILE* f = fopen(tmp.c_str(), "w");
-  if (!f) return;
-  fprintf(f, "%s\n", name.c_str());
-  fclose(f);
-  rename(tmp.c_str(), path.c_str());
-  lastActiveWritten = name;
+  // B1.16.16: remembered as written only when the rename worked (before, a failed write was taken as
+  // done and not retried until the 10 s rewrite).
+  if (writeAtomicLine(opts.statusDir + "/active-source", name)) lastActiveWritten = name;
+}
+
+// B1.16.16: the dock remote's target, read by DockRemote (take or pass a key) and by NowPlaying (keep
+// showing a paused source). Written at once when it changes, and again every 10 s like active-source.
+void Server::writeRemoteTargetFile(bool force) {
+  if (opts.statusDir.empty()) return;
+  std::string name = remoteTarget.empty() ? "none" : remoteTarget;
+  uint64_t now = nowMs();
+  if (!force && name == remoteTargetWritten && now - remoteTargetWriteMs < 10000) return;
+  remoteTargetWriteMs = now;
+  if (writeAtomicLine(opts.statusDir + "/remote-target", name)) remoteTargetWritten = name;
+}
+
+void Server::setRemoteTarget(const std::string& name, const std::string& why) {
+  if (name == remoteTarget) return;
+  IOS3_TRACE("remote target: '%s' -> '%s' (%s)", remoteTarget.empty() ? "none" : remoteTarget.c_str(), name.empty() ? "none" : name.c_str(), why.c_str());
+  remoteTarget = name;
+  writeRemoteTargetFile(true);
+}
+
+// Called from afterTick, after every message and every run-loop pass.
+void Server::updateRemoteTarget() {
+  std::string a = arbiter.activeName();
+  if (!a.empty()) {
+    if (a != remoteTarget) setRemoteTarget(a, remoteTarget.empty() ? "active" : "'" + a + "' took over");
+  } else if (!remoteTarget.empty()) {
+    const Client* c = clientByName(remoteTarget);
+    if (!c || c->controller) setRemoteTarget("", "'" + remoteTarget + "' disconnected");
+  }
+  writeRemoteTargetFile(false);  // the periodic rewrite
+}
+
+// While a paused source of ours is the target (nothing of ours active): audio that is not ours (the
+// built-in Music app, another app) takes the remote back for good, until one of our sources plays again.
+void Server::checkOtherAudio(uint64_t now) {
+  if (remoteTarget.empty() || arbiter.activeId() >= 0) return;
+  if (now - lastOtherAudioCheckMs < kOtherAudioPollMs) return;
+  lastOtherAudioCheckMs = now;
+  if (otherAudioPlaying()) setRemoteTarget("", "other audio is playing (not ours): the remote's keys go back to the system");
 }
 
 static const char* ctrlName(uint8_t v) {
@@ -605,7 +662,15 @@ void Server::handleControl(Client& c, const Message& m) {
   if (m.payload.size() < sizeof(AudiodControl)) { IOS3_TRACE("control: short payload from #%d, ignored", c.id); return; }
   AudiodControl ctl; memcpy(&ctl, m.payload.data(), sizeof ctl);
   Client* target = clientById(arbiter.activeId());  // the active source acts on the verb
-  bool resume = false;
+  bool resume = false, paused = false;
+  if (!target && !remoteTarget.empty()) {
+    // B1.16.16: nothing active, but a paused source of ours is the remote's target: every verb goes to
+    // it. TOGGLE (the remote's play/pause) and PLAY resume it, sent as PLAY: it is paused, and PLAY is a
+    // no-op for a source that is in fact still playing (a silent gap), where TOGGLE would pause it.
+    target = clientByName(remoteTarget);
+    paused = target != nullptr;
+    if (paused && (ctl.verb == AUDIOD_CTRL_PLAY || ctl.verb == AUDIOD_CTRL_TOGGLE)) { ctl.verb = AUDIOD_CTRL_PLAY; resume = true; }
+  }
   if (!target && (ctl.verb == AUDIOD_CTRL_PLAY || ctl.verb == AUDIOD_CTRL_TOGGLE)) {
     // Nothing is playing: PLAY/TOGGLE resumes the most-recently-active source if it is still connected
     // (e.g. a Spotify that B1.12 paused on preemption). Send it PLAY.
@@ -617,7 +682,7 @@ void Server::handleControl(Client& c, const Message& m) {
                             lastActiveName.empty() ? "" : (" (last '" + lastActiveName + "' gone)").c_str()); return; }
   if (target->version < AUDIOD_PROTO_VERSION_2) { IOS3_TRACE("control: %s -> '%s' ignored (v1 source cannot be controlled)", ctrlName(ctl.verb), target->name.c_str()); return; }
   sendToClient(*target, AUDIOD_MSG_CONTROL, &ctl, sizeof ctl);
-  IOS3_TRACE("control: %s -> '%s'%s", ctrlName(ctl.verb), target->name.c_str(), resume ? " (resume)" : "");
+  IOS3_TRACE("control: %s -> '%s'%s%s", ctrlName(ctl.verb), target->name.c_str(), resume ? " (resume)" : "", paused ? " (paused remote target)" : "");
 }
 
 void Server::afterTick() {
@@ -651,6 +716,7 @@ void Server::afterTick() {
     unlockedThisStart = false;
   }
   writeActiveSourceFile(a.empty() ? "none" : a);
+  updateRemoteTarget();  // B1.16.16
   pump();
 }
 
@@ -764,6 +830,7 @@ void Server::run() {
     flushDockForward(now);    // B1.16.12: the latest held dock level, once the window has passed
     firePreempts(now);        // B1.12: tell a source that lost the output to pause
     syncLockPlugin(now);      // B1.16.11: live lock_plugin changes, re-enable after a SpringBoard restart
+    checkOtherAudio(now);     // B1.16.16: other audio while a paused source is the remote's target
     maybeReloadSettings(now);  // B1.14: pick up a settings.conf change
     if (out->resumed()) {
       // The output was paused (interruption / yielding to another app) and just resumed: the active
@@ -785,6 +852,8 @@ void Server::run() {
   out->flush();
   out->idle();
   writeActiveSourceFile("none");
+  remoteTarget.clear();
+  writeRemoteTargetFile(true);  // B1.16.16: a stopped audiod leaves "none" (a crash leaves the last value; the socket check covers it)
 }
 
 }  // namespace audiod

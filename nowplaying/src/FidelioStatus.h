@@ -2,11 +2,12 @@
 // that owns the speaker right now, or "none"), then that source's status-<source>.plist (written
 // atomically by cspot-ios3 / fidelio-raop) and its cover-<source>.jpg, and gathers the device-side
 // numbers for the Technical tab. Without audiod (no active-source file) it shows the most recently
-// updated source.
+// updated source. B1.16.16 (1.4.3): with nothing active it keeps showing audiod's remote target
+// (remote-target: a paused source of ours, until it disconnects, stops, or other audio plays), as paused.
 #import <UIKit/UIKit.h>
 
 #define FIDELIO_DIR @"/var/mobile/fidelio"
-#define FIDELIO_APP_VERSION @"1.4.2 (dock remote keys)"
+#define FIDELIO_APP_VERSION @"1.4.3 (paused source kept)"
 #define FIDELIO_STALE_S 15.0          // status file older than this: the player is not updating it
 #define FIDELIO_ACTIVE_SOURCE_STALE_S 30.0  // active-source older than this (audiod rewrites it every 10 s): audiod is gone
 // B1.18: the cover is decoded to the size it is shown at: 256 px on the phone (memory: a deliberate
@@ -24,6 +25,8 @@
   BOOL fileUnreadable;     // last refresh: it exists but is not a plist dictionary (writer bug)
   NSString* activeSource;  // audiod's active-source: "spotify" / "airplay" / "none"; "" when the file is absent
   NSString* shownSource;   // whose status-<source>.plist `dict` comes from
+  BOOL pausedTarget;       // B1.16.16: shownSource is audiod's remote target and nothing is active
+  BOOL idle;               // B1.16.16: audiod runs and has neither an active source nor a remote target
 }
 @property(nonatomic, readonly) NSDictionary* dict;
 @property(nonatomic, readonly) UIImage* cover;
@@ -31,7 +34,8 @@
 @property(nonatomic, readonly) BOOL fileUnreadable;
 @property(nonatomic, readonly) NSString* activeSource;
 @property(nonatomic, readonly) NSString* shownSource;
-- (BOOL)audiodIdle;      // audiod says nothing owns the output: show idle whatever the files claim
+- (BOOL)audiodIdle;      // audiod says nothing owns the output and no paused source is the remote's target: show idle
+- (BOOL)pausedTarget;    // B1.16.16: the shown source is paused and still the remote's target: keep its track up
 - (NSTimeInterval)spotifyStatusAge;  // age of status-spotify.plist (updated field, else mtime); -1 if absent. Watchdog.
 
 - (void)refresh;  // called once a second

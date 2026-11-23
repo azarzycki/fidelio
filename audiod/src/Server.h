@@ -27,7 +27,7 @@ namespace audiod {
 
 struct ServerOptions {
   std::string sockPath = AUDIOD_DEFAULT_SOCK;
-  std::string statusDir;       // writes <dir>/active-source ("" = off)
+  std::string statusDir;       // writes <dir>/active-source and (B1.16.16) <dir>/remote-target ("" = off)
   std::string eventLog;        // machine-readable transition log ("" = off)
   bool feedSilence = true;     // keep the output fed with silence while nothing is active
   int tickMs = 20;
@@ -127,6 +127,17 @@ class Server {
   Client* clientById(int id);
   size_t fadeFrames() const;
   void writeActiveSourceFile(const std::string& name);
+  // B1.16.16: the dock remote's target (DockRemote in iapd and NowPlaying read <statusDir>/remote-target).
+  // It is the active source; with nothing active, the last active source while it is still paused and
+  // resumable: it stays the target until it disconnects, sends STOP (an AirPlay sender left, a Spotify
+  // playlist ended), another source of ours becomes active (then that one is the target), or audio that
+  // is not ours plays while nothing of ours is active (OtherAudio.h, polled every kOtherAudioPollMs).
+  // No time limit. "" = no target (the file says "none").
+  void updateRemoteTarget();
+  void setRemoteTarget(const std::string& name, const std::string& why);
+  void checkOtherAudio(uint64_t now);
+  void writeRemoteTargetFile(bool force);
+  static bool writeAtomicLine(const std::string& path, const std::string& line);
   void logEvent(const Event& e);
   // B1.9 A
   bool hwReady() const { return hw && hwAvailable; }
@@ -163,6 +174,8 @@ class Server {
   void maybeReloadSettings(uint64_t now);
   // B1.16: a controller sent a transport verb -> route it to the active source (or, for PLAY with
   // nothing active, the most-recently-active connected source so a paused Spotify resumes).
+  // B1.16.16: with nothing active, every verb goes to the remote target when there is one (TOGGLE and
+  // PLAY as PLAY: it is paused); without a target the B1.16 rule above is unchanged.
   void handleControl(Client& c, const Message& m);
   // B1.12: a source lost the output -> after a flap-filtering delay, tell it (PREEMPTED) if it is
   // still not active. Scheduled on the TAKEOVER, fired from the run loop.
@@ -219,6 +232,11 @@ class Server {
   int listenFd = -1;
   int nextId = 1;
   std::map<int, Client> clients;  // by fd
+  std::string remoteTarget;              // B1.16.16 (see updateRemoteTarget); "" = none
+  std::string remoteTargetWritten = "?"; // what the file holds
+  uint64_t remoteTargetWriteMs = 0;
+  uint64_t lastOtherAudioCheckMs = 0;
+  static const uint64_t kOtherAudioPollMs = 500;
   std::string lastActiveWritten = "?";
   uint64_t lastActiveWriteMs = 0;
   uint64_t lastSilenceMs = 0;

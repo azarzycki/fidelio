@@ -1,0 +1,38 @@
+#include "NPSource.h"
+
+#include <string.h>
+
+static int isSpace(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+
+void NPSourceName(const char* text, size_t len, char* out, size_t cap) {
+  if (!cap) return;
+  out[0] = 0;
+  if (!text) return;
+  while (len && isSpace(*text)) { text++; len--; }
+  while (len && isSpace(text[len - 1])) len--;
+  if (len > cap - 1) len = cap - 1;
+  memcpy(out, text, len);
+  out[len] = 0;
+}
+
+static int namesSource(const char* s) { return s && s[0] && strcmp(s, "none") != 0; }
+
+static void copyName(char* dst, const char* src) {
+  size_t n = strlen(src);
+  if (n > NP_SOURCE_NAME_MAX - 1) n = NP_SOURCE_NAME_MAX - 1;
+  memcpy(dst, src, n);
+  dst[n] = 0;
+}
+
+void NPPickSource(const char* active, const char* target, NPSourcePick* out) {
+  memset(out, 0, sizeof *out);
+  if (!active) active = "";
+  if (namesSource(active)) {
+    copyName(out->shown, active);
+  } else if (namesSource(target)) {
+    copyName(out->shown, target);
+    out->paused = 1;
+  } else if (strcmp(active, "none") == 0) {
+    out->idle = 1;
+  }
+}

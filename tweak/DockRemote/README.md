@@ -1,12 +1,38 @@
 # DockRemote (MobileSubstrate tweak, iPhone OS 3.1.3 phone)
 
 Forwards the dock's Simple Remote **play/pause, next, previous** keys to `fidelio-audiod` (which routes
-them to the active source) instead of letting them reach the built-in iPod app. Other keys (menu,
+them to the active source, or to a paused source of ours that is still the remote's target) instead of
+letting them reach the built-in iPod app. Other keys (menu,
 select, up, down) and the volume keys always fall through. Built for a Philips Fidelio DS9000 dock.
 
 **Phone only.** On the 5.1.1 iPad, iapd imports no `GSSendEvent`; it sends the keys to the now-playing
 app with `MRMediaRemoteSendCommand`. The iPad route is therefore NowPlaying acting as a media
 controller, an app feature rather than this tweak.
+
+## B1.16.16: a paused source keeps the remote
+
+Device trace of 2026-11-22 (B1.16.15, swallow on, Spotify playing): play/pause was taken and paused
+Spotify; 1.5 s later audiod released Spotify (`quiet 1516 ms`) and wrote `none` to `active-source`; the
+next play/pause, meant to resume, found no source active, passed, and the built-in iPod app started
+playing. The takeover covered a playing source, not a paused one.
+
+Since B1.16.16 the condition reads audiod's **remote target**, `/var/mobile/fidelio/remote-target` (one
+line: `spotify`, `airplay` or `none`), instead of `active-source`:
+
+- audiod writes it (B1.16.16 and later): the active source; with nothing active, the last active source,
+  paused, until it disconnects from audiod, sends STOP (raop: the AirPlay session was torn down; cspot:
+  the playlist ended), another source of ours becomes active (that one is then the target), or audio
+  that is not ours plays (the Music app). No time limit. Replaced atomically (a temporary file renamed)
+  at once on a change, and rewritten every 10 s.
+- With nothing active, audiod sends every verb to the target, TOGGLE and PLAY as PLAY: play/pause
+  resumes the paused source; next and previous go to it as well (`audiod/README.md`, B1.16.16).
+- **No file** (an audiod before B1.16.16), or a file **older than 30 s** (left by an audiod that no longer
+  maintains it): `active-source` decides, exactly as in B1.16.15.
+- **audiod not running:** the socket check still gates every take. A crashed audiod leaves its last
+  target in the file and its socket file on disk, but `connect()` fails, so the press passes. A stopped
+  audiod writes `none` on its way out, and a starting one writes `none` before it accepts a client.
+- The cost per press is what it was: one `stat` and one small read more (the target), no allocation.
+- Load line: `DockRemote B1.16.16: hooked GSSendEvent ...`.
 
 ## Status (B1.16.15): the measured decode, a key log for NowPlaying; swallow behind a flag, first device test passed for previous and next
 
@@ -72,7 +98,7 @@ controller, an app feature rather than this tweak.
 - **Observe-only by default.** With no flags set, the hook passes every record straight through and writes
   nothing.
 - **Load line.** Every iapd start appends one line to `/var/mobile/fidelio/remote-events.log` (and
-  syslog): `DockRemote B1.16.15: hooked GSSendEvent with MSHookFunction from <library> ...` or `NOT hooked
+  syslog): `DockRemote B1.16.16: hooked GSSendEvent with MSHookFunction from <library> ...` or `NOT hooked
   (...)`.
 - **Observe:** `touch /var/mobile/fidelio/remote-tweak.observe`.
   - The hook appends one line per record to `remote-events.log`, and STILL passes it on: `gs type=
@@ -91,8 +117,9 @@ controller, an app feature rather than this tweak.
 - **Swallow:** only once you also `touch /var/mobile/fidelio/remote-tweak.swallow`.
   - Taken over: play/pause, next and previous, with all their codes (the table above). The verb goes to
     audiod, and the iPod app sees nothing of the press.
-  - Only while `audiod.dock_remote=on`, a Fidelio source owns audiod, and audiod is reachable
-    (`DockRemoteCore.cpp`, asked once per press). Otherwise the press passes as before.
+  - Only while `audiod.dock_remote=on`, a source of ours is audiod's remote target (B1.16.16, above;
+    before: a source of ours owns audiod), and audiod is reachable (`DockRemoteCore.cpp`, asked once per
+    press). Otherwise the press passes as before.
   - Everything else always passes through.
 - **Kill switch (no rebuild):** `touch /var/mobile/fidelio/remote-tweak.disabled` makes the hook a complete
   no-op, checked on every record.
@@ -104,6 +131,13 @@ socket timeouts to audiod.
 Host test: `hosttest/keys_test.cpp`, the suite `remote_keys` of `tools/run-host-tests.sh`. It runs
 `DockRemoteKeys.cpp` on the host: each row of the table, the shapes that must pass, the decisions per
 press, exactly one verb and one log line per press, and the 16 KB cap.
+
+B1.16.16: `hosttest/core_test.cpp` (suite `remote_core`) runs `DockRemoteCore.cpp`'s condition against
+files in a temporary directory: remote-target naming a source or `none`, absent or stale (the fall-back
+to active-source), the socket reachable or not, the kill switch and the setting, and the trace's press
+sequence through the PressTracker (without remote-target the resume passes, as on the phone; with it
+both presses are taken). `hosttest/probe.cpp` (`dockremote_probe`) is the same condition as a command;
+audiod's suite `remote_tgt` runs it against the files a host audiod writes.
 
 ## Device facts used (phone, iPhone OS 3.1.3)
 
@@ -137,6 +171,10 @@ Install **undocked** (observe-only is safe to install):
 5. The swallow test: with `dock_remote=on` and Spotify playing, `touch
    /var/mobile/fidelio/remote-tweak.swallow`. play/pause, next and previous should drive Spotify and show
    "(taken)" in the Technical tab, and the iPod app should not start.
+6. B1.16.16 (needs audiod B1.16.16): play/pause to pause, wait more than 2 s (audiod releases the
+   source; `remote-target` still says `spotify`), play/pause again: Spotify resumes, both presses show
+   "taken", and the iPod app does not start. Then start the Music app by hand: `remote-target` becomes
+   `none` and the keys pass to it again.
 
 Remove: delete the two files (or `touch /var/mobile/fidelio/remote-tweak.disabled` to disable without
 removing), then restart iapd undocked and reseat.

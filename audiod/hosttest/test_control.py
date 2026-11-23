@@ -107,10 +107,11 @@ send_control_inline(sock, PLAY); time.sleep(0.3)
 check(sp.controls and sp.controls[-1] == PLAY, f"PLAY with nothing active resumed the last source (spotify got {sp.controls})")
 log = open(f"{TMP}/audiod.log").read()
 check("(resume)" in log, "audiod logged the resume routing")
-# PAUSE/NEXT with nothing active is a no-op (not routed anywhere)
+# B1.16.16: the released (paused) source is still the remote's target, so NEXT goes to it as well
+# (before B1.16.16 NEXT with nothing active was ignored; with no target it still is: test_remote_target.py).
 before = len(sp.controls)
 send_control_inline(sock, NEXT); time.sleep(0.3)
-check(len(sp.controls) == before, "NEXT with nothing active is ignored (not routed)")
+check(sp.controls[before:] == [NEXT], f"NEXT with nothing active goes to the paused remote target (spotify got {sp.controls})")
 sp.close(); p.terminate(); p.wait()
 
 # --- 5. the shared control helper (control_send: the app / DockRemote path) ------------------------

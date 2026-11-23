@@ -249,6 +249,9 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
   // audiod decides who owns the speaker: with it idle, a player that still claims "playing" (a
   // paused AirPlay sender streaming silence, a source that lost the arbitration) is not shown.
   BOOL active = !stale && (playing || paused) && ![status audiodIdle];
+  // B1.16.16: a paused source that is still the dock remote's target keeps its track on screen; audiod
+  // plays nothing, so it reads "Paused" whatever the player's file says (a silent gap reads "playing").
+  if (active && [status pausedTarget]) { playing = NO; paused = YES; }
 
   if (active) {
     titleLabel.text = [status string:@"title"];
@@ -276,8 +279,8 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
   else if (status.fileUnreadable) line = @"Waiting for a player (unreadable status file)";
   else if (stale) line = @"Waiting for a player (status not updating)";
   else if (active) {
-    NSString* src = [status activeSource];
-    if (![src length]) src = [status string:@"source"];
+    NSString* src = [status pausedTarget] ? [status shownSource] : [status activeSource];
+    if (![src length] || [src isEqualToString:@"none"]) src = [status string:@"source"];
     NSString* via = [src isEqualToString:@"airplay"] ? @"AirPlay" : ([src isEqualToString:@"spotify"] ? @"Spotify" : src);
     line = playing ? @"Playing" : @"Paused";
     if ([via length]) line = [NSString stringWithFormat:@"%@ via %@", line, via];

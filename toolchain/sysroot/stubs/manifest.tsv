@@ -356,9 +356,9 @@ sym	/usr/lib/libSystem.B.dylib	_strerror	cspot-ios3 fidelio-audiod fidelio-raop	
 sym	/usr/lib/libSystem.B.dylib	_strerror_r	cspot-ios3 fidelio-raop	-
 sym	/usr/lib/libSystem.B.dylib	_strftime	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod	-
 sym	/usr/lib/libSystem.B.dylib	_strftime_l	cspot-ios3	-
-sym	/usr/lib/libSystem.B.dylib	_strlen	DockRemote.dylib cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx smoke/libt.dylib	-
+sym	/usr/lib/libSystem.B.dylib	_strlen	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-lockctl fidelio-raop smoke/cxx-libcxx smoke/libt.dylib	-
 sym	/usr/lib/libSystem.B.dylib	_strncmp	DockRemote.dylib cspot-ios3 fidelio-audiod	-
-sym	/usr/lib/libSystem.B.dylib	_strncpy	NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
+sym	/usr/lib/libSystem.B.dylib	_strncpy	DockRemote.dylib NowPlaying.app/NowPlaying cspot-ios3 fidelio-audiod fidelio-raop	-
 sym	/usr/lib/libSystem.B.dylib	_strrchr	fidelio-raop	-
 sym	/usr/lib/libSystem.B.dylib	_strstr	cspot-ios3 fidelio-raop smoke/hello	-
 sym	/usr/lib/libSystem.B.dylib	_strtod	cspot-ios3 fidelio-audiod fidelio-raop smoke/cxx-libcxx	-

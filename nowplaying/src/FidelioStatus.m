@@ -1,11 +1,13 @@
 #import "FidelioStatus.h"
 #include "NPLayout.h"
+#include "NPSource.h"
 
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <mach/mach.h>
 #include <mach/mach_host.h>
 #include <net/if.h>
+#include <string.h>
 #include <netinet/in.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
@@ -48,13 +50,37 @@ static NSDate* Mtime(NSString* path) {
 }
 
 - (BOOL)audiodIdle {
-  return [activeSource isEqualToString:@"none"];
+  return idle;
 }
 
-// Which status file to show: audiod's active source; when none is active (or audiod is not running)
-// the source whose status file changed most recently, so the Technical tab still has data.
+- (BOOL)pausedTarget {
+  return pausedTarget;
+}
+
+// One of audiod's one-line files, as a name; nil when it is absent or older than
+// FIDELIO_ACTIVE_SOURCE_STALE_S (audiod rewrites both every 10 s: an older one is a leftover).
+static NSString* FreshName(NSString* name) {
+  NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:name];
+  NSDate* mtime = Mtime(path);
+  if (!mtime || [[NSDate date] timeIntervalSinceDate:mtime] > FIDELIO_ACTIVE_SOURCE_STALE_S) return nil;
+  NSString* text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:NULL];
+  const char* c = text ? [text UTF8String] : NULL;
+  if (!c) return nil;
+  char buf[NP_SOURCE_NAME_MAX];
+  NPSourceName(c, strlen(c), buf, sizeof buf);
+  return [NSString stringWithUTF8String:buf];
+}
+
+// Which status file to show (NPSource.c decides): audiod's active source; else (B1.16.16) its remote
+// target, a paused source of ours; else, when none is active (or audiod is not running), the source
+// whose status file changed most recently, so the Technical tab still has data.
 - (NSString*)pickSource {
-  if ([activeSource length] && ![activeSource isEqualToString:@"none"]) return activeSource;
+  NSString* target = FreshName(@"remote-target");
+  NPSourcePick pick;
+  NPPickSource([activeSource UTF8String], target ? [target UTF8String] : NULL, &pick);
+  pausedTarget = pick.paused ? YES : NO;
+  idle = pick.idle ? YES : NO;
+  if (pick.shown[0]) return [NSString stringWithUTF8String:pick.shown];
   NSDate* sp = Mtime(StatusPath(@"spotify"));
   NSDate* ap = Mtime(StatusPath(@"airplay"));
   if (ap && (!sp || [ap compare:sp] == NSOrderedDescending)) return @"airplay";
@@ -62,12 +88,9 @@ static NSDate* Mtime(NSString* path) {
 }
 
 - (void)refresh {
-  NSString* actPath = [FIDELIO_DIR stringByAppendingPathComponent:@"active-source"];
-  NSString* act = [NSString stringWithContentsOfFile:actPath encoding:NSUTF8StringEncoding error:NULL];
-  act = act ? [act stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
   // audiod rewrites the file every 10 s; one much older than that is a leftover of a dead audiod.
-  NSDate* actMtime = Mtime(actPath);
-  if (!actMtime || [[NSDate date] timeIntervalSinceDate:actMtime] > FIDELIO_ACTIVE_SOURCE_STALE_S) act = @"";
+  NSString* act = FreshName(@"active-source");
+  if (!act) act = @"";
   [activeSource release];
   activeSource = [act copy];
   NSString* src = [self pickSource];

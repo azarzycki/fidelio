@@ -7,6 +7,8 @@ A native UIKit app for iPhone OS 3.1 (armv6) that shows what cspot-ios3 is playi
 ## What the app reads (1.2, audiod)
 `/var/mobile/fidelio/active-source` — written by fidelio-audiod (rewritten every 10 s): `spotify`, `airplay` or `none`; a file older than 30 s is treated as absent (audiod gone). The app shows **only** that source's status; with `none` it shows "Idle" even if a player still claims to be playing (a paused AirPlay sender streaming silence, a source that lost the arbitration). Without the file (audiod not running) it shows whichever `status-*.plist` changed most recently.
 
+`/var/mobile/fidelio/remote-target` (1.4.3, audiod B1.16.16) — the dock remote's target, written by fidelio-audiod the same way (atomically, at once on a change, rewritten every 10 s; older than 30 s = absent): the active source, or a paused source of ours that is still resumable, or `none`. With `active-source` at `none` and a target named here, the app keeps showing that source, paused (below). Without the file (an older audiod) it behaves as 1.4.2.
+
 `/var/mobile/fidelio/status-spotify.plist` / `status-airplay.plist` — the per-source status (cspot-ios3 and fidelio-raop no longer share one `status.plist`); same keys as below, `cover` names `cover-spotify.jpg` / `cover-airplay.jpg`. The watchdog (`killall -9 cspot-ios3` when the status goes stale) watches `status-spotify.plist` regardless of what is shown.
 
 Original contract, per source: `status.plist` — polled once per second with `[NSDictionary dictionaryWithContentsOfFile:]`. iOS 3 has no JSON parser in Foundation (NSJSONSerialization is iOS 5), so cspot-ios3 rev 4 writes **both** `status.json` (your contract, for scripts) and `status.plist` (XML plist, same keys/values) atomically, each as `.tmp` + `rename()`. The app reads only the plist. A partial read (file missing for a moment) keeps the last good dictionary, so the screen never flickers.
@@ -83,6 +85,32 @@ phone's NowPlaying behaves as before, apart from the version, now 1.4.1.
 Test on the iPad: Spotify playing through audiod, NowPlaying in front, dock keys pressed. Does
 `remote-control.log` fill, and with which subtypes? Try stage 1, then 2, then 3. Also check who gets the
 keys when the iPod app was the last to play.
+
+## A paused source stays on screen (1.4.3, B1.16.16)
+
+The owner's rule (2026-11-22): when Spotify (or AirPlay) is paused through the dock, its cover stays up
+until it disconnects, another source takes over, or the Music app plays. The app follows audiod's remote
+target, the same state the DockRemote tweak reads, so the app, the tweak and audiod agree.
+
+| State (audiod's files) | The Now Playing tab |
+|---|---|
+| playing: `active-source` = `spotify` | the track, cover, title, artist; "Playing via Spotify"; pause glyph |
+| paused target: `active-source` = `none`, `remote-target` = `spotify` | the same track, cover, title and artist stay; "Paused via Spotify"; play glyph; the buttons stay enabled (play resumes through audiod) |
+| target cleared (disconnect, STOP, other audio): both `none` | the idle view: placeholder tile, "Idle" |
+| another source takes over: `airplay` in both | that source's track at once (the shown status file switches; the old track is never shown under the new source) |
+| no audiod (files absent or older than 30 s) | as before: the most recently updated status file |
+
+- While the target is paused the line reads "Paused" whatever the player's file says (a silent gap
+  between tracks can still say "playing"); the progress bar keeps the player's position.
+- The receivers keep their status and cover files while paused: cspot writes `state` `paused` and keeps
+  `title`, `artist` and the cover, and rewrites the file every second; raop sets `paused` on FLUSH or
+  PAUSE and keeps the track (it clears it only when a new track or session starts).
+- **How it learns of a change:** the 1 Hz refresh (`FidelioStatus refresh`) reads `active-source`, then
+  `remote-target`, so a change shows within about a second.
+- The decision is plain C (`NPSource.c`), host-tested by `nowplaying/hosttest/source_test.c` (the suite
+  `np_source`).
+- The lock-screen plugin is unchanged: it still follows `active-source` and is disabled when nothing is
+  active (keeping the screen lit while paused is not wanted).
 
 ## The dock remote's key presses in the Technical tab (1.4.2, B1.16.13)
 

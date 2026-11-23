@@ -7,22 +7,32 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <syslog.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "audiod/proto.h"
 
 namespace dockremote {
 
-static const char* kDisable    = "/var/mobile/fidelio/remote-tweak.disabled";
-static const char* kConf       = "/var/mobile/fidelio/settings.conf";
-static const char* kActive     = "/var/mobile/fidelio/active-source";
 static const char* kSock       = "/var/mobile/fidelio/audiod.sock";
+
+// Literals only: constant-initialised, so no guard variable (a function-local static would link
+// libc++abi's guard and exception code into the dylib).
+static const Paths kDevicePaths = {
+  "/var/mobile/fidelio/remote-tweak.disabled",
+  "/var/mobile/fidelio/settings.conf",
+  "/var/mobile/fidelio/active-source",
+  "/var/mobile/fidelio/remote-target",  // B1.16.16
+  "/var/mobile/fidelio/audiod.sock",
+};
+
+const Paths& devicePaths() { return kDevicePaths; }
 
 static bool exists(const char* p) { struct stat st; return stat(p, &st) == 0; }
 
 // Is audiod.dock_remote=on in settings.conf? Default off. Tiny, line-based, no allocation.
-static bool dockRemoteEnabled() {
-  FILE* f = fopen(kConf, "r");
+static bool dockRemoteEnabled(const char* conf) {
+  FILE* f = fopen(conf, "r");
   if (!f) return false;
   char line[256];
   bool on = false;
@@ -39,9 +49,9 @@ static bool dockRemoteEnabled() {
   return on;
 }
 
-// Does a Fidelio source currently own audiod? (active-source file holds "spotify"/"airplay", not "none".)
-static bool sourceActive() {
-  FILE* f = fopen(kActive, "r");
+// Does the file name a source of ours ("spotify"/"airplay"), not "none"? One small read, no allocation.
+static bool namesASource(const char* path) {
+  FILE* f = fopen(path, "r");
   if (!f) return false;
   char s[32] = {0};
   size_t n = fread(s, 1, sizeof s - 1, f);
@@ -50,27 +60,46 @@ static bool sourceActive() {
   return n > 0 && strcmp(s, "none") != 0;
 }
 
+// B1.16.16: audiod (B1.16.16 and later) rewrites remote-target at once on every change and every 10 s. A
+// file older than this was left by an audiod that no longer writes it (an older audiod started after a
+// newer one): it is ignored, and active-source decides as before B1.16.16.
+static const long kTargetStaleS = 30;
+
+int remoteTargetState(const Paths& p) {
+  struct stat st;
+  if (stat(p.target, &st) != 0) return -1;  // absent: an audiod before B1.16.16
+  long age = (long)(time(0) - st.st_mtime);
+  if (age > kTargetStaleS) return -1;       // not maintained: treated as absent
+  return namesASource(p.target) ? 1 : 0;
+}
+
 // Non-blocking reachability: a connect() to the socket with a short timeout.
-static bool audiodReachable() {
+static bool audiodReachable(const char* sock) {
   int s = socket(AF_UNIX, SOCK_STREAM, 0);
   if (s < 0) return false;
   struct timeval to = { 0, 150 * 1000 };
   setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &to, sizeof to);
   sockaddr_un a; memset(&a, 0, sizeof a); a.sun_family = AF_UNIX;
-  strncpy(a.sun_path, kSock, sizeof a.sun_path - 1);
+  strncpy(a.sun_path, sock, sizeof a.sun_path - 1);
   bool ok = connect(s, (sockaddr*)&a, sizeof a) == 0;
   close(s);
   return ok;
 }
 
-bool shouldForward(uint32_t code) {
-  if (exists(kDisable)) return false;      // global kill switch, no rebuild needed
-  if (!verbForCode(code)) return false;    // not a key we take over
-  if (!dockRemoteEnabled()) return false;  // the user setting is off
-  if (!sourceActive()) return false;       // nothing Fidelio is playing -> let the iPod app have it
-  if (!audiodReachable()) return false;    // audiod not up -> fall through
+bool shouldForwardAt(const Paths& p, uint32_t code) {
+  if (exists(p.disable)) return false;           // global kill switch, no rebuild needed
+  if (!verbForCode(code)) return false;          // not a key we take over
+  if (!dockRemoteEnabled(p.conf)) return false;  // the user setting is off
+  // B1.16.16: the remote's target (a source of ours, playing or paused and resumable) when audiod
+  // writes remote-target; otherwise, as before, a source of ours owning audiod (active-source).
+  int t = remoteTargetState(p);
+  if (t == 0) return false;                      // no target -> let the iPod app have it
+  if (t < 0 && !namesASource(p.active)) return false;
+  if (!audiodReachable(p.sock)) return false;    // audiod not up (a leftover file proves nothing) -> fall through
   return true;
 }
+
+bool shouldForward(uint32_t code) { return shouldForwardAt(devicePaths(), code); }
 
 bool forward(uint8_t verb) {
   int s = socket(AF_UNIX, SOCK_STREAM, 0);
