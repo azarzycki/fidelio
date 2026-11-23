@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # tools/run-host-tests.sh [REPO]   (REPO defaults to the repo this script lives in)
 #
-# Builds the host targets the 25 host suites need (19 audiod + the NowPlaying and lock-plugin layouts + cspot's cover URL
-# + the NowPlaying key log + the DockRemote key decode) (only what is missing / out of date), runs
+# Builds the host targets the 30 host suites need (19 audiod + the NowPlaying and lock-plugin layouts + cspot's cover URL
+# + the NowPlaying key log + the DockRemote key decode + the packages' install scripts, under a bash 4.0 built
+# here) (only what is missing / out of date), runs
 # the suites one after another (they share fixed /tmp/audiod-* dirs and TCP ports: never in
 # parallel), and prints a per-suite table plus a TOTAL line.
 #
@@ -25,6 +26,9 @@
 #
 #   BUILD_ROOT=DIR    where everything is built (default: "build" next to the repo; never inside it)
 #
+# The suite pkg_debs checks the .deb files tools/build-debs.sh makes from $BUILD_ROOT/arm-out: run
+# tools/build-arm.sh first (it fails without that output).
+#
 # Output: logs in $BUILD_ROOT/host-test-logs/<timestamp>/ (latest -> that dir), summary.txt there.
 # The tests themselves write to fixed /tmp/audiod-* directories (hard-coded in the test scripts); a
 # re-run overwrites them, so after a FAILED run the directories it touched (daemon logs, event logs,
@@ -42,7 +46,8 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/dock-audiod"; RAOP="$HOST/airplay/dock-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 529 ok, 0 FAIL, at B1.17; 521 at B1.16.16; 447 at B1.16.15)
+# name | baseline ok count | command (baseline: 849 ok, 0 FAIL, at B1.17 part B (pkg_setup 243 + pkg_debs 77);
+# 529 at B1.17 part A; 521 at B1.16.16; 447 at B1.16.15)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -72,6 +77,8 @@ remote_keys  65 $HOST/dockremote/keys_test
 remote_core  22 $HOST/dockremote/core_test
 remote_tgt   37 $PYTHON $T/test_remote_target.py $AUDIOD $HOST/dockremote/dockremote_probe
 np_source    23 $HOST/nowplaying/source_test
+pkg_setup   243 bash $REPO/packaging/hosttest/test_setup.sh $HOST/bash-4.0/src/bash-4.0/bash $REPO
+pkg_debs     77 bash $REPO/packaging/hosttest/test_debs.sh $BUILD_ROOT/arm-out $REPO
 "
 
 case "$BUILD_ROOT$REPO" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
@@ -148,6 +155,10 @@ build_host() {
     "$REPO/tweak/DockRemote/DockRemoteCore.cpp" "$REPO/tweak/DockRemote/DockRemoteKeys.cpp" "$REPO/tweak/DockRemote/hosttest/probe.cpp"
   logged "$LOGS/host-np-source-build.log" cc -O2 -Wall -Wextra -std=c99 -I"$REPO/nowplaying/src" -o "$HOST/nowplaying/source_test" \
     "$REPO/nowplaying/src/NPSource.c" "$REPO/nowplaying/hosttest/source_test.c"
+  # B1.17: the devices' /bin/sh, bash 4.0, for the packages' install scripts (suite pkg_setup), and the
+  # tools the package suites use
+  need_tools curl make tar gzip dpkg-deb ar md5sum
+  ensure_bash40
 }
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
@@ -156,7 +167,7 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
   note "host build done after ${SECONDS}s"
 fi
 BUILD_SECS=$SECONDS
-for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/nowplaying/lock_layout_test" "$HOST/cspot/cover_url_test" "$HOST/nowplaying/keylog_test" "$HOST/dockremote/keys_test" "$HOST/dockremote/core_test" "$HOST/dockremote/dockremote_probe" "$HOST/nowplaying/source_test" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
+for f in "$AUDIOD" "$RAOP" "$CSPOT" "$HOST/nowplaying/layout_test" "$HOST/nowplaying/lock_layout_test" "$HOST/cspot/cover_url_test" "$HOST/nowplaying/keylog_test" "$HOST/dockremote/keys_test" "$HOST/dockremote/core_test" "$HOST/dockremote/dockremote_probe" "$HOST/nowplaying/source_test" "$HOST/bash-4.0/src/bash-4.0/bash" "$HOST/audiod/control_send" "$HOST/audiod/framing_test" "$HOST/audiod/aqsink_test" \
          "$HOST/audiod/aqsink_bare_test" "$HOST/audiod/writeframe_test" "$HOST/audiod/settings_test"; do
   [ -x "$f" ] || die "missing host binary $f (run without SKIP_BUILD=1)"
 done
