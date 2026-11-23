@@ -46,7 +46,8 @@ T="$REPO/audiod/hosttest"
 AUDIOD="$HOST/audiod/dock-audiod"; RAOP="$HOST/airplay/dock-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 849 ok, 0 FAIL, at B1.17 part B (pkg_setup 243 + pkg_debs 77);
+# name | baseline ok count | command (baseline: 928 ok, 0 FAIL, after the B1.17 review (pkg_setup 316 + pkg_debs 83);
+# 849 at B1.17 part B (pkg_setup 243 + pkg_debs 77);
 # 529 at B1.17 part A; 521 at B1.16.16; 447 at B1.16.15)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
@@ -77,8 +78,8 @@ remote_keys  65 $HOST/dockremote/keys_test
 remote_core  22 $HOST/dockremote/core_test
 remote_tgt   37 $PYTHON $T/test_remote_target.py $AUDIOD $HOST/dockremote/dockremote_probe
 np_source    23 $HOST/nowplaying/source_test
-pkg_setup   243 bash $REPO/packaging/hosttest/test_setup.sh $HOST/bash-4.0/src/bash-4.0/bash $REPO
-pkg_debs     77 bash $REPO/packaging/hosttest/test_debs.sh $BUILD_ROOT/arm-out $REPO
+pkg_setup   316 bash $REPO/packaging/hosttest/test_setup.sh $HOST/bash-4.0/src/bash-4.0/bash $REPO
+pkg_debs     83 bash $REPO/packaging/hosttest/test_debs.sh $BUILD_ROOT/arm-out $REPO
 "
 
 case "$BUILD_ROOT$REPO" in *[[:space:]]*) die "paths with whitespace are not supported";; esac

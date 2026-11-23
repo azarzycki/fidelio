@@ -140,13 +140,32 @@ check "install.sh (phone): dry runs of both packages before dpkg -i" eval 'grep 
 check "install.sh (phone): dpkg -i of both, main first" grep -q "\[dpkg -i /var/tmp/dock-receiver-install/dock-receiver_${VERSION}_iphoneos-arm.deb /var/tmp/dock-receiver-install/dock-receiver-dockremote_${VERSION}_iphoneos-arm.deb\]" "$CALLS"
 check "install.sh (phone): tells the owner about the respring and the undocked iapd restart" eval 'grep -q "restart SpringBoard" "$T/inst.log" && grep -q "lift the phone off the dock" "$T/inst.log"'
 : > "$CALLS"; FAKE_OS=5.1.1 SSH="$T/fakebin/fssh" SCP="$T/fakebin/fscp" "$REPO/packaging/install.sh" --debs "$T/debs" --yes root@ipad.invalid > "$T/inst.log" 2>&1; rc=$?
-check "install.sh (iOS 5): only the main package" eval '[ "$rc" = 0 ] && ! grep -q dockremote "$CALLS" && grep -q "\[dpkg -i /var/tmp/dock-receiver-install/dock-receiver_${VERSION}_iphoneos-arm.deb\]" "$CALLS"'
+check "install.sh (iOS 5): only the main package" eval '[ "$rc" = 0 ] && ! grep "^scp" "$CALLS" | grep -q dockremote && ! grep -q "dpkg -i.*dockremote" "$CALLS" && grep -q "\[dpkg -i /var/tmp/dock-receiver-install/dock-receiver_${VERSION}_iphoneos-arm.deb\]" "$CALLS"'
 : > "$CALLS"; SSH="$T/fakebin/fssh" SCP="$T/fakebin/fscp" "$REPO/packaging/install.sh" --debs "$T/debs" --check root@phone.invalid > "$T/inst.log" 2>&1; rc=$?
 check "install.sh --check: dry run only, no dpkg -i" eval '[ "$rc" = 0 ] && grep -q "preinst check" "$CALLS" && ! grep -q "dpkg -i" "$CALLS"'
 : > "$CALLS"; FAKE_CHECK_RC=1 SSH="$T/fakebin/fssh" SCP="$T/fakebin/fscp" "$REPO/packaging/install.sh" --debs "$T/debs" --yes root@phone.invalid > "$T/inst.log" 2>&1; rc=$?
 check "install.sh: a dry run that is not ready stops it before dpkg -i" eval '[ "$rc" != 0 ] && ! grep -q "dpkg -i" "$CALLS"'
 : > "$CALLS"; SSH="$T/fakebin/fssh" SCP="$T/fakebin/fscp" "$REPO/packaging/install.sh" --debs "$T/debs" root@phone.invalid < /dev/null > "$T/inst.log" 2>&1; rc=$?
 check "install.sh without --yes and no answer: does not install" eval '! grep -q "dpkg -i" "$CALLS"'
+check "install.sh: the default scp stand-in gets -O (the classic protocol)" grep -q "^scp \[-o\] .*\[-O\]" "$CALLS"
+check "install.sh: cleans the device's install directory of an earlier run before copying" grep -q "rm -rf /var/tmp/dock-receiver-install/ctl /var/tmp/dock-receiver-install/ctl-remote && rm -f /var/tmp/dock-receiver-install/dock-receiver_" "$CALLS"
+cat > "$T/fakebin/oldscp" <<'EOF'
+#!/bin/bash
+[ "$*" = "-O" ] && { echo "scp: unknown option -- O" >&2; echo "usage: scp [-12346BCpqrv] ..." >&2; exit 1; }
+printf 'scp' >> "$CALLS"; printf ' [%s]' "$@" >> "$CALLS"; printf '\n' >> "$CALLS"
+exit 0
+EOF
+chmod 755 "$T/fakebin/oldscp"
+: > "$CALLS"; SSH="$T/fakebin/fssh" SCP="$T/fakebin/oldscp" "$REPO/packaging/install.sh" --debs "$T/debs" --yes root@phone.invalid > "$T/inst.log" 2>&1; rc=$?
+check "install.sh: an scp that does not know -O is not given -O (the detection is not fooled by its exit status)" eval '[ "$rc" = 0 ] && grep -q "^scp " "$CALLS" && ! grep -q "\[-O\]" "$CALLS"'
+: > "$CALLS"; SSH_OPTS= SCP_OPTS= SSH="$T/fakebin/fssh" SCP="$T/fakebin/fscp" "$REPO/packaging/install.sh" --debs "$T/debs" --yes root@phone.invalid > "$T/inst.log" 2>&1; rc=$?
+check "install.sh: empty SSH_OPTS= and SCP_OPTS= switch the OpenSSH options off (for PuTTY)" eval '[ "$rc" = 0 ] && ! grep -q "\[-o\]" "$CALLS" && ! grep -q "\[-O\]" "$CALLS" && grep -q "dpkg -i" "$CALLS"'
+# tools/build-debs.sh outside a git checkout (a source tarball)
+mkdir -p "$T/nogit"
+( cd "$REPO" && git ls-files -z | xargs -0 tar -cf - ) | tar -xf - -C "$T/nogit"
+BUILD_ROOT="$T/br3" "$T/nogit/tools/build-debs.sh" --arm-out "$ARM_OUT" --out "$T/debs3" --no-repro-check "$T/nogit" > "$T/build3.log" 2>&1; rc=$?
+check "build-debs.sh outside a git checkout: builds, says the commit is unknown" eval '[ "$rc" = 0 ] && grep -q "is not a git checkout" "$T/build3.log" && [ -f "$T/debs3/SHA256SUMS" ]'
+check "the data archives hold no symbolic link and no entry for a path that is a link on the devices other than as a directory" eval 'for d in "$MAIN" "$REMOTE"; do dpkg-deb -c "$d" | grep -q "^l" && exit 1; dpkg-deb -c "$d" | grep -E " \./(Applications|usr/libexec|usr/share)/?$" | grep -v -q "^d" && exit 1; done; true'
 check "install.sh names no address, host, user key or password" eval '! grep -n -i -E "([0-9]{1,3}\.){3}[0-9]{1,3}|passw[^a-z]*=|id_rsa|id_ed25519|\.local\b" "$REPO/packaging/install.sh"'
 
 echo "TOTAL $NOK ok, $NFAIL FAIL"

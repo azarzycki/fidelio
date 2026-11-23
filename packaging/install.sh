@@ -17,7 +17,7 @@
 #
 # Environment
 #   SSH="ssh"  SCP="scp"   the commands to use (e.g. SSH="ssh -p 2222")
-#   SSH_OPTS               options for both; default: the legacy algorithms the devices' OpenSSH 6.7 needs
+#   SSH_OPTS               options for both (SSH_OPTS= empty: none); default: the legacy algorithms the devices' OpenSSH 6.7 needs
 #                          on a modern client (packaging/README.md):
 #                          -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa
 #   SCP_OPTS               extra options for scp only; default -O (the classic scp protocol) when the local
@@ -29,9 +29,15 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SSH="${SSH:-ssh}"; SCP="${SCP:-scp}"
-SSH_OPTS="${SSH_OPTS:--o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa}"
+# An empty SSH_OPTS= or SCP_OPTS= switches the defaults off (e.g. for PuTTY's plink/pscp, which reject -o/-O).
+SSH_OPTS="${SSH_OPTS--o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa}"
 if [ -z "${SCP_OPTS+x}" ]; then
-  if $SCP -O 2>&1 | grep -q -i -e 'illegal option' -e 'unknown option'; then SCP_OPTS=""; else SCP_OPTS="-O"; fi
+  # Does the local scp know -O? Ask it (it exits non-zero either way, so look at what it says).
+  scp_says="$($SCP -O 2>&1 < /dev/null || true)"
+  case "$scp_says" in
+    *[Ii]llegal\ option*|*[Uu]nknown\ option*|*[Ii]nvalid\ option*|*[Uu]nrecognized\ option*) SCP_OPTS="" ;;
+    *) SCP_OPTS="-O" ;;
+  esac
 fi
 DEBS=""; CHECK_ONLY=0; YES=0; DOCKREMOTE=auto; RESPRING=0; DEVICE=""
 REMOTE_DIR=/var/tmp/dock-receiver-install
@@ -80,7 +86,8 @@ FILES="$MAIN"; [ "$DOCKREMOTE" = yes ] && FILES="$FILES $REMOTE"
 NAMES=""; for f in $FILES; do NAMES="$NAMES $REMOTE_DIR/${f##*/}"; done
 
 echo "== copying$( for f in $FILES; do printf ' %s' "${f##*/}"; done ) to $REMOTE_DIR"
-rssh "mkdir -p $REMOTE_DIR && chmod 700 $REMOTE_DIR"
+# the directory may hold an earlier run's packages and control directories: start clean
+rssh "mkdir -p $REMOTE_DIR && chmod 700 $REMOTE_DIR && rm -rf $REMOTE_DIR/ctl $REMOTE_DIR/ctl-remote && rm -f $REMOTE_DIR/dock-receiver_*_iphoneos-arm.deb $REMOTE_DIR/dock-receiver-dockremote_*_iphoneos-arm.deb"
 # shellcheck disable=SC2086
 $SCP $SSH_OPTS $SCP_OPTS $FILES "$DEVICE:$REMOTE_DIR/"
 

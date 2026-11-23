@@ -45,7 +45,11 @@ state_set() {
   mkdir -p "$B" || return 1
   { [ -f "$STATE" ] && grep -v "^$1=" "$STATE"; printf '%s=%s\n' "$1" "$2"; } > "$STATE.new" && mv -f "$STATE.new" "$STATE"
 }
-pkg_installed() { dpkg -s "$1" 2>/dev/null | grep -q '^Status: install ok'; }
+# dpkg's status of a package ("installed", "unpacked", ...; "" if dpkg knows none). dock-receiver counts
+# as there when it is unpacked in the same `dpkg -i`, half-configured, or installed; not when its status
+# is "not-installed", "half-installed" or "config-files".
+pkg_status() { dpkg -s "$1" 2>/dev/null | sed 's/[[:space:]]*$//' | sed -n 's/^Status: [a-z]* [a-z]* //p' | sed -n 1p; }
+pkg_installed() { case "$(pkg_status "$1")" in unpacked|half-configured|installed) return 0 ;; esac; return 1; }
 
 check_target() {
   local v

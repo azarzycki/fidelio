@@ -64,8 +64,16 @@ done
 app_version="$(sed -n '/<key>CFBundleShortVersionString<\/key>/{n;s/.*<string>\([^<]*\)<\/string>.*/\1/p;}' "$ARM_OUT/NowPlaying.app/Info.plist")"
 [ "${VERSION%-*}" = "$app_version" ] || die "packaging/VERSION ($VERSION) does not start with NowPlaying's version ($app_version)"
 
-COMMIT="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
-DIRTY="$(git -C "$REPO" status --short 2>/dev/null | wc -l)"
+# The commit SOURCE-cspot-ios3.txt names. Outside a git checkout (a source tarball) there is none: the
+# packages say so instead of naming one.
+if git -C "$REPO" rev-parse --verify -q HEAD >/dev/null 2>&1; then
+  COMMIT="$(git -C "$REPO" rev-parse HEAD)"
+  DIRTY="$(git -C "$REPO" status --short | wc -l)"
+else
+  COMMIT="(unknown: packaged outside a git checkout of the repository)"
+  DIRTY=0
+  echo "WARNING: $REPO is not a git checkout: SOURCE-cspot-ios3.txt cannot name the commit" >&2
+fi
 
 # --- helpers -------------------------------------------------------------------------------------------
 put() {  # SRC DEST MODE: copy one file into the staging tree

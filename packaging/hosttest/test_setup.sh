@@ -71,7 +71,7 @@ OUT="$T/out.txt"
 SECRETS=""   # every credential value used: none may appear in any output or log
 dev() {  # run CMD... the way the device would (restricted PATH, bash 4.0 as sh), output to $OUT (appended)
   env -i PATH="$T/stubs:$T/tools" HOME=/var/root DOCKRECEIVER_ROOT="$R" DPKG_SH="$SH" \
-    DOCKRECEIVER_TIMEOUT_S="${TIMEOUT_S:-3}" ${DEVENV:-} "$@" >> "$OUT" 2>&1
+    DOCKRECEIVER_TIMEOUT_S="${TIMEOUT_S:-3}" DOCKRECEIVER_ACTIVE_WAIT_S=4 DOCKRECEIVER_RECHECK_S=2 ${DEVENV:-} "$@" >> "$OUT" 2>&1
 }
 dpkg_i() { : > "$OUT"; dev "$T/stubs/dpkg" -i "$@"; }
 setup_cmd() { : > "$OUT"; dev "$SH" "$R/usr/sbin/dock-receiver-setup" "$@"; }
@@ -91,9 +91,18 @@ loaded() { : > "$R/.fake/jobs/$1"; }
 
 new_root() {  # NAME OSVERSION
   R="$T/root.$1"; rm -rf "$R"
-  mkdir -p "$R/Applications/Preferences.app" "$R/Library/LaunchDaemons" "$R/System/Library/SpringBoardPlugins" \
+  mkdir -p "$R/Library/LaunchDaemons" "$R/System/Library/SpringBoardPlugins" \
     "$R/System/Library/CoreServices" "$R/var/mobile/Library/Preferences" "$R/var/root" "$R/var/tmp" "$R/usr/lib" \
-    "$R/usr/bin" "$R/usr/sbin" "$R/usr/libexec" "$R/usr/share/doc" "$R/.fake/procs" "$R/.fake/jobs"
+    "$R/usr/bin" "$R/usr/sbin" "$R/.fake/procs" "$R/.fake/jobs"
+  # As on both devices: /Applications, /usr/libexec and /usr/share are links into /var/stash (the phone's
+  # are relative; the iPad's absolute, with random suffixes).
+  case "$2" in
+    3.*) mkdir -p "$R/var/stash/Applications" "$R/var/stash/libexec" "$R/var/stash/share/doc"
+         ln -s var/stash/Applications "$R/Applications"; ln -s ../var/stash/libexec "$R/usr/libexec"; ln -s ../var/stash/share "$R/usr/share" ;;
+    *)   mkdir -p "$R/var/stash/_.QQFZSF/Applications" "$R/var/stash/libexec.nL0cdW" "$R/var/stash/share.8I9UPC/doc"
+         ln -s "$R/var/stash/_.QQFZSF/Applications" "$R/Applications"; ln -s "$R/var/stash/libexec.nL0cdW" "$R/usr/libexec"; ln -s "$R/var/stash/share.8I9UPC" "$R/usr/share" ;;
+  esac
+  mkdir -p "$R/Applications/Preferences.app"
   printf 'apple app\n' > "$R/Applications/Preferences.app/Info.plist"
   : > "$R/.fake/procs/SpringBoard"; : > "$R/.fake/procs/iapd"
   printf 'apple job\n' > "$R/Library/LaunchDaemons/com.apple.mDNSResponder.plist"
@@ -121,6 +130,12 @@ old_common() {  # the old data directory, binaries, jobs, app (both devices)
   mkdir -p "$R/Applications/NowPlaying.app"
   plist "$R/Applications/NowPlaying.app/Info.plist" com.fidelio.nowplaying 1.4.3
   printf 'old app\n' > "$R/Applications/NowPlaying.app/NowPlaying"; chmod 755 "$R/Applications/NowPlaying.app/NowPlaying"
+  # files the new package does not have, so that dpkg -r of it cannot take the whole old app away
+  mkdir -p "$R/Applications/NowPlaying.app/en.lproj"
+  printf 'old icon\n' > "$R/Applications/NowPlaying.app/Icon.png"
+  printf 'old launch image\n' > "$R/Applications/NowPlaying.app/Default.png"
+  printf 'old nib\n' > "$R/Applications/NowPlaying.app/MainWindow.nib"
+  printf '"x" = "y";\n' > "$R/Applications/NowPlaying.app/en.lproj/Localizable.strings"
   printf 'old app 1.4.2\n' > "$R/Applications/NowPlaying.app.pre-b11616"
   oldplist com.fidelio.audiod /var/mobile/fidelio/b1/fidelio-audiod --event-log /var/mobile/fidelio/b1/events.log
   for l in audiod raop cspot keepalive; do loaded com.fidelio.$l; done
@@ -138,6 +153,13 @@ phone_launcher() {  # FORM ID SECRET: the phone's Spotify launcher (and helpers)
     helper) printf '#!/bin/bash\nexec /bin/bash /var/mobile/fidelio/cspotd.sh\n' > "$O/b1/test_cspot.sh"
             printf '#!/bin/bash\nAPP_CLIENT_ID=%s; APP_SECRET=%s\n%s -b 320 -n "iPhone Fidelio" --client-id $APP_CLIENT_ID --client-secret $APP_SECRET\n' "$id" "$sec" "$c" > "$O/cspotd.sh" ;;
     none) printf '#!/bin/bash\nexec %s -b 320 -n "iPhone Fidelio"\n' "$c" > "$O/b1/test_cspot.sh" ;;
+    # two different values for the id in the job's own launcher: not guessed
+    conflict) printf '#!/bin/bash\nCLIENT_ID=%s\nCLIENT_SECRET=%s\nCLIENT_ID=%sX\nexec %s --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET"\n' "$id" "$sec" "$id" "$c" > "$O/b1/test_cspot.sh" ;;
+    # like the real phone: the job runs test_cspot.sh, which takes the values from cspotd.sh; both name
+    # the device and the bitrate; a creds.env outside the chain holds other values (ignored, named)
+    chain) printf '#!/bin/bash\neval "$(grep -E "^CLIENT_(ID|SECRET)=" /var/mobile/fidelio/cspotd.sh)"\nexec %s --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET" -b 320 -n "iPhone Fidelio"\n' "$c" > "$O/b1/test_cspot.sh"
+           printf '#!/bin/bash\nCLIENT_ID=%s\nCLIENT_SECRET=%s\nwhile :; do %s --client-id $CLIENT_ID --client-secret $CLIENT_SECRET -b 320 -n "iPhone Fidelio"; done\n' "$id" "$sec" "$c" > "$O/cspotd.sh"
+           printf 'CLIENT_ID=f1d0c0ffeeOTHERaa11bb22cc33dd44\nCLIENT_SECRET=5ecre7OTHERbb22cc33dd44ee55ff66\n' > "$O/creds.env" ;;
   esac
 }
 
@@ -203,7 +225,7 @@ no_secret_anywhere() {  # nothing outside the credentials files holds a value
     done
     for f in $(grep -r -l -F -- "$s" "$R" 2>/dev/null); do
       case "$f" in
-        "$R/var/mobile/dockreceiver/spotify-credentials.conf"|"$R/var/mobile/fidelio/"*) ;;
+        "$R/var/mobile/dockreceiver/spotify-credentials.conf"|"$R/var/mobile/fidelio/"*|"$R/var/dockreceiver-migration/kept/spotify-credentials.conf") ;;
         *) leak="$leak ${f#$R}" ;;
       esac
     done
@@ -254,6 +276,7 @@ echo "# phone (iPhone OS 3.1.3): the dry run, then the install of both packages"
 ID=f1d0c0ffee01aa11bb22cc33dd44ee55; SEC=5ecre7a01bb22cc33dd44ee55ff66770; SECRETS="$SECRETS $ID $SEC"
 phone_old vars "$ID" "$SEC"
 O_SUM="$(tree_sum "$R/var/mobile/fidelio")"
+APP_SUM="$(tree_sum "$R/Applications/NowPlaying.app")"
 before="$(snapshot)"; snapshot > "$T/snap.before"
 w="$T/ctl-main"; rm -rf "$w"; dpkg-deb -e "$MAIN" "$w"
 : > "$OUT"; dev "$SH" "$w/preinst" check; rc=$?
@@ -263,9 +286,12 @@ check "phone: the dry run changes nothing in the fake root" [ "$before" = "$afte
 check "phone: dry run: old setup found" file_has "$OUT" "old setup: yes"
 check "phone: dry run: credentials found in the launcher, no value shown" file_has "$OUT" "credentials: found in /var/mobile/fidelio/b1/test_cspot.sh"
 check "phone: dry run: lists the old jobs" file_has "$OUT" "old job com.fidelio.cspot: plist, loaded"
-check "phone: dry run: free space and prerequisites" grep -q -e "free space on /: 137000 KB" "$OUT"
+check "phone: dry run: free space and prerequisites" grep -q -e "free space: / 137000 KB" "$OUT"
 check "phone: dry run: names the syslogd job as left alone" file_has "$OUT" "com.fidelio.syslogd"
-check "phone: dry run: Fidelio.bundle would be moved" file_has "$OUT" "lock plugin: Fidelio.bundle: would be moved"
+check "phone: dry run: Fidelio.bundle is left in place" file_has "$OUT" "lock plugin: Fidelio.bundle: left in place"
+check "phone: dry run: names the chain of the old Spotify job" file_has "$OUT" "the old Spotify job runs: /var/mobile/fidelio/b1/test_cspot.sh"
+check "phone: dry run: no keepalive target and no ipconfig: a clear warning" file_has "$OUT" "WARNING: keepalive target: none in the old setup, and no ipconfig"
+check "phone: dry run: names the stray rev6.bak as left alone" file_has "$OUT" "left alone: /Library/LaunchDaemons/com.fidelio.cspot.plist.rev6.bak"
 check "phone: dry run used only the devices' tools" no_tool_missing
 check "phone: dry run: no secret in the output" no_secret_anywhere
 w="$T/ctl-remote"; rm -rf "$w"; dpkg-deb -e "$REMOTE" "$w"
@@ -293,14 +319,18 @@ check "phone: data dir and logs owned by mobile" eval '[ "$(mode_owner "$R/$D_")
 check "phone: the old app is in the recoverable place" grep -q com.fidelio.nowplaying "$R/$B_/Applications/NowPlaying.app/Info.plist"
 check "phone: the new app is installed" grep -q com.dockreceiver.nowplaying "$R/Applications/NowPlaying.app/Info.plist"
 check "phone: the old app copies beside it are untouched" [ -f "$R/Applications/NowPlaying.app.pre-b11616" ]
-check "phone: Fidelio.bundle moved aside, its .pre-r3 copy and Apple's plugin untouched" eval '[ -f "$R/$B_/SpringBoardPlugins/Fidelio.bundle/Fidelio" ] && [ ! -e "$R/System/Library/SpringBoardPlugins/Fidelio.bundle" ] && [ -d "$R/System/Library/SpringBoardPlugins/Fidelio.bundle.pre-r3" ] && [ -f "$R/System/Library/SpringBoardPlugins/IncomingCall.bundle/IncomingCall" ]'
+check "phone: Fidelio.bundle left in place (SpringBoard may have it loaded), its .pre-r3 copy and Apple's plugin untouched" eval '[ -f "$R/System/Library/SpringBoardPlugins/Fidelio.bundle/Fidelio" ] && [ ! -e "$R/$B_/SpringBoardPlugins" ] && [ -d "$R/System/Library/SpringBoardPlugins/Fidelio.bundle.pre-r3" ] && [ -f "$R/System/Library/SpringBoardPlugins/IncomingCall.bundle/IncomingCall" ]'
+check "phone: /Applications, /usr/libexec and /usr/share are still links into /var/stash; the app and the daemons are there" eval '[ -L "$R/Applications" ] && [ -L "$R/usr/libexec" ] && [ -L "$R/usr/share" ] && [ -f "$R/var/stash/Applications/NowPlaying.app/NowPlaying" ] && [ -f "$R/var/stash/libexec/dock-receiver/dock-audiod" ]'
+check "phone: the summary names the old plugin and the rev6.bak as left in place" eval 'grep -q "left in place: the old lock plugin Fidelio.bundle" "$OUT" && grep -q "rev6.bak" "$OUT"'
+check "phone: waits for active-source and re-checks for an old audiod" eval 'grep -q "waiting for dock-audiod" "$OUT" && grep -q "checking for 2 s that no old audiod comes back" "$OUT"'
+check "phone: no .dr-restore or .dr-new leftovers" eval '[ -z "$(find "$R" -name "*.dr-restore" -o -name "*.dr-new")" ]'
 check "phone: both new lock plugin bundles are installed" eval '[ -f "$R/System/Library/SpringBoardPlugins/NowPlaying.bundle/NowPlaying" ] && [ -f "$R/System/Library/SpringBoardPlugins/NowPlaying.lockbundle/NowPlaying" ]'
 check "phone: the old tweak was copied to the recoverable place" grep -qx "old tweak" "$R/$B_/DynamicLibraries/DockRemote.dylib"
 check "phone: the new tweak is installed" grep -q "fake binary DockRemote.dylib" "$R/Library/MobileSubstrate/DynamicLibraries/DockRemote.dylib"
 check "phone: the icon cache was refreshed as mobile" grep -q "su mobile -c uicache" "$R/.fake/calls.log"
 check_not "phone: SpringBoard was not restarted" grep -q -e "killall.*SpringBoard" -e sbreload "$R/.fake/calls.log"
 check_not "phone: iapd was not restarted" grep -q "killall.*iapd" "$R/.fake/calls.log"
-check "phone: the old NowPlaying process was closed (exact name)" grep -qx "killall NowPlaying" "$R/.fake/calls.log"
+check "phone: the old NowPlaying process was closed (exact name), BEFORE its bundle was moved" eval 'grep -qx "killall NowPlaying" "$R/.fake/calls.log" && [ "$(grep -n "closed the running NowPlaying" "$OUT" | cut -d: -f1)" -lt "$(grep -n "moved the old /Applications/NowPlaying.app" "$OUT" | cut -d: -f1)" ]'
 check "phone: says a SpringBoard restart is still needed" file_has "$OUT" "restart SpringBoard to finish: the lock plugin and the app's new id"
 check "phone: says how the tweak takes effect (undocked killall iapd or reboot)" file_has "$OUT" "killall iapd"
 check "phone: names what it left alone (syslogd, iapd logging)" eval 'grep -q "left alone: the job com.fidelio.syslogd" "$OUT" && grep -q "left alone: iapd" "$OUT"'
@@ -343,9 +373,16 @@ check "cleanup is refused while the old setup is active" eval '[ "$rc" != 0 ] &&
 echo "# phone: install again after the rollback, then cleanup --yes"
 dpkg_i "$MAIN" "$REMOTE"; rc=$?
 check "install after rollback: exits 0, new setup runs" eval '[ "$rc" = 0 ] && new_setup_live'
+check "install after rollback: the first kept copies are unchanged, the later ones beside them" eval 'grep -q com.fidelio.nowplaying "$R/$B_/Applications/NowPlaying.app/Info.plist" && [ -d "$R/$B_/Applications/NowPlaying.app.2" ] && [ "$(tree_sum "$R/$B_/Applications/NowPlaying.app")" = "$APP_SUM" ] && [ -f "$R/$B_/LaunchDaemons/com.fidelio.audiod.plist.2" ]'
+sed -i "s/^switched=yes/switched=no/" "$R/$B_/state"; setup_cmd cleanup --yes; rc=$?
+check "cleanup refuses without switched=yes in the record" eval '[ "$rc" != 0 ] && grep -q "has not completed" "$OUT" && [ -d "$R/var/mobile/fidelio" ]'
+sed -i "s/^switched=no/switched=yes/" "$R/$B_/state"
 setup_cmd cleanup --yes; rc=$?; cp "$OUT" "$T/cleanup-yes.txt"
 check "cleanup --yes removes the old directory and the recoverable place" eval '[ "$rc" = 0 ] && [ ! -e "$R/var/mobile/fidelio" ] && [ ! -e "$R/$B_" ]'
 check "cleanup --yes: the new setup still runs" eval 'jobs_are $NEWJOBS && proc dock-audiod'
+check "cleanup --yes also removes the old lock plugin and the rev6.bak (exact names)" eval '[ ! -e "$R/System/Library/SpringBoardPlugins/Fidelio.bundle" ] && [ ! -e "$R/Library/LaunchDaemons/com.fidelio.cspot.plist.rev6.bak" ] && [ -d "$R/System/Library/SpringBoardPlugins/Fidelio.bundle.pre-r3" ] && [ -f "$R/Library/LaunchDaemons/com.fidelio.syslogd.plist" ]'
+setup_cmd rollback; rc=$?
+check "rollback after cleanup is refused before removing anything; the new setup still runs" eval '[ "$rc" != 0 ] && grep -q "no complete old setup is kept" "$OUT" && [ -f "$R/.fake/dpkg/dock-receiver.status" ] && jobs_are $NEWJOBS && proc dock-audiod'
 printf 'none\n' > "$R/$D_/active-source"
 setup_cmd respring; rc=$?
 check "respring (nothing playing) restarts SpringBoard" eval '[ "$rc" = 0 ] && grep -q "killall SpringBoard" "$R/.fake/calls.log"'
@@ -376,8 +413,8 @@ ipad_old "$ID" "$SEC"
 ART_SUM="$(tree_sum "$R/System/Library/SpringBoardPlugins/NowPlayingArtLockScreen.lockbundle")"
 O_SUM="$(tree_sum "$R/var/mobile/fidelio")"
 : > "$OUT"; dev "$SH" "$T/ctl-main/preinst" check; rc=$?
-check "iPad: dry run ready, credentials found in creds.env" eval '[ "$rc" = 0 ] && grep -q "credentials: found in /var/mobile/fidelio/creds.env" "$OUT"'
-check "iPad: dry run: keepalive target found" file_has "$OUT" "keepalive target: found in /var/mobile/fidelio/keepalive.sh"
+check "iPad: dry run ready, credentials found through the job's launcher, which sources creds.env" eval '[ "$rc" = 0 ] && grep -q "credentials: found in /var/mobile/fidelio/b1/run_cspot.sh /var/mobile/fidelio/creds.env" "$OUT"'
+check "iPad: dry run: keepalive target found" eval 'grep -q "keepalive target: found in /var/mobile/fidelio/keepalive.sh (the address is not shown)" "$OUT" && ! grep -q 192.0.2.10 "$OUT"'
 : > "$OUT"; dev "$SH" "$T/ctl-remote/preinst" check; rc=$?
 check "iPad: the dock-remote dry run says NOT ready (iOS 5)" eval '[ "$rc" != 0 ] && grep -q "iPhone OS 3.x only" "$OUT"'
 dpkg_i "$MAIN"; rc=$?
@@ -387,7 +424,8 @@ check "iPad: used only the devices' tools" no_tool_missing
 check "iPad: credentials from creds.env" creds_are "$ID" "$SEC"
 check "iPad: the iPad's names and bitrate in settings.conf" eval 'grep -qx "cspot.name=iPad Fidelio" "$R/$D_/settings.conf" && grep -qx "raop.name=iPad Fidelio (AirPlay)" "$R/$D_/settings.conf" && grep -qx "cspot.bitrate=320" "$R/$D_/settings.conf" && grep -qx audiod.unlock_on_play=off "$R/$D_/settings.conf"'
 check "iPad: keepalive target carried into keepalive.conf (no value printed)" eval 'grep -qx KEEPALIVE_HOST=192.0.2.10 "$R/$D_/keepalive.conf" && ! grep -q 192.0.2.10 "$OUT"'
-check "iPad: Fidelio.lockbundle moved aside" eval '[ -f "$R/$B_/SpringBoardPlugins/Fidelio.lockbundle/Fidelio" ] && [ ! -e "$R/System/Library/SpringBoardPlugins/Fidelio.lockbundle" ]'
+check "iPad: Fidelio.lockbundle left in place" eval '[ -f "$R/System/Library/SpringBoardPlugins/Fidelio.lockbundle/Fidelio" ] && [ ! -e "$R/$B_/SpringBoardPlugins" ]'
+check "iPad: the absolute links into /var/stash are kept" eval '[ -L "$R/Applications" ] && [ -f "$R/var/stash/_.QQFZSF/Applications/NowPlaying.app/NowPlaying" ] && [ -f "$R/var/stash/libexec.nL0cdW/dock-receiver/dock-raop" ]'
 check "iPad: Apple's NowPlayingArtLockScreen.lockbundle untouched" [ "$(tree_sum "$R/System/Library/SpringBoardPlugins/NowPlayingArtLockScreen.lockbundle")" = "$ART_SUM" ]
 check "iPad: the old data directory is unchanged" [ "$(tree_sum "$R/var/mobile/fidelio")" = "$O_SUM" ]
 check "iPad: no secret anywhere" no_secret_anywhere
@@ -414,7 +452,7 @@ check "fresh: dpkg -r stops and removes everything, no old jobs appear" eval 'jo
 
 # =================================================================================================
 echo "# failures injected at each step (phone): the old setup stays restartable, rollback works"
-for st in preflight app-aside settings options credentials keepalive-target stop-jobs old-plists new-plists old-plugin load-jobs; do
+for st in preflight app-aside settings options credentials keepalive-target stop-jobs old-plists new-plists load-jobs; do
   ID=f1d0c0ffee77aa11bb22cc33dd44ee55; SEC=5ecre7a77bb22cc33dd44ee55ff66770; SECRETS="$SECRETS $ID $SEC"
   phone_old vars "$ID" "$SEC"
   O_SUM="$(tree_sum "$R/var/mobile/fidelio")"
@@ -425,10 +463,13 @@ for st in preflight app-aside settings options credentials keepalive-target stop
   check "fail at $st: the old data directory is unchanged" [ "$(tree_sum "$R/var/mobile/fidelio")" = "$O_SUM" ]
   check "fail at $st: a clear failure message" grep -q -e "ERROR: " "$OUT"
   check "fail at $st: the old tweak is in place right away" grep -qx "old tweak" "$R/Library/MobileSubstrate/DynamicLibraries/DockRemote.dylib"
+  check "fail at $st: the old app is complete right away" [ "$(tree_sum "$R/Applications/NowPlaying.app")" = "$APP_SUM" ]
   if [ -x "$R/usr/sbin/dock-receiver-setup" ]; then setup_cmd rollback; else : > "$OUT"; dev "$SH" "$T/ctl-main/preinst" rollback; fi; rc=$?
   check "fail at $st: rollback exits 0 and the old setup runs" eval '[ "$rc" = 0 ] && old_setup_live Fidelio.bundle'
   check "fail at $st: after the rollback no package file is left" eval '[ ! -e "$R/usr/libexec/dock-receiver" ] && [ ! -e "$R/System/Library/SpringBoardPlugins/NowPlaying.bundle" ] && [ ! -e "$R/.fake/dpkg/dock-receiver.status" ]'
   check "fail at $st: the old tweak is in place" grep -qx "old tweak" "$R/Library/MobileSubstrate/DynamicLibraries/DockRemote.dylib"
+  check "fail at $st: after the rollback the old app is complete (every file, not only those dpkg knew)" [ "$(tree_sum "$R/Applications/NowPlaying.app")" = "$APP_SUM" ]
+  check "fail at $st: never two audio daemons; no restore copies left" eval '! { proc fidelio-audiod && proc dock-audiod; } && [ -z "$(find "$R" -name "*.dr-restore")" ]'
   check "fail at $st: no secret anywhere" no_secret_anywhere
 done
 for st in dockremote-target dockremote-backup; do
@@ -443,7 +484,7 @@ done
 for st in icon-cache; do
   phone_old vars f1d0c0ffee88aa11bb22cc33dd44ee55 5ecre7a88bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee88aa11bb22cc33dd44ee55 5ecre7a88bb22cc33dd44ee55ff66770"
   DEVENV="DOCKRECEIVER_TEST_FAIL=$st" dpkg_i "$MAIN" "$REMOTE"; rc=$?
-  check "fail at $st (after the point of no return): install completes with a warning" eval '[ "$rc" = 0 ] && new_setup_live && grep -q "WARNING: uicache failed" "$OUT"'
+  check "fail at $st (after the point of no return): install completes with a warning" eval '[ "$rc" = 0 ] && new_setup_live && grep -q "WARNING: the icon cache was not refreshed" "$OUT"'
 done
 echo "# realistic failures: a job that does not load, an old audiod that cannot be stopped, a new audiod that never starts"
 for k in "FAKE_FAIL_LOAD=com.dockreceiver.cspot" "FAKE_UNKILLABLE=fidelio-audiod" "FAKE_NOSTART=com.dockreceiver.audiod"; do
@@ -458,8 +499,10 @@ for k in "FAKE_FAIL_LOAD=com.dockreceiver.cspot" "FAKE_UNKILLABLE=fidelio-audiod
 done
 echo "# the preinst refuses a device short of space or tools"
 phone_old vars a b
-DEVENV="FAKE_DF_ROOT_KB=5000" dpkg_i "$MAIN"; rc=$?
+DEVENV="FAKE_DF_ROOT_KB=3000" dpkg_i "$MAIN"; rc=$?
 check "too little space on /: refused before anything changed" eval '[ "$rc" != 0 ] && grep -q "free on /" "$OUT" && old_setup_live Fidelio.bundle && [ ! -e "$R/usr/libexec/dock-receiver" ]'
+DEVENV="FAKE_DF_VAR_KB=9000" dpkg_i "$MAIN"; rc=$?
+check "too little space on /var: refused before anything changed" eval '[ "$rc" != 0 ] && grep -q "free on /var" "$OUT" && old_setup_live Fidelio.bundle'
 mv "$T/stubs/uicache" "$T/uicache.away"
 dpkg_i "$MAIN"; rc=$?
 check "a missing tool (uicache): refused, the old setup untouched" eval '[ "$rc" != 0 ] && grep -q "missing tools: uicache" "$OUT" && old_setup_live Fidelio.bundle'
@@ -498,6 +541,131 @@ rm -f "$R/var/mobile/dockreceiver/keepalive.conf"
 check "keepalive: without a host (no conf, no ipconfig) it says so and keeps running" file_has "$OUT" "no host yet"
 
 # =================================================================================================
+# =================================================================================================
+echo "# review findings (B1.17 review of 1f7d18d)"
+# --- 1: failed install + rollback must give back the complete old app (the case above, plus a direct look)
+phone_old vars f1d0c0ffee31aa11bb22cc33dd44ee55 5ecre7a31bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee31aa11bb22cc33dd44ee55 5ecre7a31bb22cc33dd44ee55ff66770"
+APP_SUM="$(tree_sum "$R/Applications/NowPlaying.app")"
+DEVENV="DOCKRECEIVER_TEST_FAIL=load-jobs" dpkg_i "$MAIN" "$REMOTE"
+setup_cmd rollback; rc=$?
+check "1: failed install then rollback: the old app has all its files again (Default.png, the nib, en.lproj)" eval '[ "$rc" = 0 ] && [ -f "$R/Applications/NowPlaying.app/MainWindow.nib" ] && [ -f "$R/Applications/NowPlaying.app/en.lproj/Localizable.strings" ] && [ "$(tree_sum "$R/Applications/NowPlaying.app")" = "$APP_SUM" ]'
+check "1: what dpkg -r left of the app was moved aside, not deleted" eval '[ -n "$(ls -d "$R/$B_/new/NowPlaying.app"* 2>/dev/null)" ]'
+
+# --- 2: never two audio daemons on undo or rollback
+phone_old vars f1d0c0ffee32aa11bb22cc33dd44ee55 5ecre7a32bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee32aa11bb22cc33dd44ee55 5ecre7a32bb22cc33dd44ee55ff66770"
+DEVENV="FAKE_UNKILLABLE=dock-audiod FAKE_FAIL_LOAD=com.dockreceiver.cspot" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "2: undo with a dock-audiod that will not stop: the old audiod is NOT loaded beside it, and it says what to do" eval '[ "$rc" != 0 ] && proc dock-audiod && ! proc fidelio-audiod && [ ! -e "$R/.fake/jobs/com.fidelio.audiod" ] && grep -q "killall -9 dock-audiod" "$OUT"'
+phone_old vars f1d0c0ffee33aa11bb22cc33dd44ee55 5ecre7a33bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee33aa11bb22cc33dd44ee55 5ecre7a33bb22cc33dd44ee55ff66770"
+dpkg_i "$MAIN" "$REMOTE"
+DEVENV="FAKE_UNKILLABLE=dock-audiod" setup_cmd rollback; rc=$?
+check "2: rollback with a dock-audiod that will not stop: the old audiod is NOT loaded beside it" eval '[ "$rc" != 0 ] && proc dock-audiod && ! proc fidelio-audiod && grep -q "killall -9 dock-audiod" "$OUT"'
+phone_old vars f1d0c0ffee34aa11bb22cc33dd44ee55 5ecre7a34bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee34aa11bb22cc33dd44ee55 5ecre7a34bb22cc33dd44ee55ff66770"
+DEVENV="FAKE_UNKILLABLE=fidelio-audiod" dpkg_i "$MAIN"; rc=$?
+check "2: an old audiod that will not stop: the new jobs are NOT loaded" eval '[ "$rc" != 0 ] && ! proc dock-audiod && [ ! -e "$R/.fake/jobs/com.dockreceiver.audiod" ]'
+
+# --- 3: a failed re-run on a migrated device loads the installed jobs again
+phone_old vars f1d0c0ffee35aa11bb22cc33dd44ee55 5ecre7a35bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee35aa11bb22cc33dd44ee55 5ecre7a35bb22cc33dd44ee55ff66770"
+dpkg_i "$MAIN" "$REMOTE"
+DEVENV="FAKE_FAIL_LOAD=com.dockreceiver.raop" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "3: re-run, raop fails to load: exits non-zero, audiod, cspot and keepalive are loaded again" eval '[ "$rc" != 0 ] && [ -e "$R/.fake/jobs/com.dockreceiver.audiod" ] && [ -e "$R/.fake/jobs/com.dockreceiver.cspot" ] && [ -e "$R/.fake/jobs/com.dockreceiver.keepalive" ] && proc dock-audiod && grep -q "loaded again" "$OUT" && ! grep -q "old setup runs as before" "$OUT"'
+DEVENV="DOCKRECEIVER_TEST_FAIL=new-plists" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "3: re-run, failure at new-plists: all four new jobs are loaded again" eval '[ "$rc" != 0 ] && jobs_are $NEWJOBS && proc dock-audiod'
+: > "$OUT"; dev "$T/stubs/dpkg" --configure -a; rc=$?
+check "3: dpkg --configure -a afterwards completes the install" eval '[ "$rc" = 0 ] && new_setup_live'
+
+# --- 5: purge keeps the credentials and the settings
+DEVENV="" : > "$OUT"; dev "$T/stubs/dpkg" -P dock-receiver-dockremote; dev "$T/stubs/dpkg" -P dock-receiver
+check "5: purge removes the data directory but keeps the credentials (600, root-only place) and settings.conf, and says where" eval '[ ! -e "$R/$D_" ] && [ "$(mode_owner "$R/$B_/kept/spotify-credentials.conf")" = "600 501:501" ] && grep -qx "SPOTIFY_CLIENT_ID=f1d0c0ffee35aa11bb22cc33dd44ee55" "$R/$B_/kept/spotify-credentials.conf" && [ -f "$R/$B_/kept/settings.conf" ] && [ "$(mode_owner "$R/$B_/kept")" = "700 0:0" ] && grep -q "kept spotify-credentials.conf settings.conf" "$OUT"'
+check "5: purge printed no credential" no_secret_anywhere
+
+# --- 6: two different values are never guessed; the old job's chain decides; values elsewhere are named
+phone_old conflict f1d0c0ffee36aa11bb22cc33dd44ee55 5ecre7a36bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee36aa11bb22cc33dd44ee55 f1d0c0ffee36aa11bb22cc33dd44ee55X 5ecre7a36bb22cc33dd44ee55ff66770"
+dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "6: two different ids in the launcher: template left empty, the file named, nothing guessed" eval '[ "$rc" = 0 ] && grep -q "credentials: two different values in /var/mobile/fidelio/b1/test_cspot.sh" "$OUT" && grep -qx "SPOTIFY_CLIENT_ID=" "$R/$D_/spotify-credentials.conf"'
+check "6: no value printed" no_secret_anywhere
+phone_old chain f1d0c0ffee37aa11bb22cc33dd44ee55 5ecre7a37bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee37aa11bb22cc33dd44ee55 5ecre7a37bb22cc33dd44ee55ff66770 f1d0c0ffeeOTHERaa11bb22cc33dd44 5ecre7OTHERbb22cc33dd44ee55ff66"
+: > "$OUT"; dev "$SH" "$T/ctl-main/preinst" check
+check "6: phone-like chain: the job runs test_cspot.sh, which reads cspotd.sh; creds.env outside the chain is named, not used" eval 'grep -q "the old Spotify job runs: /var/mobile/fidelio/b1/test_cspot.sh /var/mobile/fidelio/cspotd.sh" "$OUT" && grep -q "credentials: found in" "$OUT" && grep -q "also present, not used: /var/mobile/fidelio/creds.env (the old Spotify job does not read it)" "$OUT"'
+dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "6: phone-like chain: the values of the chain were carried, not those of creds.env" eval '[ "$rc" = 0 ] && creds_are f1d0c0ffee37aa11bb22cc33dd44ee55 5ecre7a37bb22cc33dd44ee55ff66770 && grep -qx "cspot.name=iPhone Fidelio" "$R/$D_/settings.conf"'
+check "6: no value printed" no_secret_anywhere
+ipad_old f1d0c0ffee38aa11bb22cc33dd44ee55 5ecre7a38bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee38aa11bb22cc33dd44ee55 5ecre7a38bb22cc33dd44ee55ff66770 f1d0c0ffee39aa11bb22cc33dd44ee55 5ecre7a39bb22cc33dd44ee55ff66770"
+printf '#!/bin/bash\nexec /var/mobile/fidelio/b1/cspot-ios3 --client-id f1d0c0ffee39aa11bb22cc33dd44ee55 --client-secret 5ecre7a39bb22cc33dd44ee55ff66770 -b 320 --name "iPad Fidelio"\n' > "$R/var/mobile/fidelio/b1/run_cspot.sh"
+dpkg_i "$MAIN"; rc=$?
+check "6: iPad-like: values in the job's launcher, creds.env not read by it: launcher used, creds.env named as not used" eval '[ "$rc" = 0 ] && creds_are f1d0c0ffee39aa11bb22cc33dd44ee55 5ecre7a39bb22cc33dd44ee55ff66770 && grep -q "credentials: found in /var/mobile/fidelio/b1/run_cspot.sh" "$OUT" && grep -q "also present, not used: /var/mobile/fidelio/creds.env" "$OUT"'
+
+# --- 7: the formats of `launchctl list`, a list that does not show the old jobs, an old audiod coming back
+for fmt in tab spaces labels crlf; do
+  phone_old vars a b
+  rm -f "$R/.fake/jobs/com.fidelio.cspot"; : > "$R/.fake/jobs/com.fidelio.cspot.helper"
+  : > "$OUT"; DEVENV="FAKE_LIST_FORMAT=$fmt" dev "$SH" "$T/ctl-main/preinst" check
+  check "7: launchctl list as '$fmt': old audiod loaded, com.fidelio.cspot not (a longer label does not count)" eval 'grep -q "old job com.fidelio.audiod: plist, loaded" "$OUT" && grep -qx "  old job com.fidelio.cspot: plist" "$OUT"'
+done
+phone_old vars f1d0c0ffee40aa11bb22cc33dd44ee55 5ecre7a40bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee40aa11bb22cc33dd44ee55 5ecre7a40bb22cc33dd44ee55ff66770"
+: > "$OUT"; DEVENV="FAKE_LIST_HIDE=com.fidelio" dev "$SH" "$T/ctl-main/preinst" check; rc=$?
+check "7: launchctl shows no old job while fidelio-audiod runs: the dry run says NOT ready" eval '[ "$rc" != 0 ] && grep -q "CANNOT TELL whether the old jobs are loaded" "$OUT" && grep -q "result: NOT ready" "$OUT"'
+DEVENV="FAKE_LIST_HIDE=com.fidelio" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "7: ... and the install stops before changing the old setup" eval '[ "$rc" != 0 ] && old_setup_live Fidelio.bundle && ! proc dock-audiod'
+phone_old vars f1d0c0ffee41aa11bb22cc33dd44ee55 5ecre7a41bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee41aa11bb22cc33dd44ee55 5ecre7a41bb22cc33dd44ee55ff66770"
+DEVENV="FAKE_RESPAWN_OLD=1" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "7: an old audiod that comes back after the load (launchd's throttle) is caught; the install is undone" eval '[ "$rc" != 0 ] && grep -q "started again beside dock-audiod" "$OUT" && ! proc dock-audiod && jobs_are $OLDJOBS'
+
+# --- 8: launchctl load exiting 0 without loading; a job whose process never appears
+phone_old vars f1d0c0ffee42aa11bb22cc33dd44ee55 5ecre7a42bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee42aa11bb22cc33dd44ee55 5ecre7a42bb22cc33dd44ee55ff66770"
+DEVENV="FAKE_FAIL_LOAD_RC0=com.dockreceiver.raop" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "8: launchctl load exits 0 but loads nothing: caught, undone" eval '[ "$rc" != 0 ] && grep -q "launchctl load com.dockreceiver.raop did not load it" "$OUT" && old_setup_live Fidelio.bundle'
+phone_old vars f1d0c0ffee43aa11bb22cc33dd44ee55 5ecre7a43bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee43aa11bb22cc33dd44ee55 5ecre7a43bb22cc33dd44ee55ff66770"
+DEVENV="FAKE_NOSTART=com.dockreceiver.raop" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "8: raop loaded but its process never appears: caught, undone" eval '[ "$rc" != 0 ] && grep -q "dock-raop did not start" "$OUT" && old_setup_live Fidelio.bundle'
+phone_old vars f1d0c0ffee44aa11bb22cc33dd44ee55 5ecre7a44bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee44aa11bb22cc33dd44ee55 5ecre7a44bb22cc33dd44ee55ff66770"
+DEVENV="FAKE_NOSTART=com.dockreceiver.cspot" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "8: cspot loaded (credentials present) but cspot-ios3 never appears: caught, undone" eval '[ "$rc" != 0 ] && grep -q "cspot-ios3 did not start" "$OUT" && old_setup_live Fidelio.bundle'
+
+# --- 9: the dock-remote preinst accepts dock-receiver only unpacked, half-configured or installed
+new_root status9 3.1.3
+mkdir -p "$R/Library/MobileSubstrate/DynamicLibraries" "$R/.fake/dpkg/info"; printf 'substrate\n' > "$R/usr/lib/libsubstrate.dylib"
+printf 'old tweak\n' > "$R/Library/MobileSubstrate/DynamicLibraries/DockRemote.dylib"
+for st9 in "install ok not-installed" "install ok half-installed" "deinstall ok config-files"; do
+  echo "$st9" > "$R/.fake/dpkg/dock-receiver.status"
+  dpkg_i "$REMOTE"; rc=$?
+  check "9: dock-receiver '$st9': the dock-remote package is refused, the tweak untouched" eval '[ "$rc" != 0 ] && grep -q "dock-receiver is not installed or unpacked" "$OUT" && grep -qx "old tweak" "$R/Library/MobileSubstrate/DynamicLibraries/DockRemote.dylib"'
+done
+
+# --- 11: keepalive targets only in their obvious forms
+phone_old vars a b
+printf '#!/bin/bash\nifconfig en0 netmask 255.255.255.0 broadcast 192.0.2.255\nR=$(ipconfig getoption en0 router)\nwhile :; do ping -c1 $R; sleep 2; done\n' > "$R/var/mobile/fidelio/keepalive.sh"
+printf '#!/bin/bash\necho ipconfig-stub\n' > "$T/stubs/ipconfig"; chmod 755 "$T/stubs/ipconfig"
+: > "$OUT"; dev "$SH" "$T/ctl-main/preinst" check
+check "11: a netmask or broadcast is not taken for a target; with ipconfig present it says ipconfig is asked" eval 'grep -q "keepalive target: none in the old setup; the keepalive asks .ipconfig getoption en0 router." "$OUT" && ! grep -q "WARNING: keepalive" "$OUT"'
+rm -f "$T/stubs/ipconfig"
+printf '#!/bin/bash\nwhile :; do ping -c 1 192.0.2.20 > /dev/null; sleep 2; done\n' > "$R/var/mobile/fidelio/keepalive.sh"
+dpkg_i "$MAIN" "$REMOTE"
+check "11: a ping target is taken into keepalive.conf, the address not printed" eval 'grep -qx KEEPALIVE_HOST=192.0.2.20 "$R/$D_/keepalive.conf" && ! grep -q 192.0.2.20 "$OUT" && ! grep -q 192.0.2.20 "$R/$D_/install.log"'
+
+# --- notes: uicache only as mobile; a reboot in the middle of a migration
+phone_old vars f1d0c0ffee45aa11bb22cc33dd44ee55 5ecre7a45bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee45aa11bb22cc33dd44ee55 5ecre7a45bb22cc33dd44ee55ff66770"
+DEVENV="FAKE_UICACHE_RC=1" dpkg_i "$MAIN" "$REMOTE"; rc=$?
+check "uicache failing as mobile: no root fallback, the command to run is named, the install completes" eval '[ "$rc" = 0 ] && new_setup_live && [ "$(grep -c "^uicache" "$R/.fake/calls.log")" = "$(grep -c "^su mobile -c uicache" "$R/.fake/calls.log")" ] && grep -q "run .su mobile -c uicache. as root" "$OUT"'
+for st in old-plists new-plists load-jobs; do
+  phone_old vars f1d0c0ffee46aa11bb22cc33dd44ee55 5ecre7a46bb22cc33dd44ee55ff66770; SECRETS="$SECRETS f1d0c0ffee46aa11bb22cc33dd44ee55 5ecre7a46bb22cc33dd44ee55ff66770"
+  APP_SUM="$(tree_sum "$R/Applications/NowPlaying.app")"
+  DEVENV="DOCKRECEIVER_TEST_CRASH=$st" dpkg_i "$MAIN" "$REMOTE"
+  # the reboot: launchd starts afresh and loads what is in /Library/LaunchDaemons
+  rm -f "$R"/.fake/jobs/* "$R"/.fake/procs/*; : > "$R/.fake/procs/SpringBoard"
+  for p in "$R"/Library/LaunchDaemons/com.*.plist; do
+    case "$p" in *com.apple.*|*syslogd*) continue ;; esac
+    env DOCKRECEIVER_ROOT="$R" "$T/stubs/launchctl" load "$p" >/dev/null 2>&1
+  done
+  DEVENV="DOCKRECEIVER_TEST_FAIL=load-jobs" : > "$OUT"; DEVENV="DOCKRECEIVER_TEST_FAIL=load-jobs" dev "$T/stubs/dpkg" --configure -a; rc=$?
+  check "reboot during $st, then a failing re-run: the record survived, the old setup runs again" eval '[ "$rc" != 0 ] && old_setup_live Fidelio.bundle && ! proc dock-audiod'
+  setup_cmd rollback; rc=$?
+  check "reboot during $st: rollback afterwards restores everything" eval '[ "$rc" = 0 ] && old_setup_live Fidelio.bundle && [ "$(tree_sum "$R/Applications/NowPlaying.app")" = "$APP_SUM" ] && [ ! -e "$R/usr/libexec/dock-receiver" ]'
+done
+phone_old vars a b
+mv "$R/var/mobile/fidelio" "$R/var/mobile/fidelio.gone"
+: > "$OUT"; dev "$SH" "$T/ctl-main/preinst" rollback; rc=$?
+check "no old directory: rollback refuses, no old job is loaded or restored" eval '[ "$rc" != 0 ] && grep -q "no complete old setup is kept" "$OUT"'
+
 echo "# the scripts name no tool the devices lack"
 for f in "$REPO"/packaging/dock-receiver/setup.sh "$REPO"/packaging/dock-receiver-dockremote/scripts.sh "$REPO"/packaging/dock-receiver/cspot-run "$REPO"/packaging/dock-receiver/keepalive; do
   # a forbidden tool in a command position: at the start, or after | ; & ( $( { then do else
