@@ -1,0 +1,152 @@
+civetweb (as bundled in bell, squeezelite-esp32 components/spotify/cspot/bell/external/civetweb):
+per-file notices
+==============================================================================
+
+This file is NOT an upstream file. The civetweb directory of the tree has no
+licence file. The blocks below are copied verbatim from the comment headers of
+the civetweb files that the build of cspot-ios3 compiles (civetweb.c,
+CivetServer.cpp) and of the files civetweb.c includes that carry a notice of
+their own (handle_form.inl, md5.inl, sha1.inl). Tree: squeezelite-esp32 commit
+ee1720c7556ffec5f43329aadd47c20546bdbb79. The header lines reproduced here are
+the same in the pristine tree and in the patched tree that is built.
+Also carried by: include/civetweb.h (same block as civetweb.c),
+include/CivetServer.h (same block as CivetServer.cpp, years 2013-2017).
+
+------------------------------------------------------------------------------
+components/spotify/cspot/bell/external/civetweb/civetweb.c, lines 1-21:
+
+/* Copyright (c) 2013-2021 the Civetweb developers
+ * Copyright (c) 2004-2013 Sergey Lyubka
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+------------------------------------------------------------------------------
+components/spotify/cspot/bell/external/civetweb/CivetServer.cpp, lines 1-5:
+
+/* Copyright (c) 2013-2020 the Civetweb developers
+ * Copyright (c) 2013 No Face Press, LLC
+ *
+ * License http://opensource.org/licenses/mit-license.php MIT License
+ */
+
+------------------------------------------------------------------------------
+components/spotify/cspot/bell/external/civetweb/handle_form.inl, lines 1-20:
+
+/* Copyright (c) 2016-2021 the Civetweb developers
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+------------------------------------------------------------------------------
+components/spotify/cspot/bell/external/civetweb/md5.inl, lines 1-35:
+
+/*
+ * This an amalgamation of md5.c and md5.h into a single file
+ * with all static declaration to reduce linker conflicts
+ * in Civetweb.
+ *
+ * The MD5_STATIC declaration was added to facilitate static
+ * inclusion.
+ * No Face Press, LLC
+ */
+
+/* $Id: md5.h,v 1.4 2002/04/13 19:20:28 lpd Exp $ */
+/*
+  Independent implementation of MD5 (RFC 1321).
+
+  This code implements the MD5 Algorithm defined in RFC 1321, whose
+  text is available at
+    http://www.ietf.org/rfc/rfc1321.txt
+  The code is derived from the text of the RFC, including the test suite
+  (section A.5) but excluding the rest of Appendix A.  It does not include
+  any code or documentation that is identified in the RFC as being
+  copyrighted.
+
+  The original and principal author of md5.h is L. Peter Deutsch
+  <ghost@aladdin.com>.  Other authors are noted in the change history
+  that follows (in reverse chronological order):
+
+  2002-04-13 lpd Removed support for non-ANSI compilers; removed
+    references to Ghostscript; clarified derivation from RFC 1321;
+    now handles byte order either statically or dynamically.
+  1999-11-04 lpd Edited comments slightly for automatic TOC extraction.
+  1999-10-18 lpd Fixed typo in header comment (ansi2knr rather than md5);
+    added conditionalization for C++ compilation from Martin
+    Purschke <purschke@bnl.gov>.
+  1999-05-03 lpd Original version.
+ */
+
+------------------------------------------------------------------------------
+components/spotify/cspot/bell/external/civetweb/md5.inl, lines 80-103:
+
+/*
+  Copyright (C) 1999, 2000, 2002 Aladdin Enterprises.  All rights reserved.
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  L. Peter Deutsch
+  ghost@aladdin.com
+
+ */
+/* $Id: md5.c,v 1.6 2002/04/13 19:20:28 lpd Exp $ */
+
+------------------------------------------------------------------------------
+components/spotify/cspot/bell/external/civetweb/sha1.inl, lines 1-9:
+
+/*
+SHA-1 in C
+By Steve Reid <sreid@sea-to-sky.net>
+100% Public Domain
+
+-----------------
+Modified 7/98
+By James H. Brown <jbrown@burgoyne.com>
+Still 100% Public Domain
+
