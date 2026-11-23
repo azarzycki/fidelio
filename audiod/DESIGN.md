@@ -1,15 +1,15 @@
-# fidelio-audiod — the audio arbiter
+# dock-audiod — the audio arbiter
 
 ## Why this exists
 
 iPhone OS 3 gives one process at a time a working hardware audio route. Two
-independent receivers (cspot for Spotify, fidelio-raop for AirPlay) each open
+independent receivers (cspot for Spotify, dock-raop for AirPlay) each open
 their own `AudioQueue` + `AudioSession` and override the route. They cannot hand
 that route off: when one is killed it never calls `AudioSessionSetActive(false)`,
 so `mediaserverd` leaves the route pinned to the dead owner and the next player
 is **silent**. (Confirmed on hardware 2026-11-07.)
 
-**Model B — a middle arbiter.** `fidelio-audiod` is the *only* process that ever
+**Model B — a middle arbiter.** `dock-audiod` is the *only* process that ever
 touches `AudioQueue` / `AudioSession` / the route. The receivers stop opening
 audio hardware; they become route-agnostic **PCM producers** that stream to the
 arbiter over a Unix socket. "Switching source" becomes "pick which PCM stream to
@@ -17,13 +17,13 @@ play" inside one process — no hardware handoff, so the silence bug cannot happ
 
 ```
   cspot-ios3  ──(PCM over unix socket)──┐
-                                        ├──►  fidelio-audiod  ──►  AudioQueue ──► dock
-  fidelio-raop ─(PCM over unix socket)──┘        (arbiter)       (route-following)
+                                        ├──►  dock-audiod  ──►  AudioQueue ──► dock
+  dock-raop ─(PCM over unix socket)──┘        (arbiter)       (route-following)
 ```
 
 ## Transport
 
-- Unix domain `SOCK_STREAM` at `/var/mobile/fidelio/audiod.sock` (override `--sock`).
+- Unix domain `SOCK_STREAM` at `/var/mobile/dockreceiver/audiod.sock` (override `--sock`).
 - Server = audiod. One client connection = one source stream. audiod accepts many.
 - All multi-byte fields **little-endian** (ARMv6 + Linux host are both LE).
 - Framed messages: `struct MsgHeader { u32 type; u32 len; }` then `len` payload bytes.
@@ -99,11 +99,11 @@ State: `activeSource` (the one written to the AudioQueue) + `activeSinceMs`.
 
 ## Daemons
 
-- `com.fidelio.audiod.plist` — RunAtLoad + KeepAlive, UserName mobile. Comes up
+- `com.dockreceiver.audiod.plist` — RunAtLoad + KeepAlive, UserName mobile. Comes up
   first and owns the audio.
 - cspot + raop daemons run as today but their sink is `SocketSink`; they
   retry-connect so a race with audiod startup self-heals.
-- audiod publishes `/var/mobile/fidelio/active-source` (`spotify|airplay|none`)
+- audiod publishes `/var/mobile/dockreceiver/active-source` (`spotify|airplay|none`)
   so the now-playing app can show whoever is actually playing.
 
 ## Host test (before any hardware deploy)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """B1.10 item 1: a hardware volume change must never let a BACKGROUND source steal the output, and the
 Spotify slider must still track the true level. audiod runs in absolute mode with a mock hardware
-volume. Protocol-v2 clients (read WELCOME / HWVOLUME). Usage: test_volume.py PATH_TO_fidelio-audiod
+volume. Protocol-v2 clients (read WELCOME / HWVOLUME). Usage: test_volume.py PATH_TO_dock-audiod
 """
 import os, socket, struct, subprocess, sys, threading, time
 AUDIOD = sys.argv[1]

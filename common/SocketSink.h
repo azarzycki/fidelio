@@ -1,5 +1,5 @@
 #pragma once
-// SocketSink: an AudioOutput (common/AudioOutput.h) that streams PCM to fidelio-audiod over the
+// SocketSink: an AudioOutput (common/AudioOutput.h) that streams PCM to dock-audiod over the
 // Unix socket instead of opening the hardware. write() -> AUDIO, flush() -> FLUSH, idle() -> STOP.
 // Connects lazily with backoff, sends HELLO, and reconnects + re-HELLOs after a broken pipe
 // (audiod restarted). While audiod is unreachable, audio is dropped (never blocks the producer).

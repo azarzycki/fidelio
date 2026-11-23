@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 #include "Settings.h"
-using namespace fidelio;
+using namespace dockreceiver;
 
 static int fails = 0;
 #define CHECK(c, m) do { if (c) printf("ok   %s\n", m); else { printf("FAIL %s\n", m); fails++; } } while (0)

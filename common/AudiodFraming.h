@@ -1,5 +1,5 @@
 #pragma once
-// Framing for the fidelio-audiod wire protocol (audiod/proto.h): an incremental parser used by
+// Framing for the dock-audiod wire protocol (audiod/proto.h): an incremental parser used by
 // the server for every client connection, and a writer used by producers (SocketSink).
 // Both sides share this file so the ABI is implemented exactly once.
 #include <stddef.h>

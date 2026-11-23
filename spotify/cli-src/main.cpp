@@ -99,7 +99,7 @@ struct Options {
   int port = 7864;
   bool help = false;
   bool noAudio = false;
-  bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
+  bool directAudio = false;  // --direct-audio: local AudioQueue instead of dock-audiod
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
   int sinkTestSec = 0;       // --sink-test N: play N s of a 440 Hz tone through the sink and exit
   int sinkTestVolumePct = -1;  // --sink-test-volume PCT: 40 % into the tone, move the Connect slider there (host test of B1.9)
@@ -110,15 +110,15 @@ struct Options {
 #ifdef __APPLE__
   AudioQueueSink::Options audio;  // --audio-route, --on-route-change, --audio-session (direct audio only)
 #endif
-  std::string statusDir = "/var/mobile/fidelio";  // "" disables the status files
+  std::string statusDir = DOCKRECEIVER_DIR;  // "" disables the status files
 };
 
 // B1.15: cspot-ios3's option registry, declared ONCE and BOUND to the live Options. read()/write()
 // are the single source of truth: the manifest reads back what the daemon uses, and a settings.conf
 // value is applied by calling write() on `o`. Every flag spelling (incl. -n/-b) marks the option
 // locked. Defaults MUST match parseArgs' own (name "iPhone Fidelio", bitrate 96, volume 50, curve log).
-static void buildCspotRegistry(fidelio::Registry& r, Options& o) {
-  using O = fidelio::Option;
+static void buildCspotRegistry(dockreceiver::Registry& r, Options& o) {
+  using O = dockreceiver::Option;
   auto i2s = [](long v){ char b[32]; snprintf(b, sizeof b, "%ld", v); return std::string(b); };
   O x;
 
@@ -346,7 +346,7 @@ int main(int argc, char** argv) {
   }
   if (args.help) {
     std::cout << "Usage: cspot-ios3 [OPTION]...\n"
-                 "Spotify Connect receiver for iPhone OS 3 (ARMv6), playing through fidelio-audiod.\n\n"
+                 "Spotify Connect receiver for iPhone OS 3 (ARMv6), playing through dock-audiod.\n\n"
                  "Run without -u/-c to be discovered via Bonjour by the Spotify app on the LAN.\n"
                  "  -n, --name NAME          device name shown in Spotify (default: iPhone Fidelio)\n"
                  "  -u, --username USER      log in with username/password instead of Zeroconf\n"
@@ -357,9 +357,9 @@ int main(int argc, char** argv) {
                  "  --client-id ID / --client-secret SECRET\n"
                  "                           Spotify developer app credentials; this cspot fork fetches\n"
                  "                           its Web API token from accounts.spotify.com with them\n"
-                 "  --audiod-sock PATH       fidelio-audiod socket (default " AUDIOD_DEFAULT_SOCK "; env AUDIOD_SOCK)\n"
+                 "  --audiod-sock PATH       dock-audiod socket (default " AUDIOD_DEFAULT_SOCK "; env AUDIOD_SOCK)\n"
                  "  --audiod-lead-ms MS      how far ahead of real time to stream to audiod (default 750; env AUDIOD_LEAD_MS)\n"
-                 "  --direct-audio           play through a local AudioQueue instead of fidelio-audiod\n"
+                 "  --direct-audio           play through a local AudioQueue instead of dock-audiod\n"
                  "                           (standalone debugging; the two options below apply to it)\n"
                  "  --sink-test SECONDS      play a 440 Hz tone through the sink for that long and exit\n"
                  "  --sink-test-volume PCT   with --sink-test: move the Connect slider to PCT 40 %% into the tone (B1.9 host test)\n"
@@ -383,7 +383,7 @@ int main(int argc, char** argv) {
                  "  --no-audio               diagnostic: no AudioQueue sink and no player thread;\n"
                  "                           decoded audio is discarded, Spirc events are logged\n"
                  "  --status-dir DIR         write status.json / status.plist / cover.jpg there\n"
-                 "                           (default /var/mobile/fidelio); --no-status disables\n";
+                 "                           (default " DOCKRECEIVER_DIR "); --no-status disables\n";
     return 0;
   }
   // B1.15: the option registry, bound to the live Options (args). markCommandLine marks locked flags
@@ -391,7 +391,7 @@ int main(int argc, char** argv) {
   // file drift. This runs BEFORE the "start" log line below and before the player is built, so a file
   // bitrate really reaches ctx->config.audioFormat (B1.15 defect 3).
   if (!args.statusDir.empty()) {
-    fidelio::Registry sreg("cspot", CSPOT_BUILD_HASH);
+    dockreceiver::Registry sreg("cspot", CSPOT_BUILD_HASH);
     buildCspotRegistry(sreg, args);
     sreg.markCommandLine(argc, argv);
     sreg.loadFile(args.statusDir + "/settings.conf");

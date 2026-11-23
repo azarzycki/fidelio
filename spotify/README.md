@@ -1,10 +1,10 @@
-# fidelio-ios3-spotify
+# Spotify Connect receiver (`cspot-ios3`)
 
-A **Spotify Connect receiver for the original 2007 iPhone** (iPhone1,1, ARMv6 / ARM11, iOS 3.1.3), built with a Linux-hosted cross-toolchain. It turns a jailbroken first-generation iPhone — here, one docked permanently in a Philips Fidelio DS9000 speaker — into a headless Spotify Connect endpoint that logs in, fetches tracks, decodes Vorbis, and plays through the system AudioQueue.
+A **Spotify Connect receiver for the original 2007 iPhone** (iPhone1,1, ARMv6 / ARM11, iOS 3.1.3), built with a Linux-hosted cross-toolchain. It turns a jailbroken first-generation iPhone — here, one docked permanently in a Philips Fidelio DS9000 speaker dock — into a headless Spotify Connect endpoint that logs in, fetches tracks, decodes Vorbis, and plays through the system AudioQueue.
 
 Verified end-to-end on real hardware: Zeroconf login → AP authentication → Web-API token → CDN fetch → Vorbis decode → **320 kbps audio out the speaker**, at ~2.8 MB resident and ~20 % CPU on the 412 MHz ARM11.
 
-> This repository is the **port**: the cross-toolchain patches, the glue/CLI sources, and build/run docs. It does **not** vendor the large upstream trees (cspot, bell, mbedTLS, cctools-port, LLVM) — you fetch those and apply the patches here. See [`BUILD.md`](BUILD.md) for the toolchain and [`CSPOT.md`](CSPOT.md) for the receiver.
+> This directory is the **port**: the cross-toolchain patches, the glue/CLI sources, and build/run docs. It does **not** vendor the large upstream trees (cspot, bell, mbedTLS, cctools-port, LLVM) — you fetch those and apply the patches here. See [`BUILD.md`](BUILD.md) for the toolchain and [`CSPOT.md`](CSPOT.md) for the receiver.
 
 ## What's here
 - `patches/` — the minimal patches that make the toolchain and the player work on iPhone OS 3:
@@ -30,7 +30,7 @@ armv6-ios3-strip -x cspot-ios3 && armv6-ios3-ldid -S cspot-ios3 && armv6-ios3-ch
 ```sh
 ./cspot-ios3 --client-id <spotify-app-id> --client-secret <spotify-app-secret> -b 320 -n "iPhone Fidelio"
 ```
-Needs a Spotify **Premium** account and a Spotify developer app's client-id/secret (client-credentials flow, for the Web-API token). Then pick the device in any Spotify client on the same Wi-Fi. Status is written to `--status-dir` (default `/var/mobile/fidelio`) as `status.json` + `status.plist` + `cover.jpg` for the companion display app.
+Needs a Spotify **Premium** account and a Spotify developer app's client-id/secret (client-credentials flow, for the Web-API token). Then pick the device in any Spotify client on the same Wi-Fi. Status is written to `--status-dir` (default `/var/mobile/dockreceiver`) as `status.json` + `status.plist` + `cover.jpg` for the NowPlaying display app (`../nowplaying/`). With the rest of the suite it plays through `dock-audiod` (`../audiod/`).
 
 ## Hardware prerequisites
 Original iPhone (iPhone1,1) jailbroken on iOS 3.1.3 (e.g. redsn0w 0.9.3 pointed at the 3.1.2 IPSW), with OpenSSH. The binary is fake-signed with `ldid -S`; it runs as the `mobile` user.
@@ -43,4 +43,4 @@ This port stands on:
 - [ldid](https://github.com/ProcursusTeam/ldid)
 - [LLVM](https://github.com/llvm/llvm-project) libc++/libc++abi (Apache-2.0 WITH LLVM-exception)
 
-Each `patches/*.patch` is a derivative of the named upstream and is governed by that upstream's license. The original files in this repo (`cli-src/`, `tls_test.c`, docs) are released under the MIT License — see [`LICENSE`](LICENSE). **No Spotify credentials are stored in this repo**; they are passed at runtime.
+Each `patches/*.patch` is a derivative of the named upstream and is governed by that upstream's license. The original files in this directory (`cli-src/`, `tls_test.c`, docs) are released under the MIT License — see [`LICENSE`](LICENSE). **No Spotify credentials are stored in this repository**; they are passed at runtime.

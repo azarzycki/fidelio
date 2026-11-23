@@ -1,19 +1,19 @@
-# NowPlaying.app ("Fidelio") — dock display for cspot-ios3
+# NowPlaying.app — dock display for cspot-ios3 and dock-raop
 
 A native UIKit app for iPhone OS 3.1 (armv6) that shows what cspot-ios3 is playing. It is a display only: playback is driven from the Spotify app on your phone/laptop. Built with the armv6-ios3 toolchain (Objective-C, manual retain/release, no ARC, no blocks), links UIKit, Foundation, CoreGraphics, QuartzCore (+ CoreFoundation, libobjc, libSystem, libgcc_s pulled in by them). Fake-signed with `ldid -S`. `armv6-ios3-check`: PASS, 52 undefined symbols, all in the 3.1.2 SDK.
 
 **Not run on hardware by me.** What is verified: it compiles and links, the Mach-O and Objective-C metadata are the 2009 shapes (non-fragile ABI sections, `__objc_classlist`, no PIE, no dyld-info), and the Info.plist keys are the iOS 3.1 ones.
 
 ## What the app reads (1.2, audiod)
-`/var/mobile/fidelio/active-source` — written by fidelio-audiod (rewritten every 10 s): `spotify`, `airplay` or `none`; a file older than 30 s is treated as absent (audiod gone). The app shows **only** that source's status; with `none` it shows "Idle" even if a player still claims to be playing (a paused AirPlay sender streaming silence, a source that lost the arbitration). Without the file (audiod not running) it shows whichever `status-*.plist` changed most recently.
+`/var/mobile/dockreceiver/active-source` — written by dock-audiod (rewritten every 10 s): `spotify`, `airplay` or `none`; a file older than 30 s is treated as absent (audiod gone). The app shows **only** that source's status; with `none` it shows "Idle" even if a player still claims to be playing (a paused AirPlay sender streaming silence, a source that lost the arbitration). Without the file (audiod not running) it shows whichever `status-*.plist` changed most recently.
 
-`/var/mobile/fidelio/remote-target` (1.4.3, audiod B1.16.16) — the dock remote's target, written by fidelio-audiod the same way (atomically, at once on a change, rewritten every 10 s; older than 30 s = absent): the active source, or a paused source of ours that is still resumable, or `none`. With `active-source` at `none` and a target named here, the app keeps showing that source, paused (below). Without the file (an older audiod) it behaves as 1.4.2.
+`/var/mobile/dockreceiver/remote-target` (1.4.3, audiod B1.16.16) — the dock remote's target, written by dock-audiod the same way (atomically, at once on a change, rewritten every 10 s; older than 30 s = absent): the active source, or a paused source of ours that is still resumable, or `none`. With `active-source` at `none` and a target named here, the app keeps showing that source, paused (below). Without the file (an older audiod) it behaves as 1.4.2.
 
-`/var/mobile/fidelio/status-spotify.plist` / `status-airplay.plist` — the per-source status (cspot-ios3 and fidelio-raop no longer share one `status.plist`); same keys as below, `cover` names `cover-spotify.jpg` / `cover-airplay.jpg`. The watchdog (`killall -9 cspot-ios3` when the status goes stale) watches `status-spotify.plist` regardless of what is shown.
+`/var/mobile/dockreceiver/status-spotify.plist` / `status-airplay.plist` — the per-source status (cspot-ios3 and dock-raop no longer share one `status.plist`); same keys as below, `cover` names `cover-spotify.jpg` / `cover-airplay.jpg`. The watchdog (`killall -9 cspot-ios3` when the status goes stale) watches `status-spotify.plist` regardless of what is shown.
 
 Original contract, per source: `status.plist` — polled once per second with `[NSDictionary dictionaryWithContentsOfFile:]`. iOS 3 has no JSON parser in Foundation (NSJSONSerialization is iOS 5), so cspot-ios3 rev 4 writes **both** `status.json` (your contract, for scripts) and `status.plist` (XML plist, same keys/values) atomically, each as `.tmp` + `rename()`. The app reads only the plist. A partial read (file missing for a moment) keeps the last good dictionary, so the screen never flickers.
 
-`/var/mobile/fidelio/cover.jpg` — reloaded when the `cover` field or the file's modification date changes.
+`/var/mobile/dockreceiver/cover.jpg` — reloaded when the `cover` field or the file's modification date changes.
 
 ## Field contract (both files, identical keys; never omitted, "" or 0 when unknown)
 | key | type | source |
@@ -32,7 +32,7 @@ Original contract, per source: `status.plist` — polled once per second with `[
 | `rss_kb` | int | cspot's resident size (`task_info TASK_BASIC_INFO`) |
 | `updated` | int | Unix seconds when the file was written |
 
-Write triggers: every Spirc event, state changes, and once per second while `playing`. Options: `--status-dir DIR` (default `/var/mobile/fidelio`), `--no-status`.
+Write triggers: every Spirc event, state changes, and once per second while `playing`. Options: `--status-dir DIR` (default `/var/mobile/dockreceiver`), `--no-status`.
 
 ## Cover art — verdict: feasible, implemented
 The fork's `TrackInfo.imageUrl` is already `https://i.scdn.co/image/<hex file id>` built from `album.cover_group.image[0]` (the proto keeps only `file_id`, no size enum; in practice `image[0]` is Spotify's DEFAULT ≈300 px image). cspot-ios3 fetches it with bell's own `HTTPClient::get` (HTTPS via mbedTLS, same path as the CDN audio) on the status writer's thread, writes `cover.jpg.tmp`, renames it to `cover.jpg`, then sets `"cover":"cover.jpg"`. On any failure the field stays `""` and the app shows the placeholder. The fetch is one extra TLS connection per track change (~40 KB heap while it runs). Unverified on hardware: whether `image[0]` is really the 300 px variant for every album; the app scales whatever it gets with aspect-fill into a 256 px rounded square.
@@ -62,14 +62,14 @@ On the 5.1.1 iPad, iapd decodes the dock's Simple Remote keys and sends them wit
 to the **now-playing app**. UIKit delivers them there as remote-control events. A tweak can't intercept
 them, unlike on the phone (DockRemote, B1.16.8), so NowPlaying has to receive them itself. The open
 question is what it takes to be the now-playing app while the audio comes from the daemons. Hence a staged
-prototype, chosen with a flag file read at launch: `/var/mobile/fidelio/remote-control.stage` holding 1, 2
+prototype, chosen with a flag file read at launch: `/var/mobile/dockreceiver/remote-control.stage` holding 1, 2
 or 3 (absent = 1). Kill and relaunch the app after changing it.
 
 1. `beginReceivingRemoteControlEvents` (iOS 4+), with the window (`NPWindow`) kept as first responder. It
    claims first responder at launch, on activation and when each tab appears.
    - Every remote-control event is caught in `NPApplication`, in `-sendEvent:` and at the end of the
      responder chain, and handled once.
-   - It is logged to `/var/mobile/fidelio/remote-control.log` with its subtype.
+   - It is logged to `/var/mobile/dockreceiver/remote-control.log` with its subtype.
    - Play, pause, stop, toggle, next and previous are forwarded to audiod's CONTROL channel, the same
      code the on-screen buttons use (`NPSendControl`). Seek events are logged only.
 2. Stage 1 plus `MRMediaRemoteSetCanBeNowPlayingApplication(true)`: MediaRemote via `dlopen`/`dlsym`,
@@ -86,6 +86,28 @@ Test on the iPad: Spotify playing through audiod, NowPlaying in front, dock keys
 `remote-control.log` fill, and with which subtypes? Try stage 1, then 2, then 3. Also check who gets the
 keys when the iPod app was the last to play.
 
+## The data directory; "Daemons not running" (1.5.0, B1.17)
+
+Since 1.5.0 (the B1.17 rename; the old names are in the top-level `RENAME.md`) the app reads `/var/mobile/dockreceiver`.
+The path is the one compile-time default of the suite, `DOCKRECEIVER_DIR` in `common/DataDir.h`; the app
+has no run-time override. Its bundle id is `com.dockreceiver.nowplaying`;
+the URL scheme `nowplaying:` is unchanged.
+
+When the directory is missing, or nothing in it is fresh, the Now Playing tab says so instead of showing
+an empty screen: the placeholder tile, the title "Daemons not running", a second line that says which case
+it is ("No directory /var/mobile/dockreceiver" or "Nothing in /var/mobile/dockreceiver is being updated"),
+and the status line "Daemons not running"; the buttons are disabled.
+
+| What the app sees | State |
+|---|---|
+| the directory does not exist | not running (no directory) |
+| `active-source` no older than 30 s | running |
+| no fresh `active-source`, but the shown `status-<source>.plist` modified within 30 s (a player without audiod) | running, shown as before |
+| anything else: an empty directory, or only an old setup's leftovers | not running |
+
+The decision is plain C, `NPDaemonsState` in `NPSource.c`, host-tested in `nowplaying/hosttest/source_test.c`
+(suite `np_source`). The Technical and Settings tabs are unchanged.
+
 ## A paused source stays on screen (1.4.3, B1.16.16)
 
 The owner's rule (2026-11-22): when Spotify (or AirPlay) is paused through the dock, its cover stays up
@@ -98,14 +120,14 @@ target, the same state the DockRemote tweak reads, so the app, the tweak and aud
 | paused target: `active-source` = `none`, `remote-target` = `spotify` | the same track, cover, title and artist stay; "Paused via Spotify"; play glyph; the buttons stay enabled (play resumes through audiod) |
 | target cleared (disconnect, STOP, other audio): both `none` | the idle view: placeholder tile, "Idle" |
 | another source takes over: `airplay` in both | that source's track at once (the shown status file switches; the old track is never shown under the new source) |
-| no audiod (files absent or older than 30 s) | as before: the most recently updated status file |
+| no audiod (files absent or older than 30 s) | as before: the most recently updated status file, as long as it is fresh; otherwise "Daemons not running" (1.5.0, below) |
 
 - While the target is paused the line reads "Paused" whatever the player's file says (a silent gap
   between tracks can still say "playing"); the progress bar keeps the player's position.
 - The receivers keep their status and cover files while paused: cspot writes `state` `paused` and keeps
   `title`, `artist` and the cover, and rewrites the file every second; raop sets `paused` on FLUSH or
   PAUSE and keeps the track (it clears it only when a new track or session starts).
-- **How it learns of a change:** the 1 Hz refresh (`FidelioStatus refresh`) reads `active-source`, then
+- **How it learns of a change:** the 1 Hz refresh (`NPStatus refresh`) reads `active-source`, then
   `remote-target`, so a change shows within about a second.
 - The decision is plain C (`NPSource.c`), host-tested by `nowplaying/hosttest/source_test.c` (the suite
   `np_source`).
@@ -117,7 +139,7 @@ target, the same state the DockRemote tweak reads, so the app, the tweak and aud
 So that the owner can see at the dock which remote keys reached the phone (and whether a key needs a
 firmer press), the Technical tab starts with a section **"Dock remote"**.
 
-- **Source:** `/var/mobile/fidelio/remote-keys.log`, written by the DockRemote tweak inside iapd (phone
+- **Source:** `/var/mobile/dockreceiver/remote-keys.log`, written by the DockRemote tweak inside iapd (phone
   only) while `remote-tweak.observe` or `remote-tweak.swallow` is set: one line per completed press,
   `<unix seconds> <code> <name> <taken|passed>` (`tweak/DockRemote/README.md`).
 - **Shown:** the last six presses, newest first, each as the local time `HH:MM:SS` and the key in words
@@ -140,9 +162,9 @@ firmer press), the Technical tab starts with a section **"Dock remote"**.
 scp -r NowPlaying.app root@phone:/Applications/
 ssh root@phone 'chown -R mobile:mobile /Applications/NowPlaying.app; chmod +x /Applications/NowPlaying.app/NowPlaying; killall SpringBoard'
 ```
-If the icon does not appear after the respring: `uicache` (Cydia's) or `su mobile -c uicache`, then respring again. The binary is already fake-signed; re-sign with `ldid -S NowPlaying.app/NowPlaying` only if you rebuild it. The app needs no entitlements; it only reads `/var/mobile/fidelio` (owned by `mobile`, same user it runs as).
+If the icon does not appear after the respring: `uicache` (Cydia's) or `su mobile -c uicache`, then respring again. The binary is already fake-signed; re-sign with `ldid -S NowPlaying.app/NowPlaying` only if you rebuild it. The app needs no entitlements; it only reads `/var/mobile/dockreceiver` (owned by `mobile`, same user it runs as).
 
-**URL scheme (1.3.1, B1.16.4).** The app registers the scheme `nowplaying:`; fidelio-audiod opens it with `SBSOpenSensitiveURLAndUnlock` so that unlocking a locked device for playback lands directly in the app. Opening the URL only brings the app forward; its content is ignored. iOS reads an app's URL schemes when it rebuilds its app list, not on a respring alone, so after installing or updating 1.3.1 run `uicache` (Cydia's, as `mobile`: `su mobile -c uicache`), then respring. Check: `uiopen nowplaying:` over SSH, where the `uiopen` tool is installed, should open the app. Without the registration SpringBoard has no app for the URL, and whether it still unlocks is untested. If audiod logs `unlock not confirmed`, check the registration first. `--unlock-url prefs:` (the URL of the device proof) is a fallback for that test; it opens Settings first, then audiod's launch retry brings NowPlaying forward.
+**URL scheme (1.3.1, B1.16.4).** The app registers the scheme `nowplaying:`; dock-audiod opens it with `SBSOpenSensitiveURLAndUnlock` so that unlocking a locked device for playback lands directly in the app. Opening the URL only brings the app forward; its content is ignored. iOS reads an app's URL schemes when it rebuilds its app list, not on a respring alone, so after installing or updating 1.3.1 run `uicache` (Cydia's, as `mobile`: `su mobile -c uicache`), then respring. Check: `uiopen nowplaying:` over SSH, where the `uiopen` tool is installed, should open the app. Without the registration SpringBoard has no app for the URL, and whether it still unlocks is untested. If audiod logs `unlock not confirmed`, check the registration first. `--unlock-url prefs:` (the URL of the device proof) is a fallback for that test; it opens Settings first, then audiod's launch retry brings NowPlaying forward.
 
 ## Build
 ```sh

@@ -9,7 +9,7 @@ keeps playing, audiod now also:
     device showed no plugin until the next start from nothing. SpringBoard's pid is polled every 2 s and
     the bundle is enabled again once a new SpringBoard has been up for 4 s.
 The host build's mock waker logs enableLockBundle/disableLockBundle and fakes the restart: SpringBoard's
-pid changes AUDIOD_MOCK_SB_RESTART_MS after start. Usage: test_lockplugin.py PATH_TO_fidelio-audiod
+pid changes AUDIOD_MOCK_SB_RESTART_MS after start. Usage: test_lockplugin.py PATH_TO_dock-audiod
 """
 import os, re, socket, struct, subprocess, sys, threading, time
 
@@ -81,7 +81,7 @@ def scenario(name, env, args, conf_steps, play_ms, total_ms):
     proc = subprocess.Popen([AUDIOD, "--sock", sock, "--pcm-out", out, "--event-log", evt, "--status-dir", d, "--no-silence",
                              "--takeover-ms", str(TAKEOVER), "--hold-ms", str(HOLD), "--release-ms", str(RELEASE),
                              "--idle-stop-ms", str(IDLE_STOP), "--lead-ms", str(LEAD), "--wake-on-play", "on",
-                             "--wake-bundle", "com.fidelio.nowplaying"] + args,
+                             "--wake-bundle", "com.dockreceiver.nowplaying"] + args,
                             stdout=open(log, "w"), stderr=subprocess.STDOUT, env=e)
     for _ in range(50):
         if os.path.exists(sock):
@@ -123,20 +123,20 @@ def count(text, rx):
 # A. The setting turned on, then off, while a source plays. No SpringBoard restart, so no re-enable.
 w, log = scenario("live-toggle", {}, [], [(0, "audiod.lock_plugin=off\n"), (2500, "audiod.lock_plugin=on\n"), (6000, "audiod.lock_plugin=off\n")],
                   9000, 9500)
-on = has(w, "lock-plugin enabled Fidelio (turned on while playing)")
-off = has(w, "lock-plugin disabled Fidelio (turned off while playing)")
+on = has(w, "lock-plugin enabled NowPlaying (turned on while playing)")
+off = has(w, "lock-plugin disabled NowPlaying (turned off while playing)")
 check(len(on) == 1 and 2500 <= on[0][0] <= 5000, f"turned on while playing: enabled at once ({on})")
 check(len(off) == 1 and on and off[0][0] > on[0][0] and 6000 <= off[0][0] <= 8500, f"turned off while playing: disabled at once ({off})")
-check(count(log, r"mock waker: enableLockBundle\(Fidelio\)") == 1 and count(log, r"mock waker: disableLockBundle\(Fidelio\)") == 1,
+check(count(log, r"mock waker: enableLockBundle\(NowPlaying\)") == 1 and count(log, r"mock waker: disableLockBundle\(NowPlaying\)") == 1,
       "exactly one enable and one disable reached SpringBoard, under the enabled name")
 check(not has(w, "lock-plugin re-enabled"), "no SpringBoard restart: no re-enable")
 
 # B. SpringBoard restarts 3 s into playback: the plugin is enabled again, once, after the new one settles.
-w, log = scenario("sb-restart", {"AUDIOD_MOCK_SB_RESTART_MS": "3000"}, ["--lock-plugin", "fidelio"], [], 11500, 12000)
-re_en = has(w, "lock-plugin re-enabled fidelio after a SpringBoard restart")
-check(len(has(w, "lock-plugin enabled fidelio")) == 1, "the plugin is enabled at the start from nothing")
+w, log = scenario("sb-restart", {"AUDIOD_MOCK_SB_RESTART_MS": "3000"}, ["--lock-plugin", "NowPlaying"], [], 11500, 12000)
+re_en = has(w, "lock-plugin re-enabled NowPlaying after a SpringBoard restart")
+check(len(has(w, "lock-plugin enabled NowPlaying")) == 1, "the plugin is enabled at the start from nothing")
 check(len(re_en) == 1 and 6000 <= re_en[0][0] <= 10500, f"a SpringBoard restart while playing re-enables it once, after the new one settles ({re_en})")
-check(count(log, r"mock waker: enableLockBundle\(fidelio\)") == 2, f"two enable calls in all: the start and the re-enable ({count(log, r'mock waker: enableLockBundle')})")
+check(count(log, r"mock waker: enableLockBundle\(NowPlaying\)") == 2, f"two enable calls in all: the start and the re-enable ({count(log, r'mock waker: enableLockBundle')})")
 
 # C. The agreed rule: audiod unlocked the device for this start, so turning the setting on keeps it off.
 w, log = scenario("unlocked-start", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "ok"}, [],

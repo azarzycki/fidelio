@@ -1,5 +1,5 @@
 #pragma once
-// The arbitration FSM of fidelio-audiod (DESIGN.md "Arbitration"), kept free of I/O so it can be
+// The arbitration FSM of dock-audiod (DESIGN.md "Arbitration"), kept free of I/O so it can be
 // unit-tested: feed it source events with timestamps, ask it who is active.
 //
 // Rules implemented (B1.2):

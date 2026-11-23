@@ -1,5 +1,5 @@
 #pragma once
-// The sink CliPlayer feeds: fidelio-audiod over its Unix socket (default) or the local AudioQueue
+// The sink CliPlayer feeds: dock-audiod over its Unix socket (default) or the local AudioQueue
 // (--direct-audio, standalone debugging). Both block the player thread to pace it.
 #include <stddef.h>
 #include <stdint.h>
@@ -63,7 +63,7 @@ class AudiodSink : public PlayerSink {
   void flush() override { sink.flush(); }
   double bufferedSeconds() override { return sink.bufferedSeconds(); }
   void audioEnded() override { sink.idle(); }
-  std::string describe() override { return "fidelio-audiod at " + path; }
+  std::string describe() override { return "dock-audiod at " + path; }
 
  private:
   static void hwTrampoline(void* user, bool absolute, uint16_t slider) {

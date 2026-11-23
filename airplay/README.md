@@ -1,6 +1,6 @@
-# fidelio-ios3-airplay
+# AirPlay v1 / RAOP receiver (`dock-raop`)
 
-An **AirPlay v1 / RAOP audio receiver for the original 2007 iPhone** (ARMv6, iOS 3.1.3), built with the same cross-toolchain as [fidelio-ios3-spotify](https://github.com/azarzycki/fidelio-ios3-spotify). It advertises itself over the system mDNSResponder, speaks RTSP/RAOP, receives RTP audio (ALAC or L16 PCM, optionally AES-128-CBC), plays through an AudioQueue sink, and writes the same status files the [now-playing app](https://github.com/azarzycki/fidelio-ios3-nowplaying) reads (with `"source":"airplay"`). ~820 KB stripped.
+An **AirPlay v1 / RAOP audio receiver for the original 2007 iPhone** (ARMv6, iOS 3.1.3), built with the same cross-toolchain as the Spotify receiver ([`../spotify/`](../spotify/)). It advertises itself over the system mDNSResponder, speaks RTSP/RAOP, receives RTP audio (ALAC or L16 PCM, optionally AES-128-CBC), plays through an AudioQueue sink, and writes the same status files the now-playing app ([`../nowplaying/`](../nowplaying/)) reads (with `"source":"airplay"`). ~820 KB stripped.
 
 So the docked iPhone can play **anything** streamed to it as an AirPlay speaker — not just Spotify.
 
@@ -19,8 +19,8 @@ Host-verified (Linux, scripted RAOP sender + Apple's ALAC encoder): OPTIONS/`App
 ```sh
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<toolchain>/share/armv6-ios3/toolchain.cmake -DMBEDTLS_PREFIX=<mbedtls install>
 # IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1 in the environment
-./fidelio-raop --name "Fidelio (AirPlay)"      # defaults: RTSP port 5000, 1 s jitter buffer
-./fidelio-raop --no-audio                      # decode and discard (isolation test)
+./dock-raop --name "Fidelio (AirPlay)"      # defaults: RTSP port 5000, 1 s jitter buffer
+./dock-raop --no-audio                      # decode and discard (isolation test)
 ```
 Then pick "Fidelio (AirPlay)" in CenturyPlay or any AirPlay-1 sender on the same Wi-Fi.
 

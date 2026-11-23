@@ -3,6 +3,6 @@ build-host/
 *.o
 *.a
 # compiled binary (build it, or fetch from Releases)
-fidelio-raop
+dock-raop
 *.pcm
 .DS_Store

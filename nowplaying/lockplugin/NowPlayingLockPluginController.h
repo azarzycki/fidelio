@@ -1,4 +1,4 @@
-// Fidelio lock-screen plugin for iOS 5.1.1 (iPad1,1). Principal class of Fidelio.lockbundle, loaded
+// NowPlaying lock-screen plugin for iOS 5.1.1 (iPad1,1). Principal class of NowPlaying.lockbundle, loaded
 // by SpringBoard into /System/Library/SpringBoardPlugins/. It subclasses SpringBoard's private
 // SBAwayViewPluginController, whose @implementation lives inside SpringBoard: the interface below is
 // declared from the live-device dump (B1.11) and the class symbol is left undefined at link time
@@ -46,13 +46,13 @@
 // run time (objc_getClass) and each selector is checked with respondsToSelector:, so nothing is linked
 // (the build's undefined-symbol check stays at the two SBAwayViewPluginController symbols) and a
 // missing method is a no-op.
-@protocol FidelioSBAwayController <NSObject>
+@protocol NowPlayingSBAwayController <NSObject>
 + (id)sharedAwayController;
 - (void)restartDimTimer;  // restart the lock screen's dim countdown (the no-argument form)
 - (BOOL)isDimmed;         // the lock screen is dimming or off
 @end
 
-@interface FidelioLockPluginController : SBAwayViewPluginController {
+@interface NowPlayingLockPluginController : SBAwayViewPluginController {
   UIView* content;          // our root view (also returned by -view)
   UIImageView* coverView;
   UILabel* sourceLabel;

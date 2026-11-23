@@ -1,9 +1,9 @@
 #import "NPEventProbe.h"
-#import "FidelioStatus.h"  // FIDELIO_DIR
+#import "NPStatus.h"  // NP_DIR
 #import "NPRemoteControl.h"
 
-static NSString* ProbeFlagPath(void) { return [FIDELIO_DIR stringByAppendingPathComponent:@"remote-probe.on"]; }
-static NSString* ProbeLogPath(void)  { return [FIDELIO_DIR stringByAppendingPathComponent:@"remote-events.log"]; }
+static NSString* ProbeFlagPath(void) { return [NP_DIR stringByAppendingPathComponent:@"remote-probe.on"]; }
+static NSString* ProbeLogPath(void)  { return [NP_DIR stringByAppendingPathComponent:@"remote-events.log"]; }
 
 BOOL NPEventProbeEnabled(void) { return [[NSFileManager defaultManager] fileExistsAtPath:ProbeFlagPath()]; }
 void NPEventProbeSetEnabled(BOOL on) {

@@ -1,5 +1,5 @@
 #import <UIKit/UIKit.h>
-#import "FidelioStatus.h"
+#import "NPStatus.h"
 #import "NowPlayingViewController.h"
 #import "TechnicalViewController.h"
 #import "SettingsViewController.h"
@@ -8,14 +8,14 @@
 // app prods it with `killall -9 cspot-ios3` (launchd's KeepAlive relaunches it). Only stale files
 // count, never a missing one at first launch, and at most once per cooldown. This catches hangs
 // and crashes only: a player that keeps writing status (e.g. a wedged audio route) is not touched.
-#define FIDELIO_WATCHDOG_STALE_S 30.0
-#define FIDELIO_WATCHDOG_COOLDOWN_S 60.0
-#define FIDELIO_WATCHDOG_TARGET "cspot-ios3"
+#define NP_WATCHDOG_STALE_S 30.0
+#define NP_WATCHDOG_COOLDOWN_S 60.0
+#define NP_WATCHDOG_TARGET "cspot-ios3"
 
-@interface FidelioAppDelegate : NSObject <UIApplicationDelegate> {
+@interface NPAppDelegate : NSObject <UIApplicationDelegate> {
   UIWindow* window;
   UITabBarController* tabs;
-  FidelioStatus* status;
+  NPStatus* status;
   NowPlayingViewController* nowPlaying;
   TechnicalViewController* technical;
   SettingsViewController* settingsVC;

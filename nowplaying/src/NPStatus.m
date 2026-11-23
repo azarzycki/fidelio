@@ -1,4 +1,4 @@
-#import "FidelioStatus.h"
+#import "NPStatus.h"
 #include "NPLayout.h"
 #include "NPSource.h"
 
@@ -16,12 +16,12 @@ static BOOL SameDate(NSDate* a, NSDate* b) {
   return a == b || (a && b && [a isEqualToDate:b]);
 }
 
-@implementation FidelioStatus
+@implementation NPStatus
 
 @synthesize dict, cover, fileMissing, fileUnreadable, activeSource, shownSource;
 
 static NSString* StatusPath(NSString* source) {
-  return [FIDELIO_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"status-%@.plist", source]];
+  return [NP_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"status-%@.plist", source]];
 }
 
 static NSDate* Mtime(NSString* path) {
@@ -57,12 +57,16 @@ static NSDate* Mtime(NSString* path) {
   return pausedTarget;
 }
 
+- (NPDaemons)daemons {
+  return daemons;
+}
+
 // One of audiod's one-line files, as a name; nil when it is absent or older than
-// FIDELIO_ACTIVE_SOURCE_STALE_S (audiod rewrites both every 10 s: an older one is a leftover).
+// NP_ACTIVE_SOURCE_STALE_S (audiod rewrites both every 10 s: an older one is a leftover).
 static NSString* FreshName(NSString* name) {
-  NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:name];
+  NSString* path = [NP_DIR stringByAppendingPathComponent:name];
   NSDate* mtime = Mtime(path);
-  if (!mtime || [[NSDate date] timeIntervalSinceDate:mtime] > FIDELIO_ACTIVE_SOURCE_STALE_S) return nil;
+  if (!mtime || [[NSDate date] timeIntervalSinceDate:mtime] > NP_ACTIVE_SOURCE_STALE_S) return nil;
   NSString* text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:NULL];
   const char* c = text ? [text UTF8String] : NULL;
   if (!c) return nil;
@@ -90,6 +94,7 @@ static NSString* FreshName(NSString* name) {
 - (void)refresh {
   // audiod rewrites the file every 10 s; one much older than that is a leftover of a dead audiod.
   NSString* act = FreshName(@"active-source");
+  BOOL activeFresh = act != nil;
   if (!act) act = @"";
   [activeSource release];
   activeSource = [act copy];
@@ -101,6 +106,12 @@ static NSString* FreshName(NSString* name) {
     dict = nil;  // never show the other source's track
   }
   NSString* path = StatusPath(shownSource);
+  // B1.17: an empty or missing directory (nothing installed, not migrated, or the daemons stopped) is
+  // shown as such, not as an empty screen.
+  int dirExists = NPIsDirectory(DOCKRECEIVER_DIR);
+  NSDate* statusMtime = Mtime(path);
+  daemons = NPDaemonsState(dirExists, activeFresh ? 1 : 0,
+                           statusMtime ? [[NSDate date] timeIntervalSinceDate:statusMtime] : -1.0, NP_ACTIVE_SOURCE_STALE_S);
   NSDictionary* d = [NSDictionary dictionaryWithContentsOfFile:path];
   if (d) {
     [dict release];
@@ -127,7 +138,7 @@ static NSString* FreshName(NSString* name) {
   NSDate* mtime = nil;
   unsigned long long size = 0;
   if ([name length]) {
-    coverPath = [FIDELIO_DIR stringByAppendingPathComponent:name];
+    coverPath = [NP_DIR stringByAppendingPathComponent:name];
     NSDictionary* attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:coverPath error:NULL];
     mtime = [attrs objectForKey:NSFileModificationDate];
     size = [[attrs objectForKey:NSFileSize] unsignedLongLongValue];
@@ -135,7 +146,7 @@ static NSString* FreshName(NSString* name) {
   BOOL changed = ![name isEqualToString:coverName] || !SameDate(mtime, coverMtime) || size != coverSize;
   if (changed) {
     [cover release];
-    cover = mtime ? [FidelioStatus newCoverFromFile:coverPath] : nil;
+    cover = mtime ? [NPStatus newCoverFromFile:coverPath] : nil;
     [coverName release];
     coverName = [name copy];
     [coverMtime release];
@@ -220,7 +231,7 @@ static NSString* FreshName(NSString* name) {
   UIImage* img = [[UIImage alloc] initWithContentsOfFile:path];
   if (!img) return nil;
   CGSize sz = img.size;
-  if (sz.width < 1 || sz.height < 1 || sz.width > FIDELIO_COVER_MAX_PX || sz.height > FIDELIO_COVER_MAX_PX) {
+  if (sz.width < 1 || sz.height < 1 || sz.width > NP_COVER_MAX_PX || sz.height > NP_COVER_MAX_PX) {
     [img release];
     return nil;
   }

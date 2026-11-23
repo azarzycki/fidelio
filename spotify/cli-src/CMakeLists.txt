@@ -24,7 +24,7 @@ add_compile_definitions(BELL_APPLE_NO_DISPATCH BELL_HTTP_NUM_THREADS="1" BELL_TA
 set(CSPOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../cspot CACHE PATH "cspot library tree")
 add_subdirectory(${CSPOT_DIR} ${CMAKE_CURRENT_BINARY_DIR}/cspot)
 
-# Shared with fidelio-audiod and fidelio-raop: the audiod wire framing and the SocketSink output.
+# Shared with dock-audiod and dock-raop: the audiod wire framing and the SocketSink output.
 set(COMMON ${CMAKE_CURRENT_SOURCE_DIR}/../../common)
 file(GLOB SOURCES "*.cpp")
 if(NOT APPLE)

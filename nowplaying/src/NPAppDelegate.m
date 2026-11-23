@@ -1,4 +1,4 @@
-#import "FidelioAppDelegate.h"
+#import "NPAppDelegate.h"
 #import "NPRemoteControl.h"
 
 #include <spawn.h>
@@ -6,13 +6,13 @@
 
 extern char** environ;
 
-@implementation FidelioAppDelegate
+@implementation NPAppDelegate
 
 - (void)applicationDidFinishLaunching:(UIApplication*)application {
   [application setStatusBarHidden:YES animated:NO];
   [application setIdleTimerDisabled:YES];  // a dock display must not auto-lock
 
-  status = [[FidelioStatus alloc] init];
+  status = [[NPStatus alloc] init];
   [status refresh];
 
   nowPlaying = [[NowPlayingViewController alloc] initWithStatus:status];
@@ -73,26 +73,26 @@ extern char** environ;
   // file that is simply absent is not a hang (cspot not started yet).
   NSTimeInterval age = [status spotifyStatusAge];
   if (age >= 0) everValid = YES;
-  BOOL stale = everValid && age > FIDELIO_WATCHDOG_STALE_S;
+  BOOL stale = everValid && age > NP_WATCHDOG_STALE_S;
   if (!stale) return;
   NSTimeInterval now = CFAbsoluteTimeGetCurrent();
-  if (lastProd != 0 && now - lastProd < FIDELIO_WATCHDOG_COOLDOWN_S) return;
+  if (lastProd != 0 && now - lastProd < NP_WATCHDOG_COOLDOWN_S) return;
   lastProd = now;
 
   // The app and cspot both run as mobile, so a plain killall works; launchd restarts cspot.
-  char* argv[] = { (char*)"killall", (char*)"-9", (char*)FIDELIO_WATCHDOG_TARGET, NULL };
+  char* argv[] = { (char*)"killall", (char*)"-9", (char*)NP_WATCHDOG_TARGET, NULL };
   pid_t pid = 0;
   int rc = posix_spawn(&pid, "/usr/bin/killall", NULL, NULL, argv, environ);
   int wstatus = -1;
   if (rc == 0) waitpid(pid, &wstatus, 0);
-  NSLog(@"watchdog: status %.0f s old, killall -9 %s -> spawn %d, exit %d", age, FIDELIO_WATCHDOG_TARGET, rc,
+  NSLog(@"watchdog: status %.0f s old, killall -9 %s -> spawn %d, exit %d", age, NP_WATCHDOG_TARGET, rc,
         rc == 0 && WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1);
   [nowPlaying showNotice:@"Player not responding - restarting" forSeconds:8];
 }
 
 // iPhone OS 3 keeps the frontmost app running while the screen is locked (sleep button) or a call /
 // alert is on top; nothing is visible then, so do not poll the file and relayout once a second.
-// B1.16.4: the app's own URL scheme (nowplaying:, CFBundleURLTypes in Info.plist). fidelio-audiod passes it
+// B1.16.4: the app's own URL scheme (nowplaying:, CFBundleURLTypes in Info.plist). dock-audiod passes it
 // to SBSOpenSensitiveURLAndUnlock so that unlocking a locked device lands directly in this app. The URL's
 // content is ignored: being opened is all it is for. (iOS 3.0-4.1 call this method; 4.2+ call it too
 // when the newer openURL:sourceApplication:annotation: is not implemented.)

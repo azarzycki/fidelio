@@ -1,6 +1,7 @@
 #include "NPSource.h"
 
 #include <string.h>
+#include <sys/stat.h>
 
 static int isSpace(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
 
@@ -35,4 +36,16 @@ void NPPickSource(const char* active, const char* target, NPSourcePick* out) {
   } else if (strcmp(active, "none") == 0) {
     out->idle = 1;
   }
+}
+
+int NPIsDirectory(const char* path) {
+  struct stat st;
+  return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode) ? 1 : 0;
+}
+
+NPDaemons NPDaemonsState(int dirExists, int activeFresh, double statusAge, double staleS) {
+  if (!dirExists) return NP_DAEMONS_NO_DIR;
+  if (activeFresh) return NP_DAEMONS_RUNNING;
+  if (statusAge >= 0 && statusAge <= staleS) return NP_DAEMONS_RUNNING;  // a player without audiod
+  return NP_DAEMONS_NOT_RUNNING;
 }

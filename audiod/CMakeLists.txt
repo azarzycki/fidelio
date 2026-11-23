@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(fidelio-audiod CXX)
+project(dock-audiod CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -12,27 +12,27 @@ add_library(audiod_common STATIC ${REPO}/common/AudiodFraming.cpp ${REPO}/common
 target_include_directories(audiod_common PUBLIC ${INC})
 target_compile_options(audiod_common PRIVATE -O2 -Wall)
 
-add_executable(fidelio-audiod src/main.cpp src/Server.cpp src/Arbiter.cpp src/HardwareVolume.cpp src/OtherAudio.cpp)
-target_include_directories(fidelio-audiod PRIVATE ${INC})
-target_compile_options(fidelio-audiod PRIVATE -O2 -Wall)
-target_link_libraries(fidelio-audiod PRIVATE audiod_common)
+add_executable(dock-audiod src/main.cpp src/Server.cpp src/Arbiter.cpp src/HardwareVolume.cpp src/OtherAudio.cpp)
+target_include_directories(dock-audiod PRIVATE ${INC})
+target_compile_options(dock-audiod PRIVATE -O2 -Wall)
+target_link_libraries(dock-audiod PRIVATE audiod_common)
 if(APPLE)
-  # B1.11: fidelio-lockctl enables/disables a SpringBoard lock-screen bundle by name (dlopen'ed).
-  add_executable(fidelio-lockctl src/lockctl.cpp)
-  target_include_directories(fidelio-lockctl PRIVATE ${INC})
-  target_compile_options(fidelio-lockctl PRIVATE -O2 -Wall)
+  # B1.11: dock-lockctl enables/disables a SpringBoard lock-screen bundle by name (dlopen'ed).
+  add_executable(dock-lockctl src/lockctl.cpp)
+  target_include_directories(dock-lockctl PRIVATE ${INC})
+  target_compile_options(dock-lockctl PRIVATE -O2 -Wall)
 
   # B1.15 A: SpringBoard checks com.apple.springboard.launchapplications (for
   # SBSLaunchApplicationWithIdentifier, wake-on-play) and .activateawayviewplugins (for
   # SBEnableLockScreenBundle, the lock plugin). Without them the launch returns 1 even unlocked/root
-  # and the away-view enable is ignored. Sign fidelio-audiod and fidelio-lockctl at build time with the
+  # and the away-view enable is ignored. Sign dock-audiod and dock-lockctl at build time with the
   # entitlements plist using the patched armv6-ios3-ldid (keeps the LDID_CD_VERSION CodeDirectory that
   # loads on iPhone OS 3.1.3). Strip first so the signature is over the final bytes.
-  set(ENTS ${REPO}/common/fidelio-springboard.entitlements.plist)
+  set(ENTS ${REPO}/common/dock-springboard.entitlements.plist)
   find_program(IOS3_STRIP armv6-ios3-strip)
   find_program(IOS3_LDID armv6-ios3-ldid)
   if(IOS3_STRIP AND IOS3_LDID)
-    foreach(tgt fidelio-audiod fidelio-lockctl)
+    foreach(tgt dock-audiod dock-lockctl)
       # B1.16.4: the signature is made at link time, so a changed plist must relink (otherwise the
       # target that did not change keeps its old entitlements: found when opensensitiveurl was added).
       set_property(TARGET ${tgt} APPEND PROPERTY LINK_DEPENDS ${ENTS})
@@ -43,18 +43,18 @@ if(APPLE)
         VERBATIM)
     endforeach()
   else()
-    message(WARNING "armv6-ios3-strip/ldid not found: fidelio-audiod/lockctl will NOT be entitlement-signed")
+    message(WARNING "armv6-ios3-strip/ldid not found: dock-audiod/lockctl will NOT be entitlement-signed")
   endif()
 endif()
 
 if(APPLE)
   # The hardware output: the route-following AudioQueue sink shared with the producers' --direct-audio.
-  target_sources(fidelio-audiod PRIVATE ${REPO}/airplay/src/AudioQueueSink.cpp src/HardwareVolumeApple.cpp src/DisplayWakeApple.cpp)
+  target_sources(dock-audiod PRIVATE ${REPO}/airplay/src/AudioQueueSink.cpp src/HardwareVolumeApple.cpp src/DisplayWakeApple.cpp)
   # B1.9: the private Celestial / SpringBoardServices / GraphicsServices frameworks are dlopen'ed at
   # runtime (never linked); only the public ObjC runtime is linked for objc_msgSend.
-  target_link_libraries(fidelio-audiod PRIVATE "-framework AudioToolbox" "-framework CoreFoundation" objc)
+  target_link_libraries(dock-audiod PRIVATE "-framework AudioToolbox" "-framework CoreFoundation" objc)
 else()
-  target_link_libraries(fidelio-audiod PRIVATE pthread)
+  target_link_libraries(dock-audiod PRIVATE pthread)
 endif()
 
 # Host tests

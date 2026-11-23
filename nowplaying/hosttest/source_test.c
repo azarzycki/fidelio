@@ -1,6 +1,6 @@
 // B1.16.16 host test of the Now Playing tab's source pick (nowplaying/src/NPSource.c, the same C the app
 // compiles): playing, a paused remote target, the target cleared, a switch to another source, an audiod
-// before B1.16.16 (no remote-target) and no audiod at all.
+// before B1.16.16 (no remote-target) and no audiod at all. B1.17: the "daemons not running" state.
 #include <stdio.h>
 #include <string.h>
 
@@ -48,6 +48,18 @@ int main(void) {
   CHECK(!strcmp(p.shown, "spotify") && p.paused, "active-source unreadable but a fresh target: the target shown, paused");
   p = pick("none", "");
   CHECK(p.idle && !p.paused, "an empty remote-target counts as none");
+
+  // B1.17: the "daemons not running" state (data directory missing, empty, or only old files).
+  CHECK(NPIsDirectory("/tmp") && !NPIsDirectory("/nonexistent-np-source-test") && !NPIsDirectory("/bin/sh") && !NPIsDirectory(NULL),
+        "the directory check: a directory yes; a missing path, a plain file and NULL no");
+  CHECK(NPDaemonsState(0, 0, -1, 30) == NP_DAEMONS_NO_DIR, "no data directory: daemons not running (no directory)");
+  CHECK(NPDaemonsState(0, 1, 5, 30) == NP_DAEMONS_NO_DIR, "no data directory wins over anything else");
+  CHECK(NPDaemonsState(1, 0, -1, 30) == NP_DAEMONS_NOT_RUNNING, "an empty data directory: daemons not running");
+  CHECK(NPDaemonsState(1, 0, 600, 30) == NP_DAEMONS_NOT_RUNNING, "only leftovers (status file 10 min old, no fresh active-source): not running");
+  CHECK(NPDaemonsState(1, 1, -1, 30) == NP_DAEMONS_RUNNING, "audiod's active-source fresh, no player status yet: running");
+  CHECK(NPDaemonsState(1, 0, 5, 30) == NP_DAEMONS_RUNNING, "a player's fresh status file without audiod: running (shown as before)");
+  CHECK(NPDaemonsState(1, 0, 30, 30) == NP_DAEMONS_RUNNING && NPDaemonsState(1, 0, 31, 30) == NP_DAEMONS_NOT_RUNNING,
+        "the status file counts up to the stale limit, not past it");
 
   printf("\n%s\n", fails ? "FAILURES" : "all source pick checks passed");
   return fails ? 1 : 0;

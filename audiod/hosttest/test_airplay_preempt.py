@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B1.12 part B: when AirPlay loses the output, fidelio-raop sends the sender a DACP pause, verifies
+"""B1.12 part B: when AirPlay loses the output, dock-raop sends the sender a DACP pause, verifies
 from the stream, and disconnects a sender that ignores it (with a cool-down). A mock DACP server in
 raop_sender decides honor/ignore/none. Usage: test_airplay_preempt.py AUDIOD RAOP
 """

@@ -1,5 +1,5 @@
 // Host test producer: streams a constant-sample PCM pattern through SocketSink, pushing 20 ms
-// chunks as fast as the sink accepts them, like cspot and fidelio-raop do (SocketSink paces).
+// chunks as fast as the sink accepts them, like cspot and dock-raop do (SocketSink paces).
 //   socketsink_producer NAME SOCK SAMPLE_VALUE DURATION_MS [FLUSH_AT_MS]
 // Exercises connect-with-backoff, HELLO, AUDIO pacing and reconnect: if audiod dies and comes
 // back, the stream resumes (dropped frames are counted and printed at the end).

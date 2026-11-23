@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Host test of the real producers feeding fidelio-audiod through SocketSink.
+"""Host test of the real producers feeding dock-audiod through SocketSink.
 
   test_producers.py AUDIOD RAOP [CSPOT]
 
-1. fidelio-raop (host build, default output = audiod) receives a scripted RAOP session from
+1. dock-raop (host build, default output = audiod) receives a scripted RAOP session from
    airplay/hosttest/raop_sender.py (L16, no encryption: N packets, FLUSH, 150 more, TEARDOWN).
    audiod's --pcm-out must contain the sent PCM, scaled by the sender's -15 dB volume (SocketSink
    applies the producer's volume as gain): a contiguous exact run that may start up to ~1 s in
@@ -52,7 +52,7 @@ for _ in range(50):
     if os.path.exists(SOCK): break
     time.sleep(0.05)
 
-# ---------------------------------------------------------------- 1. fidelio-raop -> audiod
+# ---------------------------------------------------------------- 1. dock-raop -> audiod
 raop = subprocess.Popen([RAOP, "--audiod-sock", SOCK, "--port", "5100", "--no-status", "--name", "hosttest", "--latency-ms", "500"],
                         stdout=open(f"{TMP}/raop.log", "w"), stderr=subprocess.STDOUT)
 time.sleep(0.5)

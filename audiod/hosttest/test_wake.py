@@ -2,7 +2,7 @@
 """Host test of audiod's wake-on-play trigger (B1.9 B): the display wake fires exactly once per
 'none -> source' takeover, never on a source -> source switch or a same-name reconnect, and at most
 once per debounce interval. The host build uses the mock waker; the event log records every decision
-(kind "wake": "wake+launch <bundle>" or "debounced (...)"). Usage: test_wake.py PATH_TO_fidelio-audiod
+(kind "wake": "wake+launch <bundle>" or "debounced (...)"). Usage: test_wake.py PATH_TO_dock-audiod
 """
 import os, socket, struct, subprocess, sys, threading, time
 AUDIOD = sys.argv[1]
@@ -14,7 +14,7 @@ for f in (OUT, EVT, SOCK):
     if os.path.exists(f): os.unlink(f)
 proc = subprocess.Popen([AUDIOD, "--sock", SOCK, "--pcm-out", OUT, "--event-log", EVT, "--no-status", "--no-silence",
                          "--takeover-ms", str(TAKEOVER), "--hold-ms", str(HOLD), "--release-ms", str(RELEASE),
-                         "--idle-stop-ms", str(IDLE_STOP), "--lead-ms", str(LEAD), "--wake-on-play", "on", "--wake-bundle", "com.fidelio.nowplaying", "--lock-plugin", "fidelio"],
+                         "--idle-stop-ms", str(IDLE_STOP), "--lead-ms", str(LEAD), "--wake-on-play", "on", "--wake-bundle", "com.dockreceiver.nowplaying", "--lock-plugin", "NowPlaying"],
                         stdout=open(f"{TMP}/audiod.log", "w"), stderr=subprocess.STDOUT)
 for _ in range(50):
     if os.path.exists(SOCK): break
@@ -64,7 +64,7 @@ def now(): return (time.monotonic() - T0) * 1000
 a = Client("spotify", 0x1111); a.play(1200)
 until(1000)
 w = wakes()
-check(len(w) == 1 and w[0][3] == "spotify" and w[0][4].startswith("wake+launch com.fidelio.nowplaying"), f"none -> spotify: one wake, launching the app ({w})")
+check(len(w) == 1 and w[0][3] == "spotify" and w[0][4].startswith("wake+launch com.dockreceiver.nowplaying"), f"none -> spotify: one wake, launching the app ({w})")
 wake1 = w[0][0] if w else 0
 # 2. B steals once A's hold expires (~1.95 s): no new wake
 b = Client("airplay", 0x2222); b.play(1500)
@@ -103,7 +103,7 @@ check(len(w) == 4 and w[3][3] == "raop" and w[3][4].startswith("wake+launch"), f
 lk = [e for e in events("wake") if "lock-plugin" in e[4]]
 en = [e for e in lk if "enabled" in e[4]]
 dis = [e for e in lk if "disabled" in e[4]]
-check(len(en) >= 1 and en[0][3] == "spotify" and en[0][4].startswith("lock-plugin enabled fidelio"), f"lock-plugin enabled on the first none -> source ({en[:1]})")
+check(len(en) >= 1 and en[0][3] == "spotify" and en[0][4].startswith("lock-plugin enabled NowPlaying"), f"lock-plugin enabled on the first none -> source ({en[:1]})")
 check(len(dis) >= 1 and all(d[3] == "none" for d in dis), f"lock-plugin disabled when the output went idle ({len(dis)} disables)")
 # across the whole run, enables and disables must pair up (never a double-enable or double-disable)
 seq = [("en" if "enabled" in e[4] else "dis") for e in lk]

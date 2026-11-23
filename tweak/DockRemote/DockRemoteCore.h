@@ -8,12 +8,12 @@
 //
 // Safety: this runs inside iapd, and a crash there breaks the dock until a physical reseat. Everything
 // here is non-blocking, allocation-light, pointer-checked, and reads at most two small files. The whole
-// tweak is inert if /var/mobile/fidelio/remote-tweak.disabled exists (checked, cheaply, per event).
+// tweak is inert if /var/mobile/dockreceiver/remote-tweak.disabled exists (checked, cheaply, per event).
 #include <stdint.h>
 
 namespace dockremote {
 
-// The files the decision reads (the device's are under /var/mobile/fidelio; the host test uses its own).
+// The files the decision reads (the device's are under /var/mobile/dockreceiver; the host test uses its own).
 struct Paths {
   const char* disable;  // remote-tweak.disabled, the kill switch
   const char* conf;     // settings.conf (audiod.dock_remote)

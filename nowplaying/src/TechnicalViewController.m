@@ -6,14 +6,14 @@
 #include <time.h>
 
 // B1.16.13: the dock remote's key log (written by the DockRemote tweak in iapd, phone only).
-#define NP_KEYLOG_PATH "/var/mobile/fidelio/remote-keys.log"
+#define NP_KEYLOG_PATH DOCKRECEIVER_DIR "/remote-keys.log"
 #define NP_KEYLOG_POLL_S 0.5     // twice a second while the tab is visible
 #define NP_KEYLOG_FRESH_S 3      // the newest press is highlighted this long after it was logged
 enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
 
 @implementation TechnicalViewController
 
-- (id)initWithStatus:(FidelioStatus*)s {
+- (id)initWithStatus:(NPStatus*)s {
   if ((self = [super initWithNibName:nil bundle:nil])) {
     status = s;
     self.title = @"Technical";
@@ -38,7 +38,7 @@ enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
   table.dataSource = self;
   table.delegate = self;
   table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-  self.view = [FidelioStatus columnViewForTable:table background:[UIColor blackColor]];
+  self.view = [NPStatus columnViewForTable:table background:[UIColor blackColor]];
 }
 
 - (void)viewDidUnload {  // a memory warning purged the view: let the table go with it (loadView makes a new one)
@@ -51,7 +51,7 @@ enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
   [super viewDidLoad];
   table.backgroundColor = [UIColor blackColor];
   table.separatorColor = [UIColor colorWithWhite:0.22f alpha:1];
-  table.rowHeight = [FidelioStatus isTablet] ? 44 : 30;
+  table.rowHeight = [NPStatus isTablet] ? 44 : 30;
   table.allowsSelection = NO;
   // The row list grows over time (the last one, Build, was clipped behind the tab bar on the iPad).
   // A bottom inset the height of the tab bar lets the final rows scroll clear on any screen instead
@@ -73,7 +73,7 @@ enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
 }
 
 // B1.18: the tablet rotates; the phone stays portrait as before.
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [NPStatus allowsOrientation:o]; }
 
 - (void)update {
   NSString* codec = [NSString stringWithFormat:@"%@ %lld kbps", [status string:@"codec"], [status integer:@"bitrate_kbps"]];
@@ -91,14 +91,14 @@ enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
       [NSArray arrayWithObjects:@"Access point", ap, nil],
       [NSArray arrayWithObjects:@"Country", country, nil],
       [NSArray arrayWithObjects:@"cspot RSS", rss, nil],
-      [NSArray arrayWithObjects:@"App RSS", [NSString stringWithFormat:@"%lu KB", [FidelioStatus ownRssKB]], nil],
-      [NSArray arrayWithObjects:@"Free memory", [NSString stringWithFormat:@"%lu KB", [FidelioStatus freeMemoryKB]], nil],
-      [NSArray arrayWithObjects:@"Uptime", [FidelioStatus formatDuration:[FidelioStatus uptime]], nil],
-      [NSArray arrayWithObjects:@"Wi-Fi IP", [FidelioStatus wifiAddress], nil],
-      [NSArray arrayWithObjects:@"Battery", [FidelioStatus batteryString], nil],
+      [NSArray arrayWithObjects:@"App RSS", [NSString stringWithFormat:@"%lu KB", [NPStatus ownRssKB]], nil],
+      [NSArray arrayWithObjects:@"Free memory", [NSString stringWithFormat:@"%lu KB", [NPStatus freeMemoryKB]], nil],
+      [NSArray arrayWithObjects:@"Uptime", [NPStatus formatDuration:[NPStatus uptime]], nil],
+      [NSArray arrayWithObjects:@"Wi-Fi IP", [NPStatus wifiAddress], nil],
+      [NSArray arrayWithObjects:@"Battery", [NPStatus batteryString], nil],
       [NSArray arrayWithObjects:@"Status age", ageStr, nil],
       [NSArray arrayWithObjects:@"Device", [status string:@"device"], nil],
-      [NSArray arrayWithObjects:@"Build", FIDELIO_APP_VERSION, nil],
+      [NSArray arrayWithObjects:@"Build", NP_APP_VERSION, nil],
       nil];
   [rows release];
   rows = [r retain];
@@ -150,7 +150,7 @@ enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
 }
 
 - (UITableViewCell*)keyCellFor:(UITableView*)tableView row:(NSInteger)r {
-  BOOL tablet = [FidelioStatus isTablet];
+  BOOL tablet = [NPStatus isTablet];
   CGFloat fs = tablet ? 20 : 15;
   if (keyCount == 0) {
     static NSString* emptyId = @"keyempty";
@@ -204,7 +204,7 @@ enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
 }
 
 - (CGFloat)tableView:(UITableView*)tableView heightForRowAtIndexPath:(NSIndexPath*)indexPath {
-  if (indexPath.section == SECTION_KEYS && keyCount == 0) return [FidelioStatus isTablet] ? 60 : 44;  // two lines
+  if (indexPath.section == SECTION_KEYS && keyCount == 0) return [NPStatus isTablet] ? 60 : 44;  // two lines
   return tableView.rowHeight;
 }
 
@@ -227,7 +227,7 @@ enum { SECTION_KEYS = 0, SECTION_STATUS = 1 };
     cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cellId] autorelease];
     cell.backgroundColor = [UIColor blackColor];
     cell.textLabel.textColor = [UIColor colorWithWhite:0.65f alpha:1];
-    CGFloat fs = [FidelioStatus isTablet] ? 20 : 15;  // B1.18: tablet type
+    CGFloat fs = [NPStatus isTablet] ? 20 : 15;  // B1.18: tablet type
     cell.textLabel.font = [UIFont systemFontOfSize:fs];
     cell.detailTextLabel.textColor = [UIColor whiteColor];
     cell.detailTextLabel.font = [UIFont boldSystemFontOfSize:fs];

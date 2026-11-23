@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """B1.12 part A: a source that loses the output is told to pause (PREEMPTED), so a background session
-cannot roll on and steal it back. Protocol-v2 clients. Usage: test_preempt.py PATH_TO_fidelio-audiod
+cannot roll on and steal it back. Protocol-v2 clients. Usage: test_preempt.py PATH_TO_dock-audiod
 """
 import os, socket, struct, subprocess, sys, threading, time
 AUDIOD = sys.argv[1]

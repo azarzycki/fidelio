@@ -13,7 +13,7 @@
 // takes the URL's string (at most 1023 UTF-8 bytes) and sends SBOpenSensitiveURL(port, utf8, unlock) to
 // SpringBoard. B1.16.6, verified on the locked 5.1.1 iPad: the result is SpringBoard's answer. A caller
 // without com.apple.springboard.openurlswhenlocked gets false for nowplaying: (an app's own scheme;
-// prefs: needs only opensensitiveurl). With all four keys of common/fidelio-springboard.entitlements.plist
+// prefs: needs only opensensitiveurl). With all four keys of common/dock-springboard.entitlements.plist
 // it returns true, and the iPad is unlocked with NowPlaying in front within 2 s. SpringBoard's isLocked
 // read 0 at 2, 6 and 12 s, while SBSLaunchApplicationWithIdentifier kept answering 3 for 5 s. So the
 // accepted request is the result, and no launch is retried after it.

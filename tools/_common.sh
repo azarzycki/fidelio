@@ -1,7 +1,7 @@
 # _common.sh — shared helpers for tools/run-host-tests.sh and tools/build-arm.sh. Sourced, never executed.
 #
 # Everything these scripts create lives under BUILD_ROOT: by default a "build" directory NEXT TO the
-# repo (e.g. ~/src/fidelio -> ~/src/build); set BUILD_ROOT to put it elsewhere (never inside the repo).
+# repo (e.g. ~/src/dock-receiver -> ~/src/build); set BUILD_ROOT to put it elsewhere (never inside the repo).
 # They never write into the repo they are pointed at, with ONE exception that the repo's own test
 # harness makes:
 # airplay/hosttest/raop_sender.py writes airplay/hosttest/airport_express_pub.pem next to itself
@@ -173,7 +173,7 @@ resolve_repo() {
   local r="${1:-$REPO_DEFAULT}"
   [ -d "$r" ] || die "repo path '$r' is not a directory"
   r="$(cd "$r" && pwd -P)"
-  [ -f "$r/audiod/CMakeLists.txt" ] && [ -f "$r/$CSPOT_PATCH_REL" ] || die "'$r' does not look like the fidelio monorepo"
+  [ -f "$r/audiod/CMakeLists.txt" ] && [ -f "$r/$CSPOT_PATCH_REL" ] || die "'$r' does not look like the dock-receiver monorepo"
   echo "$r"
 }
 
@@ -213,7 +213,7 @@ linkmap_objects() {  # MAP
 # --- upstream sources ----------------------------------------------------------------------------
 ensure_cspot_tree() {  # needs REPO
   local up="$DEPS/squeezelite-esp32" tree="$DEPS/cspot" patch="$REPO/$CSPOT_PATCH_REL" want
-  local gid=(-c user.name=fidelio-build -c user.email=build@localhost -c commit.gpgsign=false)
+  local gid=(-c user.name=dock-receiver-build -c user.email=build@localhost -c commit.gpgsign=false)
   mkdir -p "$DEPS" "$LOGS"
   if [ ! -d "$up/.git" ] || [ "$(git -C "$up" rev-parse HEAD 2>/dev/null)" != "$CSPOT_UPSTREAM_COMMIT" ]; then
     note "fetching $CSPOT_UPSTREAM_URL @ $CSPOT_UPSTREAM_COMMIT (sparse: $CSPOT_UPSTREAM_SUBDIR)"

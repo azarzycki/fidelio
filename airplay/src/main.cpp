@@ -1,8 +1,8 @@
-// fidelio-raop: AirPlay v1 / RAOP audio receiver for ARMv6 iPhone OS 3.1.3.
+// dock-raop: AirPlay v1 / RAOP audio receiver for ARMv6 iPhone OS 3.1.3.
 // Advertises _raop._tcp via the system mDNSResponder, speaks RTSP, receives RTP audio
-// (ALAC or L16, optionally AES-128-CBC), streams the PCM to fidelio-audiod (the arbiter that owns
+// (ALAC or L16, optionally AES-128-CBC), streams the PCM to dock-audiod (the arbiter that owns
 // the AudioQueue; --direct-audio plays through a local AudioQueue instead), and writes the same
-// status files the Fidelio now-playing app reads.
+// status files the NowPlaying app reads.
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +18,7 @@
 #include "AudioQueueOutput.h"
 #endif
 #include "SocketSink.h"
-#include "audiod/proto.h"
+#include "audiod/proto.h"  // also common/DataDir.h: DOCKRECEIVER_DIR
 #include "Mdns.h"
 #include "RtspServer.h"
 #include "Settings.h"
@@ -31,13 +31,13 @@
 
 struct Options {
   std::string name = "Fidelio (AirPlay)";
-  std::string statusDir = "/var/mobile/fidelio";
+  std::string statusDir = DOCKRECEIVER_DIR;
   int port = 5000;
   int latencyMs = 1200;
   bool noAudio = false;
   bool help = false;
   std::string pcmOut;  // --pcm-out FILE: write decoded PCM to a file instead of playing
-  bool directAudio = false;  // --direct-audio: local AudioQueue instead of fidelio-audiod
+  bool directAudio = false;  // --direct-audio: local AudioQueue instead of dock-audiod
   std::string audiodSock = getenv("AUDIOD_SOCK") && *getenv("AUDIOD_SOCK") ? getenv("AUDIOD_SOCK") : AUDIOD_DEFAULT_SOCK;
   int audiodLeadMs = 0;      // --audiod-lead-ms: 0 = SocketSink default / env AUDIOD_LEAD_MS
   RaopSession::VolumeMode volumeMode = RaopSession::VOL_AUTO;  // --airplay-volume
@@ -48,11 +48,11 @@ struct Options {
 };
 
 
-// B1.15: fidelio-raop's option registry, declared ONCE and BOUND to the live Options. read()/write()
+// B1.15: dock-raop's option registry, declared ONCE and BOUND to the live Options. read()/write()
 // are the single source of truth: the manifest reads back what the daemon uses, and a settings.conf
 // value is applied by calling write() on `o`. Every flag spelling (incl. -n) marks the option locked.
-static void buildRaopRegistry(fidelio::Registry& r, Options& o) {
-  using O = fidelio::Option;
+static void buildRaopRegistry(dockreceiver::Registry& r, Options& o) {
+  using O = dockreceiver::Option;
   auto i2s = [](long v){ char b[32]; snprintf(b, sizeof b, "%ld", v); return std::string(b); };
   O x;
 
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
   // B1.15: the option registry, bound to the live Options. markCommandLine marks locked flags (any
   // spelling), loadFile applies settings.conf to `o` via write(), selfCheck logs any default/file
   // drift. The manifest (written below, after the name is final) is then the live truth.
-  fidelio::Registry sreg("raop", RAOP_BUILD_HASH);
+  dockreceiver::Registry sreg("raop", RAOP_BUILD_HASH);
   buildRaopRegistry(sreg, o);
   sreg.markCommandLine(argc, argv);
   if (!o.statusDir.empty()) {
@@ -168,19 +168,19 @@ int main(int argc, char** argv) {
   }
   RaopSession::volumeMode = o.volumeMode;
   if (o.help) {
-    printf("Usage: fidelio-raop [OPTION]...\n"
-           "AirPlay v1 / RAOP audio receiver for iPhone OS 3 (ARMv6); plays through fidelio-audiod.\n"
+    printf("Usage: dock-raop [OPTION]...\n"
+           "AirPlay v1 / RAOP audio receiver for iPhone OS 3 (ARMv6); plays through dock-audiod.\n"
            "  -n, --name NAME       advertised name (default: Fidelio (AirPlay))\n"
            "  --port PORT           RTSP port (default 5000; 0 = any free port)\n"
            "  --latency-ms MS       jitter buffer depth before playback starts (default 1200, max ~3800)\n"
-           "  --status-dir DIR      status.json/status.plist/cover.jpg (default /var/mobile/fidelio); --no-status disables\n"
-           "  --audiod-sock PATH    fidelio-audiod socket (default %s; env AUDIOD_SOCK)\n"
+           "  --status-dir DIR      status.json/status.plist/cover.jpg (default " DOCKRECEIVER_DIR "); --no-status disables\n"
+           "  --audiod-sock PATH    dock-audiod socket (default %s; env AUDIOD_SOCK)\n"
            "  --audiod-lead-ms MS   how far ahead of real time to stream to audiod (default 750; env AUDIOD_LEAD_MS)\n"
            "  --airplay-volume auto|honor|ignore\n"
            "                        auto (default): honor the sender's -30..0 dB, play -144 dB (the mute sentinel that\n"
            "                        senders without remote volume, e.g. CenturyPlay, send permanently) at unity;\n"
            "                        honor: -144 dB mutes; ignore: always unity, the sender controls loudness\n"
-           "  --direct-audio        play through a local AudioQueue instead of fidelio-audiod (standalone debugging)\n"
+           "  --direct-audio        play through a local AudioQueue instead of dock-audiod (standalone debugging)\n"
            "  --audio-session auto|on|off\n"
            "                        with --direct-audio: auto (default) = full AudioSession, retried forever if it fails, bare\n"
            "                        queue meanwhile; on = no audio until the session is up; off = bare queue, no AudioSession calls\n"
@@ -188,7 +188,7 @@ int main(int argc, char** argv) {
            "  --pcm-out FILE        write the decoded 44.1 kHz/16/stereo PCM to FILE instead of playing\n", AUDIOD_DEFAULT_SOCK);
     return 0;
   }
-  IOS3_TRACE("fidelio-raop start: name='%s' port=%d latency=%d ms no-audio=%d status=%s", o.name.c_str(), o.port, o.latencyMs,
+  IOS3_TRACE("dock-raop start: name='%s' port=%d latency=%d ms no-audio=%d status=%s", o.name.c_str(), o.port, o.latencyMs,
              (int)o.noAudio, o.statusDir.empty() ? "(off)" : o.statusDir.c_str());
 
   std::unique_ptr<AudioOutput> out;
@@ -213,7 +213,7 @@ int main(int argc, char** argv) {
     ss->enableServerMessages();  // B1.12: read PREEMPTED (audiod handed the output to another source)
     sink = ss;                   // wired to the RtspServer's preempt handler below
     out.reset(ss);
-    IOS3_TRACE("streaming to fidelio-audiod at %s", o.audiodSock.c_str());
+    IOS3_TRACE("streaming to dock-audiod at %s", o.audiodSock.c_str());
   }
 
   StatusFile status(o.statusDir, o.name);

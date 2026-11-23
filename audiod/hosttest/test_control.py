@@ -2,7 +2,7 @@
 """B1.16: the transport control channel. A controller connects to audiod, sends a CONTROL verb, and
 audiod routes it to the ACTIVE source (or, for PLAY with nothing active, the most-recently-active
 connected source). The controller is not an arbiter source. Usage:
-  test_control.py PATH_TO_fidelio-audiod PATH_TO_control_send
+  test_control.py PATH_TO_dock-audiod PATH_TO_control_send
 """
 import os, socket, struct, subprocess, sys, threading, time
 AUDIOD = sys.argv[1]

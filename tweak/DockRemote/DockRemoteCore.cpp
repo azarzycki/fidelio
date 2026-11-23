@@ -14,16 +14,16 @@
 
 namespace dockremote {
 
-static const char* kSock       = "/var/mobile/fidelio/audiod.sock";
+static const char* kSock       = AUDIOD_DEFAULT_SOCK;
 
 // Literals only: constant-initialised, so no guard variable (a function-local static would link
 // libc++abi's guard and exception code into the dylib).
 static const Paths kDevicePaths = {
-  "/var/mobile/fidelio/remote-tweak.disabled",
-  "/var/mobile/fidelio/settings.conf",
-  "/var/mobile/fidelio/active-source",
-  "/var/mobile/fidelio/remote-target",  // B1.16.16
-  "/var/mobile/fidelio/audiod.sock",
+  DOCKRECEIVER_DIR "/remote-tweak.disabled",
+  DOCKRECEIVER_DIR "/settings.conf",
+  DOCKRECEIVER_DIR "/active-source",
+  DOCKRECEIVER_DIR "/remote-target",  // B1.16.16
+  AUDIOD_DEFAULT_SOCK,
 };
 
 const Paths& devicePaths() { return kDevicePaths; }

@@ -5,10 +5,10 @@
 // MRMediaRemoteSendCommand to the NOW-PLAYING app, where UIKit delivers them as UIEventTypeRemoteControl
 // events. The open question is what NowPlaying needs in order to receive them while the audio comes
 // from the daemons (cspot/raop -> audiod), not from the app. So this is a STAGED PROTOTYPE. The stage
-// is read at launch from /var/mobile/fidelio/remote-control.stage (absent = 1); restart the app after
+// is read at launch from /var/mobile/dockreceiver/remote-control.stage (absent = 1); restart the app after
 // changing it.
 //   1  beginReceivingRemoteControlEvents, with the window kept as first responder. Every remote-control
-//      event is logged to /var/mobile/fidelio/remote-control.log. Play, pause, stop, toggle, next and
+//      event is logged to /var/mobile/dockreceiver/remote-control.log. Play, pause, stop, toggle, next and
 //      previous are forwarded to audiod (CONTROL), like the on-screen buttons.
 //   2  stage 1 + MRMediaRemoteSetCanBeNowPlayingApplication(true) (MediaRemote via dlsym, present on 5.1.1).
 //   3  stage 2 + silence played in a MIXABLE audio session. Mixable on purpose: audiod's own session is a

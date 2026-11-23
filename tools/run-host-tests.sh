@@ -39,10 +39,10 @@ PYTHON="${PYTHON:-python3}"
 SUITE_TIMEOUT="${SUITE_TIMEOUT:-900}"
 HOST="$BUILD_ROOT/host"
 T="$REPO/audiod/hosttest"
-AUDIOD="$HOST/audiod/fidelio-audiod"; RAOP="$HOST/airplay/fidelio-raop"; CSPOT="$HOST/cspot/cspot-ios3"
+AUDIOD="$HOST/audiod/dock-audiod"; RAOP="$HOST/airplay/dock-raop"; CSPOT="$HOST/cspot/cspot-ios3"
 export PYTHONDONTWRITEBYTECODE=1   # no __pycache__ in the repo
 
-# name | baseline ok count | command (baseline: 521 ok, 0 FAIL, at B1.16.16; 447 at B1.16.15)
+# name | baseline ok count | command (baseline: 529 ok, 0 FAIL, at B1.17; 521 at B1.16.16; 447 at B1.16.15)
 SUITE_TABLE="
 framing      26 $HOST/audiod/framing_test
 aqsink       28 $HOST/audiod/aqsink_test
@@ -71,7 +71,7 @@ keylog       17 $HOST/nowplaying/keylog_test
 remote_keys  65 $HOST/dockremote/keys_test
 remote_core  22 $HOST/dockremote/core_test
 remote_tgt   37 $PYTHON $T/test_remote_target.py $AUDIOD $HOST/dockremote/dockremote_probe
-np_source    15 $HOST/nowplaying/source_test
+np_source    23 $HOST/nowplaying/source_test
 "
 
 case "$BUILD_ROOT$REPO" in *[[:space:]]*) die "paths with whitespace are not supported";; esac
@@ -91,7 +91,7 @@ build_host() {
   [ -n "${HOST_CXX:-}" ] && cc+=(-DCMAKE_CXX_COMPILER="$HOST_CXX")
   mkdir -p "$HOST" "$LOGS"
 
-  # audiod: fidelio-audiod, control_send and the five C++ suites (audiod/README.md "Build and test on the host")
+  # audiod: dock-audiod, control_send and the five C++ suites (audiod/README.md "Build and test on the host")
   stamp_dir "$HOST/audiod" "$REPO"
   [ -f "$HOST/audiod/build.ninja" ] || logged "$LOGS/host-audiod-configure.log" \
     cmake -S "$REPO/audiod" -B "$HOST/audiod" -G Ninja -DCMAKE_BUILD_TYPE=Release "${cc[@]}"
@@ -100,7 +100,7 @@ build_host() {
   # host mbedTLS 3.6.7 (airplay/AIRPLAY.md: "host test: cmake ... -DMBEDTLS_PREFIX=<host mbedtls 3.6.7>")
   build_mbedtls host "${cc[@]}"
 
-  # fidelio-raop (no build type, as documented; its CMakeLists sets -O2 itself)
+  # dock-raop (no build type, as documented; its CMakeLists sets -O2 itself)
   stamp_dir "$HOST/airplay" "$REPO"
   [ -f "$HOST/airplay/build.ninja" ] || logged "$LOGS/host-airplay-configure.log" \
     cmake -S "$REPO/airplay" -B "$HOST/airplay" -G Ninja -DMBEDTLS_PREFIX="$HOST/sysroot" "${cc[@]}"

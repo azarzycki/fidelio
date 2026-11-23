@@ -1,6 +1,6 @@
 // B1.16.13: the dock remote's key log for the Technical tab (plain C, also host-tested by
 // nowplaying/hosttest/keylog_test.c). The DockRemote tweak inside iapd (phone only) appends one line per
-// completed key press to /var/mobile/fidelio/remote-keys.log while it observes or swallows:
+// completed key press to /var/mobile/dockreceiver/remote-keys.log while it observes or swallows:
 //   <unix seconds> <code> <name> <taken|passed>        e.g. "1795369452 0 play-pause taken"
 // and starts the file afresh when it passes about 16 KB.
 #ifndef NP_KEYLOG_H

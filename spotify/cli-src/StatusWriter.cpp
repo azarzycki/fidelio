@@ -299,7 +299,7 @@ void StatusWriter::writeFiles() {
   pi("rss_kb", (long long)rss); pi("updated", (long long)now);
   p += "</dict>\n</plist>\n";
 
-  // Per-source files (B1.1): cspot and fidelio-raop no longer overwrite one shared status; the
+  // Per-source files (B1.1): cspot and dock-raop no longer overwrite one shared status; the
   // now-playing app reads audiod's active-source and then status-<source>.plist.
   if (!writeAtomic(dir + "/status-spotify.json", j) || !writeAtomic(dir + "/status-spotify.plist", p)) {
     static bool warned = false;

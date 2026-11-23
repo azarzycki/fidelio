@@ -1,14 +1,16 @@
-// fidelio-audiod wire protocol — shared by the arbiter and every PCM producer.
+// dock-audiod wire protocol — shared by the arbiter and every PCM producer.
 // All multi-byte fields are little-endian (ARMv6 and the Linux host are both LE).
 // C-compatible, fixed-width, explicitly packed so the layout is identical on both.
-#ifndef FIDELIO_AUDIOD_PROTO_H
-#define FIDELIO_AUDIOD_PROTO_H
+#ifndef AUDIOD_PROTO_H
+#define AUDIOD_PROTO_H
 
 #include <stdint.h>
 
+#include "common/DataDir.h"
+
 #define AUDIOD_PROTO_VERSION 1   // producers that never read from the socket
 #define AUDIOD_PROTO_VERSION_2 2 // B1.9: the producer reads server -> client messages (WELCOME, HWVOLUME)
-#define AUDIOD_DEFAULT_SOCK  "/var/mobile/fidelio/audiod.sock"
+#define AUDIOD_DEFAULT_SOCK  DOCKRECEIVER_DIR "/audiod.sock"
 
 // Expected PCM format on the AUDIO channel. Producers that cannot deliver this
 // must resample before sending; audiod does not resample in v1.
@@ -127,4 +129,4 @@ typedef struct {
 
 // AUDIO payload is raw PCM bytes (no struct): len % (channels*bits/8) == 0.
 
-#endif  // FIDELIO_AUDIOD_PROTO_H
+#endif  // AUDIOD_PROTO_H

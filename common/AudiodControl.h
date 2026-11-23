@@ -1,5 +1,5 @@
 #pragma once
-// B1.16: a one-shot transport-control client for fidelio-audiod. A controller (the NowPlaying app or
+// B1.16: a one-shot transport-control client for dock-audiod. A controller (the NowPlaying app or
 // the DockRemote tweak) connects to audiod's socket, HELLOs as the non-producing source "control",
 // sends one CONTROL verb and closes. audiod routes the verb to the active source. Everything here is
 // short-timeout and never blocks the caller for long (safe to call from the app's main thread or,

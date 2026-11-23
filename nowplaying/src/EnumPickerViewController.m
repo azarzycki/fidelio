@@ -1,6 +1,6 @@
 #import "EnumPickerViewController.h"
 #import "SettingsViewController.h"
-#import "FidelioStatus.h"  // B1.18: isTablet, allowsOrientation, columnViewForTable
+#import "NPStatus.h"  // B1.18: isTablet, allowsOrientation, columnViewForTable
 
 @implementation EnumPickerViewController
 
@@ -20,10 +20,10 @@
   table.dataSource = self;
   table.delegate = self;
   table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-  self.view = [FidelioStatus columnViewForTable:table background:[UIColor groupTableViewBackgroundColor]];  // B1.18
+  self.view = [NPStatus columnViewForTable:table background:[UIColor groupTableViewBackgroundColor]];  // B1.18
 }
 
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }  // B1.18
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [NPStatus allowsOrientation:o]; }  // B1.18
 
 - (NSInteger)tableView:(UITableView*)t numberOfRowsInSection:(NSInteger)s { return (NSInteger)[choices count]; }
 

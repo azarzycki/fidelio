@@ -1,6 +1,6 @@
 #import "SettingsViewController.h"
 
-#import "FidelioStatus.h"  // FIDELIO_DIR
+#import "NPStatus.h"  // NP_DIR
 #import "EnumPickerViewController.h"
 #import "StringEditorViewController.h"
 #import "NPEventProbe.h"
@@ -12,8 +12,8 @@
 extern char** environ;
 
 static NSString* const kDaemons[] = { @"audiod", @"cspot", @"raop" };
-static NSString* ConfPath(void) { return [FIDELIO_DIR stringByAppendingPathComponent:@"settings.conf"]; }
-static NSString* ManifestPath(NSString* d) { return [FIDELIO_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"settings-%@.manifest.plist", d]]; }
+static NSString* ConfPath(void) { return [NP_DIR stringByAppendingPathComponent:@"settings.conf"]; }
+static NSString* ManifestPath(NSString* d) { return [NP_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"settings-%@.manifest.plist", d]]; }
 
 // Group order across daemons; groups not listed go last in first-seen order.
 static NSInteger GroupRank(NSString* g) {
@@ -48,11 +48,11 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
   table.delegate = self;
   table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   // B1.18: on the tablet the grouped table sits in a centred column (readable rows); the phone is as before.
-  self.view = [FidelioStatus columnViewForTable:table background:[UIColor groupTableViewBackgroundColor]];
+  self.view = [NPStatus columnViewForTable:table background:[UIColor groupTableViewBackgroundColor]];
 }
 
 // B1.18: the tablet rotates; the phone stays portrait as before.
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [NPStatus allowsOrientation:o]; }
 
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reload]; }
 // B1.16.9: take first responder back for the window (e.g. after the string editor's text field had it),
@@ -100,7 +100,7 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
 }
 
 - (NSString*)tableView:(UITableView*)t titleForFooterInSection:(NSInteger)s {
-  if (s == (NSInteger)[sections count]) return @"Changes are written to /var/mobile/fidelio/settings.conf. audiod applies them at once; Spotify and AirPlay need a restart.";
+  if (s == (NSInteger)[sections count]) return @"Changes are written to " DOCKRECEIVER_DIR "/settings.conf. audiod applies them at once; Spotify and AirPlay need a restart.";
   return nil;
 }
 
@@ -118,7 +118,7 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
       [sw addTarget:self action:@selector(advancedChanged:) forControlEvents:UIControlEventValueChanged];
       c.accessoryView = sw;
     } else if (ip.row == 1) {
-      c.textLabel.text = @"Log remote events";  // B1.16 probe -> /var/mobile/fidelio/remote-events.log
+      c.textLabel.text = @"Log remote events";  // B1.16 probe -> /var/mobile/dockreceiver/remote-events.log
       c.textLabel.font = [UIFont systemFontOfSize:15];
       c.selectionStyle = UITableViewCellSelectionStyleNone;
       UISwitch* sw = [[[UISwitch alloc] init] autorelease];
@@ -298,7 +298,7 @@ static NSInteger GroupCompare(id a, id b, void* ctx) {
 }
 
 - (void)offerRestart:(NSString*)daemon {
-  NSString* target = [daemon isEqualToString:@"cspot"] ? @"cspot-ios3" : [daemon isEqualToString:@"raop"] ? @"fidelio-raop" : @"fidelio-audiod";
+  NSString* target = [daemon isEqualToString:@"cspot"] ? @"cspot-ios3" : [daemon isEqualToString:@"raop"] ? @"dock-raop" : @"dock-audiod";
   UIAlertView* a = [[[UIAlertView alloc] initWithTitle:@"Restart needed"
       message:[NSString stringWithFormat:@"This change needs %@ to restart. Playback will be interrupted briefly.", daemon]
       delegate:self cancelButtonTitle:@"Later" otherButtonTitles:@"Restart", nil] autorelease];

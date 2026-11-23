@@ -1,6 +1,6 @@
-# fidelio-raop — AirPlay v1 / RAOP receiver for the ARMv6 iPhone (iOS 3.1.3)
+# dock-raop — AirPlay v1 / RAOP receiver for the ARMv6 iPhone (iOS 3.1.3)
 
-A standalone AirPlay-1 audio receiver, built with the armv6-ios3 toolchain, that advertises itself over the system mDNSResponder, speaks RTSP/RAOP, receives RTP audio (ALAC or L16 PCM, optionally AES-128-CBC), plays through the same AudioQueue sink cspot-ios3 uses, and writes the same status files the Fidelio now-playing app reads (with `"source":"airplay"`). It is its own tree (`/home/user/airplay-ios3`), separate from cspot and the app. ~820 KB stripped, static mbedTLS 3.6.7, Apple's open-source ALAC decoder.
+A standalone AirPlay-1 audio receiver, built with the armv6-ios3 toolchain, that advertises itself over the system mDNSResponder, speaks RTSP/RAOP, receives RTP audio (ALAC or L16 PCM, optionally AES-128-CBC), plays through the same AudioQueue sink cspot-ios3 uses, and writes the same status files the NowPlaying app reads (with `"source":"airplay"`). It is its own tree (`/home/user/airplay-ios3`), separate from cspot and the app. ~820 KB stripped, static mbedTLS 3.6.7, Apple's open-source ALAC decoder.
 
 **Primary interop target: CenturyPlay** (g8row/centuryplay `e241344`, 2026-10-27). Its RAOP sink was read line by line and the receiver matches what it does: with `et=0,1` it sends **clear** ALAC (352 frames/packet, `fmtp 352 0 16 40 10 14 2 255 0 0 44100`), needs `server_port`+`control_port` in the SETUP Transport and a `Session` header, keeps the RTSP TCP open as its health probe, sends 0xD4 sync packets to our control port, answers 0x52 timing requests on its timing port, answers 0x55 resend requests with 0x56, and sends DMAP / JPEG / `progress:` only if `md` is advertised (it is). Also built to shairport-sync's conventions (rtsp.c / rtp.c / bonjour_strings.c at `0a34fbd`).
 
@@ -40,34 +40,34 @@ Every request is logged with its method, URI, CSeq, body size and headers; every
 - Timing port: every 3 s we send a 0x52 request to the sender's timing port and log the RTT every 20th reply (keeps senders like CenturyPlay's responder exercised); a 0x52 arriving at us is answered with 0x53.
 - Threads: RTSP accept + one per connection (128 KB), per session audio-rx (128 KB), control-rx, timing, player, status writer (64 KB). The AudioQueue sink is the shared one (128 KB ring + 3×8 KB).
 
-## Status files (`--status-dir`, default `/var/mobile/fidelio`)
+## Status files (`--status-dir`, default `/var/mobile/dockreceiver`)
 Same keys as cspot rev 4, written atomically once a second and on every change: `source:"airplay"`, `state` (`idle` advertising → `connected` after ANNOUNCE → `playing` after RECORD → `paused` on FLUSH/PAUSE → `stopped` on TEARDOWN/disconnect), `title/artist/album` from DMAP, `duration_ms`/`position_ms` from `progress:` plus a local clock that runs while playing, `bitrate_kbps: 0`, `codec: "ALAC"|"PCM"`, `cover` (`cover.jpg` or `""`), `device` (the advertised name), `ap` (sender IP + User-Agent), `country: ""`, `tls: ""`, `rss_kb`, `updated`. cspot rev 5 writes `source:"spotify"`; app 1.1 shows the source in the state line and in the Technical tab. (The two receivers write the same files; whichever wrote last wins — PHASE 2 arbitration will fix that.)
 
 ## Running it
 ```sh
-scp fidelio-raop root@phone:/var/mobile/fidelio/
+scp dock-raop root@phone:/var/mobile/dockreceiver/
 ssh mobile@phone   # or root: su mobile
-cd /var/mobile/fidelio && ./fidelio-raop 2>&1 | tee raop.log
-./fidelio-raop --name "Fidelio (AirPlay)" --port 5000 --latency-ms 1000           # defaults
-./fidelio-raop --no-audio            # decode and discard (isolation test)
-./fidelio-raop --pcm-out /var/mobile/fidelio/capture.pcm   # write what would be played (44.1k/16/stereo LE)
-./fidelio-raop --no-status --port 0   # no status files, any free RTSP port
+cd /var/mobile/dockreceiver && ./dock-raop 2>&1 | tee raop.log
+./dock-raop --name "Fidelio (AirPlay)" --port 5000 --latency-ms 1000           # defaults
+./dock-raop --no-audio            # decode and discard (isolation test)
+./dock-raop --pcm-out /var/mobile/dockreceiver/capture.pcm   # write what would be played (44.1k/16/stereo LE)
+./dock-raop --no-status --port 0   # no status files, any free RTSP port
 ```
 Then pick "Fidelio (AirPlay)" in CenturyPlay (or any AirPlay-1 sender). If nothing finds it, the log shows the mDNS registration callback result; `tls_test`'s dns_sd and cspot's `_spotify-connect` registration already work on the device, so `_raop._tcp` should too.
 
-launchd (same pattern as cspot): a plist in `/Library/LaunchDaemons/com.fidelio.raop.plist` with `UserName mobile`, `WorkingDirectory /var/mobile/fidelio`, `ProgramArguments [/var/mobile/fidelio/fidelio-raop]`, `KeepAlive true`, `StandardOutPath /var/mobile/fidelio/raop.log`. Both receivers can run at once in PHASE 1 (different ports/services); they will fight over the AudioQueue only when both actually play.
+launchd (same pattern as cspot): a plist in `/Library/LaunchDaemons/com.dockreceiver.raop.plist` with `UserName mobile`, `WorkingDirectory /var/mobile/dockreceiver`, `ProgramArguments [/var/mobile/dockreceiver/dock-raop]`, `KeepAlive true`, `StandardOutPath /var/mobile/dockreceiver/raop.log`. Both receivers can run at once in PHASE 1 (different ports/services); they will fight over the AudioQueue only when both actually play.
 
 ## PHASE 2 (not built): "most-recent-source-wins" arbiter
-`fidelio-audiod` owns the single AudioQueue; cspot-ios3 and fidelio-raop become PCM producers over a local Unix-domain socket (`/var/mobile/fidelio/audio.sock`), each frame tagged `{source_id, seq, pcm}`. The RAOP code is already behind `AudioOutput` (`src/AudioOutput.h`): a `SocketOutput` implementing `write/flush/setVolume/bufferedSeconds` is the only change on this side; cspot's `AudioQueueSink` gets the same treatment. Arbiter rules as you specified: a source takes over after ~400 ms of continuous frames, ≥1.5 s hold after any switch, release when silent ~1 s; the loser is told to pause (cspot → Spirc pause; RAOP → stop feeding / optional DACP pause via the sender's `Active-Remote`/`DACP-ID`, which we already log). Status files would then be written by the arbiter from whichever source is live.
+`dock-audiod` owns the single AudioQueue; cspot-ios3 and dock-raop become PCM producers over a local Unix-domain socket (`/var/mobile/dockreceiver/audio.sock`), each frame tagged `{source_id, seq, pcm}`. The RAOP code is already behind `AudioOutput` (`src/AudioOutput.h`): a `SocketOutput` implementing `write/flush/setVolume/bufferedSeconds` is the only change on this side; cspot's `AudioQueueSink` gets the same treatment. Arbiter rules as you specified: a source takes over after ~400 ms of continuous frames, ≥1.5 s hold after any switch, release when silent ~1 s; the loser is told to pause (cspot → Spirc pause; RAOP → stop feeding / optional DACP pause via the sender's `Active-Remote`/`DACP-ID`, which we already log). Status files would then be written by the arbiter from whichever source is live.
 
 ## Files
-`dist/fidelio-raop` (signed), `src/` (receiver), `alac/` (Apple ALAC decoder, Apache-2.0), `hosttest/` (Linux protocol test: `raop_sender.py`, `compare.py`, `alac_enc.cpp`), `airport_express_key.pem`, `CMakeLists.txt` (device and host builds).
+`dist/dock-raop` (signed), `src/` (receiver), `alac/` (Apple ALAC decoder, Apache-2.0), `hosttest/` (Linux protocol test: `raop_sender.py`, `compare.py`, `alac_enc.cpp`), `airport_express_key.pem`, `CMakeLists.txt` (device and host builds).
 Build: `cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<toolchain>/share/armv6-ios3/toolchain.cmake -DMBEDTLS_PREFIX=<mbedtls install>` with `IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1`; host test: `cmake -S . -B build-host -DMBEDTLS_PREFIX=<host mbedtls 3.6.7>`.
 
 ## Audio output since audiod Milestone B1
 
-fidelio-raop no longer opens the AudioQueue itself: it streams the decoded PCM to
-`fidelio-audiod` over `/var/mobile/fidelio/audiod.sock` (`--audiod-sock PATH`, env
+dock-raop no longer opens the AudioQueue itself: it streams the decoded PCM to
+`dock-audiod` over `/var/mobile/dockreceiver/audiod.sock` (`--audiod-sock PATH`, env
 `AUDIOD_SOCK`), which arbitrates between AirPlay and Spotify. `--direct-audio` restores the
 local AudioQueue for standalone debugging; `--pcm-out` / `--no-audio` are unchanged. The
 volume from SET_PARAMETER is sent to audiod as a VOLUME message (audiod applies it at the output);

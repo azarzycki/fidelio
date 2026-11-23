@@ -1,5 +1,5 @@
 #pragma once
-// B1.14/B1.15: fidelio-audiod's option registry, declared ONCE here and BOUND to the live ServerOptions
+// B1.14/B1.15: dock-audiod's option registry, declared ONCE here and BOUND to the live ServerOptions
 // and Tunables. Each option's read()/write() is the single source of truth: the manifest's effective
 // value is read back from the struct the daemon actually uses, and a file value is applied by calling
 // write() on that struct. buildRegistry() is called from main (startup) and the Server (live reload)
@@ -33,8 +33,8 @@ inline void writeLockPluginPlist(const std::string& dir, bool keepScreenOn) {
 }
 
 // Build the registry bound to `so`/`t`. `statusDir` is where lockplugin.plist is written.
-inline void buildRegistry(fidelio::Registry& r, ServerOptions& so, Tunables& t, const std::string& statusDir) {
-  using O = fidelio::Option;
+inline void buildRegistry(dockreceiver::Registry& r, ServerOptions& so, Tunables& t, const std::string& statusDir) {
+  using O = dockreceiver::Option;
   O o;
 
   o = {}; o.key="spotify_volume"; o.flag="--spotify-volume"; o.type=O::ENUM;
@@ -108,9 +108,9 @@ inline void buildRegistry(fidelio::Registry& r, ServerOptions& so, Tunables& t, 
   r.add(o);
 
   o = {}; o.key="lock_plugin"; o.flag="--lock-plugin"; o.type=O::BOOL;
-  o.def="off"; o.title="Lock-screen plugin"; o.desc="Show the track on the lock screen, the backstop whenever NowPlaying is not in front (needs Fidelio.lockbundle on the iPad, Fidelio.bundle on the iPhone)."; o.group="Display";
+  o.def="off"; o.title="Lock-screen plugin"; o.desc="Show the track on the lock screen, the backstop whenever NowPlaying is not in front (needs NowPlaying.lockbundle on the iPad, NowPlaying.bundle on the iPhone)."; o.group="Display";
   o.read=[&so]{ return so.lockPlugin.empty() ? std::string("off") : std::string("on"); };
-  o.write=[&so](const std::string& v){ so.lockPlugin = (v=="on") ? std::string("Fidelio") : std::string(); return true; };
+  o.write=[&so](const std::string& v){ so.lockPlugin = (v=="on") ? std::string("NowPlaying") : std::string(); return true; };
   r.add(o);
 
   // B1.15e: KeepScreenOn for the lock bundle, owned here (audiod writes lockplugin.plist).

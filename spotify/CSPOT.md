@@ -22,7 +22,7 @@ Changes in rev 3:
 
 **Revision 4 (status files for the dock display, 2026-11-07).** Hardware status after rev 3 (your report): no reboot, peak RSS ≈ 2.7 MB, full chain works — Zeroconf POST → login → AP → Mercury → token → CDN → Vorbis → AudioQueue → speaker; runs as a launchd daemon as `mobile`.
 New in rev 4 (`cli-src/StatusWriter.{h,cpp}`, plus two small cspot/bell changes):
-- cspot-ios3 writes `<status-dir>/status.json` **and** `status.plist` (same keys; the iOS 3 app reads the plist because Foundation has no JSON parser before iOS 5), atomically (`.tmp` + `rename`), on every Spirc event / state change and once a second while playing. Field contract and semantics: see `APP.md` in the app bundle. Options: `--status-dir DIR` (default `/var/mobile/fidelio`), `--no-status`.
+- cspot-ios3 writes `<status-dir>/status.json` **and** `status.plist` (same keys; the iOS 3 app reads the plist because Foundation has no JSON parser before iOS 5), atomically (`.tmp` + `rename`), on every Spirc event / state change and once a second while playing. Field contract and semantics: see `APP.md` in the app bundle. Options: `--status-dir DIR` (default `/var/mobile/dockreceiver`), `--no-status`.
 - Position: Spirc position (PLAYBACK_START / SEEK / PLAY_PAUSE) plus a `mach_absolute_time` clock that runs while playing, frozen while paused, restarted on track change (the clock starts at `TRACK_INFO`, which the fork sends when the track's audio reaches the sink).
 - Cover art: **implemented**. `TrackInfo.imageUrl` is `https://i.scdn.co/image/<hex>` from `album.cover_group.image[0]`; the writer thread fetches it with bell's `HTTPClient::get` (HTTPS, mbedTLS) and saves `cover.jpg` atomically; `"cover"` is `"cover.jpg"` or `""`. One extra TLS connection per track change.
 - `tls`: `TLSSocket::lastNegotiated()` (new static in bell, set after every successful handshake) → e.g. `TLSv1.3 TLS1-3-CHACHA20-POLY1305-SHA256`. Note this is the HTTPS side (apresolve/token/CDN/cover); the AP connection itself is Spotify's Shannon cipher, not TLS.
@@ -30,7 +30,7 @@ New in rev 4 (`cli-src/StatusWriter.{h,cpp}`, plus two small cspot/bell changes)
 - The writer runs on its own 192 KB-stack pthread; memory cost ≈ the cover JPEG (~30–60 KB) plus one TLS session while fetching.
 Patch now has four commits (13 files, +161/−4): `Session.h/.cpp` (`lastApAddress`), `TLSSocket.h/.cpp` (`lastNegotiated`).
 
-**Revision 5 (2026-11-07, one key).** `status.json`/`status.plist` now carry `"source": "spotify"` (first key) so the dock app can show which input is live next to the AirPlay receiver (`fidelio-raop`, which writes `"source": "airplay"` to the same files). No other change; same patch (four commits), only `cli-src/StatusWriter.cpp` and the start banner (`rev5`) differ.
+**Revision 5 (2026-11-07, one key).** `status.json`/`status.plist` now carry `"source": "spotify"` (first key) so the dock app can show which input is live next to the AirPlay receiver (`dock-raop`, which writes `"source": "airplay"` to the same files). No other change; same patch (four commits), only `cli-src/StatusWriter.cpp` and the start banner (`rev5`) differ.
 
 Suggested test order with rev 3: `./cspot-ios3 --no-audio -b 96 2>&1 | tee log.txt` (also pass the client id/secret), tap the device, then read the last `T [rss …]` line; then the same without `--no-audio`.
 
@@ -142,8 +142,8 @@ Known unknowns, in the order I would expect to hit them:
 
 ## Audio output since audiod Milestone B1 (rev 8)
 
-cspot-ios3 no longer opens the AudioQueue itself: the player thread feeds `fidelio-audiod`
-over `/var/mobile/fidelio/audiod.sock` (`--audiod-sock PATH`, env `AUDIOD_SOCK`), which
+cspot-ios3 no longer opens the AudioQueue itself: the player thread feeds `dock-audiod`
+over `/var/mobile/dockreceiver/audiod.sock` (`--audiod-sock PATH`, env `AUDIOD_SOCK`), which
 arbitrates between Spotify and AirPlay. `--direct-audio` restores the local AudioQueue
 (`--audio-route` / `--on-route-change` / `--audio-session auto|on|off` apply to it; B1.8: `auto`
 retries a failed AudioSessionInitialize forever and plays bare meanwhile, `on` waits for the session,

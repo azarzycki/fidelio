@@ -5,7 +5,7 @@ active, or audio that is not ours plays; with nothing active, CONTROL verbs go t
 PLAY as PLAY). The take-or-pass decision is the tweak's own C++ (DockRemoteCore.cpp, built as
 dockremote_probe) run against the files this audiod writes. "Other audio" is mocked with
 AUDIOD_MOCK_OTHER_AUDIO_FILE. Usage:
-  test_remote_target.py PATH_TO_fidelio-audiod PATH_TO_dockremote_probe
+  test_remote_target.py PATH_TO_dock-audiod PATH_TO_dockremote_probe
 """
 import os, shutil, socket, struct, subprocess, sys, threading, time
 AUDIOD, PROBE = sys.argv[1], sys.argv[2]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Host test for B1.6: a source switch and a release must not click.
 
-  test_crossfade.py PATH_TO_fidelio-audiod
+  test_crossfade.py PATH_TO_dock-audiod
 
 audiod runs with the paced output model (--pcm-out-paced 0: the real sink's ring and consumption,
 so what the file holds is what the speaker would have played). A streams a 220 Hz sine, B a 330 Hz
@@ -13,7 +13,7 @@ comparison and the step it produces is printed.
 """
 import math, os, socket, struct, subprocess, sys, threading, time
 
-AUDIOD = sys.argv[1] if len(sys.argv) > 1 else "build/fidelio-audiod"
+AUDIOD = sys.argv[1] if len(sys.argv) > 1 else "build/dock-audiod"
 LEAD, AMP = 750, 10000
 TMP = "/tmp/audiod-crossfade"
 os.makedirs(TMP, exist_ok=True)

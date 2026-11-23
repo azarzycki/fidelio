@@ -1,6 +1,6 @@
 #pragma once
 // B1.14/B1.15: each daemon declares its options ONCE in a Settings registry. The registry writes a
-// manifest the NowPlaying app renders a config UI from, reads /var/mobile/fidelio/settings.conf, and
+// manifest the NowPlaying app renders a config UI from, reads /var/mobile/dockreceiver/settings.conf, and
 // (audiod) re-reads it live. Plain C++ (host + ARMv6 device), no exceptions.
 //
 // B1.15 — single source of truth. Each Option is BOUND to the daemon's real options struct by two
@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace fidelio {
+namespace dockreceiver {
 
 struct Choice { std::string value, label; };
 
@@ -105,4 +105,4 @@ class Registry {
   static const std::string kEmpty;
 };
 
-}  // namespace fidelio
+}  // namespace dockreceiver

@@ -6,7 +6,7 @@ window ends; an external change drops a held level). audiod runs with the mock h
 mock IAP (AUDIOD_MOCK_IAP).
 B1.16.14: a source that sends a level audiod reported to it (within 3 s, one dock step) is echoing it:
 nothing is set or told to the dock; a held level is dropped at its flush when the hardware level changed
-outside in the meantime, even before the poll has noticed. Usage: test_dock_volume.py PATH_TO_fidelio-audiod
+outside in the meantime, even before the poll has noticed. Usage: test_dock_volume.py PATH_TO_dock-audiod
 """
 import os, re, socket, struct, subprocess, sys, threading, time
 AUDIOD = sys.argv[1]

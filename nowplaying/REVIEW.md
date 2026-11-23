@@ -1,4 +1,4 @@
-# Code review: NowPlaying.app ("Fidelio") for iPhone OS 3.1.3 / armv6
+# Code review: NowPlaying.app for iPhone OS 3.1.3 / armv6
 
 Scope: everything in `src/` as of the initial commit (`83d2050`). Line numbers below refer to
 that revision; the fixes are the commits on this branch named in each finding. Verification was
@@ -20,7 +20,7 @@ row and `objectAtIndex:1` would throw, so that invariant matters; it holds).
 ## High
 
 ### H1. The cover is kept and uploaded at full decoded size; its size is not bounded
-`src/FidelioStatus.m:63`, `src/NowPlayingViewController.m:53-57`
+`src/NPStatus.m:63`, `src/NowPlayingViewController.m:53-57`
 
 `[[UIImage alloc] initWithContentsOfFile:]` is handed straight to the UIImageView. The first draw
 decodes the JPEG to a w*h*4 bitmap that stays resident for as long as the image is displayed,
@@ -82,7 +82,7 @@ deterministically (checked: identical bytes across two runs), and the items use
 ## Medium
 
 ### M1. A cover replaced within the same second is never reloaded
-`src/FidelioStatus.m:58-61`
+`src/NPStatus.m:58-61`
 
 The reload key is (name, mtime). HFS+ stores mtime in whole seconds. If cspot renames a new
 cover.jpg over the old one within the same second (two quick "next" presses; each fetch is a
@@ -91,7 +91,7 @@ whole track. Fixed by also comparing `NSFileSize` (same attrs dictionary, free):
 "Detect cover replacement by size too and drop stale art on a failed load".
 
 ### M2. A cover that fails to decode keeps the previous track's art and is re-read every second
-`src/FidelioStatus.m:62-74`
+`src/NPStatus.m:62-74`
 
 When `initWithContentsOfFile:` returns nil (0-byte file, truncated or non-JPEG bytes from the
 network) the old UIImage is kept, so the previous album's cover is shown under the new track;
@@ -101,7 +101,7 @@ load now leaves `cover` nil (placeholder) and records the key, so it is retried 
 file changes. A missing file with `cover` set behaves the same way instead of retrying each tick.
 
 ### M3. An unparseable status file is reported as "no status file" / silently as "(stale)"
-`src/FidelioStatus.m:42-44`, `src/NowPlayingViewController.m:97`
+`src/NPStatus.m:42-44`, `src/NowPlayingViewController.m:97`
 
 `dictionaryWithContentsOfFile:` returns nil both when the file is absent and when it is not a
 plist dictionary (writer bug; XML the parser rejects, e.g. a control character in Spotify
@@ -112,7 +112,7 @@ Fixed: "Tell an unparseable status file apart from a missing one" (`fileExistsAt
 `fileUnreadable` flag, distinct status line).
 
 ### M4. The app keeps polling at 1 Hz while the screen is locked
-`src/FidelioAppDelegate.m:23`
+`src/NPAppDelegate.m:23`
 
 iPhone OS 3 keeps the frontmost app running when the sleep button is pressed (or a call/alert
 sits on top); only `applicationWillResignActive:` is sent. The timer then reads + parses the
@@ -141,21 +141,21 @@ Fixed: 30 px rows = 420 px, "Fit all 14 Technical rows above the tab bar".
 
 ## Low (not fixed; recommendations)
 
-- **Position clock uses the wall clock** (`FidelioStatus.m:95-99`). `readTime` is an NSDate;
+- **Position clock uses the wall clock** (`NPStatus.m:95-99`). `readTime` is an NSDate;
   if the clock is set (NTP after Wi-Fi comes up, or by hand) while playing, the position jumps
   (forward: snaps to `duration`; backward: shows 0:00 and remaining > duration) until the next
   read, at most 1 s later. `CACurrentMediaTime()` (QuartzCore, already linked, `CABase.h:135`)
   would be immune. Left as is: the glitch is transient and self-healing.
 - **A stale file in state `playing` keeps the clock running** to the end of the track and pins it
   there while "(stale)" is shown. Freezing the position once `fileAge > 15` would be more honest.
-- **`mach_host_self()` twice per second** (`FidelioStatus.m:121,123`) without
+- **`mach_host_self()` twice per second** (`NPStatus.m:121,123`) without
   `mach_port_deallocate`; each call bumps the send-right uref count. The kernel pegs it at the
   maximum (copyout with overflow allowed), so it is not a leak that grows, and `host_page_size`
   never changes, but the idiom is wrong: fetch the port and the page size once.
 - **`makeLabel:...` returns a +1 object** (`NowPlayingViewController.m:32`) under a name that
   the Cocoa convention (and the static analyzer) treats as autoreleased. Correct as used; rename
   to `newLabel:` or autorelease and let the ivar assignment retain.
-- **`FIDELIO_APP_VERSION` duplicates `CFBundleVersion`** (`FidelioStatus.h:6`, `Info.plist:33`).
+- **`NP_APP_VERSION` duplicates `CFBundleVersion`** (`NPStatus.h:6`, `Info.plist:33`).
   Read `[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"]` instead so the
   two cannot drift.
 - **Info.plist**: `CFBundleIconFiles`, `UIDeviceFamily` and `UISupportedInterfaceOrientations`
@@ -164,12 +164,12 @@ Fixed: 30 px rows = 420 px, "Fit all 14 Technical rows above the tab bar".
   adding `UIRequiresPersistentWiFi` = true: the device exists to show a Wi-Fi receiver, and the
   key keeps Wi-Fi up when the user locks the screen by hand (the idle timer is disabled, so
   auto-lock never happens, but the sleep button does).
-- **`setStatusBarHidden:YES animated:NO`** (`FidelioAppDelegate.m:6`) is redundant with
+- **`setStatusBarHidden:YES animated:NO`** (`NPAppDelegate.m:6`) is redundant with
   `UIStatusBarHidden` in Info.plist; harmless.
 - **Timer runs only in the default run loop mode**, so both tabs freeze while the user drags the
   Technical table. For a dock display this is arguably the right behaviour (reloading a table
   under a finger is worse); noted so nobody "fixes" it by accident.
-- **`cover` is used as a path component** (`FidelioStatus.m:57`). The writer is our own process
+- **`cover` is used as a path component** (`NPStatus.m:57`). The writer is our own process
   and only ever writes `"cover.jpg"` or `""`; a hostile value could at most make the app try to
   open some other file as an image. Fine, but worth a comment in the contract.
 

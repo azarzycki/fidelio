@@ -1,7 +1,7 @@
-# audiod — the Fidelio audio arbiter
+# audiod — the audio arbiter (`dock-audiod`)
 
 The one process that owns the iPhone's audio hardware. Spotify (cspot) and
-AirPlay (fidelio-raop) stream PCM to it over a Unix socket; audiod plays the
+AirPlay (dock-raop) stream PCM to it over a Unix socket; audiod plays the
 most-recently-active source (debounced) so switching needs no hardware route
 handoff. See **DESIGN.md** for the full design and **proto.h** for the wire
 contract. Implementation lands component-by-component per the build order in
@@ -27,7 +27,7 @@ DESIGN.md.
     cmake -S audiod -B audiod/build-host -G Ninja -DCMAKE_BUILD_TYPE=Release
     ninja -C audiod/build-host
     ./audiod/build-host/framing_test
-    python3 audiod/hosttest/test_arbiter.py audiod/build-host/fidelio-audiod
+    python3 audiod/hosttest/test_arbiter.py audiod/build-host/dock-audiod
 
 `test_arbiter.py` drives two fake sources with timed PCM bursts and asserts that
 every transition lands on the TAKEOVER / HOLD / RELEASE / IDLE_STOP boundary, that
@@ -36,15 +36,15 @@ active sources' audio. `socketsink_producer NAME SOCK SAMPLE MS` streams through
 `SocketSink` for reconnect tests (kill and restart audiod underneath it).
 
 All timers are flags (`--takeover-ms` …) or env (`AUDIOD_TAKEOVER_MS` …); see
-`fidelio-audiod --help`.
+`dock-audiod --help`.
 
 ## Milestone B1 (play on hardware, real producers)
 
-- `fidelio-audiod` with no `--pcm-out`/`--no-audio` plays through the AudioQueue
+- `dock-audiod` with no `--pcm-out`/`--no-audio` plays through the AudioQueue
   (`airplay/src/AudioQueueOutput.h` over the shared route-following `AudioQueueSink`);
   `--audio-route`, `--on-route-change` as in cspot. The idle stop (`IDLE_STOP_MS`) stops
   the queue; the next active source restarts it.
-- `cspot-ios3` and `fidelio-raop` stream to audiod by default (`--audiod-sock PATH`, env
+- `cspot-ios3` and `dock-raop` stream to audiod by default (`--audiod-sock PATH`, env
   `AUDIOD_SOCK`); `--direct-audio` keeps the old local AudioQueue for standalone debugging.
   `cspot-ios3 --sink-test N` plays N s of a 440 Hz tone through whichever sink and exits:
   the quickest way to prove the audiod path on the device without Spotify.
@@ -57,7 +57,7 @@ All timers are flags (`--takeover-ms` …) or env (`AUDIOD_TAKEOVER_MS` …); se
   after an underrun instead of playing a near-empty ring with holes.
 - Volume: proto v1 has no VOLUME message; `SocketSink::setVolume()` is applied as gain
   before sending (raop's dB volume, cspot's 0..65535).
-- `hosttest/test_producers.py AUDIOD RAOP [CSPOT]`: the host-built fidelio-raop receives a
+- `hosttest/test_producers.py AUDIOD RAOP [CSPOT]`: the host-built dock-raop receives a
   scripted RAOP session (`airplay/hosttest/raop_sender.py`) into audiod and the played PCM is
   checked byte-exact (with the -15 dB gain) around the FLUSH; cspot's `--sink-test` tone is
   checked for length, frequency and the STOP release. `AUDIOD_TRACE_RING=1` traces the ring.
@@ -171,7 +171,7 @@ steal and a 2 s gap that may.
   re-acquire.
 - **AirPlay -144 dB is not mute** (amendment C, corrected) — senders without remote volume
   (CenturyPlay) send the -144 dB sentinel permanently and shape loudness in the PCM; applying it
-  as gain (B1.1 moved the volume into audiod) muted them. fidelio-raop now maps it to unity
+  as gain (B1.1 moved the volume into audiod) muted them. dock-raop now maps it to unity
   (`--airplay-volume auto`, default); real -30..0 dB values are still honoured; `honor` keeps the
   old mute, `ignore` always plays at unity. Tested: a -144 dB session comes out byte-exact
   unscaled through audiod and arbitrates normally.
@@ -309,10 +309,10 @@ steal and a 2 s gap that may.
 ### B. Wake the display when playback starts (`--wake-on-play on|off`, default on)
 - Trigger: the arbiter's TAKEOVER from **none** (not a source -> source switch, not the `reconnect`
   takeover), debounced to one wake per 5 s; every decision is an event-log line (`wake none spotify
-  wake+launch com.fidelio.nowplaying` / `debounced (3500 ms since the last wake)`).
+  wake+launch com.dockreceiver.nowplaying` / `debounced (3500 ms since the last wake)`).
 - Action (`audiod/src/DisplayWakeApple.cpp`, SpringBoardServices + GraphicsServices via `dlopen`):
   `SBDimScreen(SBSSpringBoardServerPort(), false)` (undim), `GSEventResetIdleTimer()`, then
-  `SBSLaunchApplicationWithIdentifier(CFSTR("com.fidelio.nowplaying"), false)` (`--wake-bundle`).
+  `SBSLaunchApplicationWithIdentifier(CFSTR("com.dockreceiver.nowplaying"), false)` (`--wake-bundle`).
   Symbols confirmed exported by the SDK binaries; there is no `SBSUndimScreen` in 3.1, so the undim
   semantics of `SBDimScreen(false)` are assumed (the symbol takes one byte argument). Locked device:
   expected = the screen wakes, the launch is refused or lands behind the lock (the return code is
@@ -354,9 +354,9 @@ app over the lock screen. audiod now unlocks first when it may:
 - **Both devices:** the 3.1.2 SDK exports `SBSOpenSensitiveURLAndUnlock` too, so the phone attempts the
   unlock as well if its launch returns `3` while locked. Set `audiod.unlock_on_play=off` on a device that
   should stay on the lock screen.
-- **Entitlements:** `common/fidelio-springboard.entitlements.plist` adds
+- **Entitlements:** `common/dock-springboard.entitlements.plist` adds
   `com.apple.springboard.opensensitiveurl`, and since B1.16.6 `com.apple.springboard.openurlswhenlocked`
-  (see below). The B1.16.4 A/B binary `fidelio-audiod-openurlswhenlocked` is gone.
+  (see below). The B1.16.4 A/B binary (an audiod signed with only the `openurlswhenlocked` key) is gone.
 - **App:** NowPlaying 1.3.1 registers `nowplaying:` (`CFBundleURLTypes`) and accepts the URL without
   looking at it. iOS registers a URL scheme when it rebuilds its app list: run `uicache` after installing.
 - **Event log** (kind `wake`): `wake: device locked, unlock accepted (nowplaying:)` (B1.16.6; B1.16.4 logged
@@ -382,7 +382,7 @@ From the device tests on the locked 5.1.1 iPad (cspot-build-local):
   B1.16.4 keys. It returns true once `com.apple.springboard.openurlswhenlocked` is added, from audiod and from
   an entitled cycript, as root and as mobile. An app's own URL scheme on a locked device needs that key.
   `prefs:` (a system URL) opens with `opensensitiveurl` alone, which is why an earlier test with it missed
-  this. The plist carries all four keys, `fidelio-audiod` and `fidelio-lockctl` are signed with them, and
+  this. The plist carries all four keys, `dock-audiod` and `dock-lockctl` are signed with them, and
   `tools/build-arm.sh` checks all four.
 - **The launch probe was a false negative.** With the four keys the request is accepted and the iPad
   unlocks into NowPlaying within 2 s. SpringBoard's own `[[SBAwayController sharedAwayController] isLocked]`
@@ -612,7 +612,7 @@ source was active: the built-in iPod app started instead (`audio interruption be
   found). One small fix: a failed write or rename is no longer remembered as written, so it is retried on
   the next pass instead of after 10 s.
 - **Log lines** (stdout trace; no new event kind):
-  - start-up: `remote target (B1.16.16): /var/mobile/fidelio/remote-target (the active source, or the
+  - start-up: `remote target (B1.16.16): /var/mobile/dockreceiver/remote-target (the active source, or the
     paused last one until it disconnects, stops or other audio plays; other audio: AudioSession
     OtherAudioIsPlaying, polled every 500 ms while paused)`;
   - `remote target: 'none' -> 'spotify' (active)`, `'spotify' -> 'airplay' ('airplay' took over)`,

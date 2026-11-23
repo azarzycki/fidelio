@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Host test for fidelio-audiod's silence detection and stream recency (B1.2 review items #3, #6).
+"""Host test for dock-audiod's silence detection and stream recency (B1.2 review items #3, #6).
 
-  test_silence.py PATH_TO_fidelio-audiod
+  test_silence.py PATH_TO_dock-audiod
 
 Scenario 1 (quiet music is not a pause): one source streams a realistic envelope through audiod:
 2 s loud, a 3 s fade down to -40 dBFS, 4 s of pianissimo (peak 60), a 2 s exact-zero inter-track gap,
@@ -24,7 +24,7 @@ take the speaker back once X's hold expires.
 """
 import os, socket, struct, subprocess, sys, threading, time
 
-AUDIOD = sys.argv[1] if len(sys.argv) > 1 else "build/fidelio-audiod"
+AUDIOD = sys.argv[1] if len(sys.argv) > 1 else "build/dock-audiod"
 TAKEOVER, HOLD, RELEASE, QUIET_RELEASE, IDLE_STOP, THRESHOLD, LEAD = 400, 1500, 1500, 3000, 2000, 24, 750
 TOL = 150
 TMP = "/tmp/audiod-silence"

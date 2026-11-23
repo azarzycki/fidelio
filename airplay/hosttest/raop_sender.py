@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scripted RAOP sender for testing fidelio-raop on the host (no mDNS, no real audio).
+"""Scripted RAOP sender for testing dock-raop on the host (no mDNS, no real audio).
 
   raop_sender.py --port 5000 --codec pcm|alac [--encrypt] [--alac-tool PATH] --status-dir DIR --expect-pcm FILE
 

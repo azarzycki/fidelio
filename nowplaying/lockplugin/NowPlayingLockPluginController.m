@@ -1,26 +1,27 @@
-#import "FidelioLockPluginController.h"
+#import "NowPlayingLockPluginController.h"
 
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <stdlib.h>
 
 #include "LPLayout.h"
+#include "common/DataDir.h"
 
-#define FIDELIO_DIR @"/var/mobile/fidelio"
+#define LP_DIR @DOCKRECEIVER_DIR  // the one default (common/DataDir.h)
 #define COVER_PX 256.0f
 #define STALE_ACTIVE_S 30.0   // active-source older than this (audiod rewrites every 10 s) = audiod gone
 
 // Everything that touches files or UIKit runs behind this: a throw inside SpringBoard is a respring.
-#define GUARD(...) @try { __VA_ARGS__ } @catch (NSException* e) { NSLog(@"Fidelio lock plugin caught: %@", e); }
+#define GUARD(...) @try { __VA_ARGS__ } @catch (NSException* e) { NSLog(@"NowPlaying lock plugin caught: %@", e); }
 
 // B1.16.3: NSLog is invisible on the iPad (no syslog there), so trace the lifecycle to a file when
-// /var/mobile/fidelio/lockplugin.debug exists — the only way to tell "SpringBoard never called us"
+// /var/mobile/dockreceiver/lockplugin.debug exists — the only way to tell "SpringBoard never called us"
 // from "called and drew nothing". Cheap (a stat per call) and off unless the debug file is present.
 static void LPTrace(NSString* line) {
   @try {
-    static NSString* dbg = @"/var/mobile/fidelio/lockplugin.debug";
+    static NSString* dbg = @DOCKRECEIVER_DIR "/lockplugin.debug";
     if (![[NSFileManager defaultManager] fileExistsAtPath:dbg]) return;
-    NSString* log = @"/var/mobile/fidelio/lockplugin.log";
+    NSString* log = @DOCKRECEIVER_DIR "/lockplugin.log";
     NSString* entry = [NSString stringWithFormat:@"%.3f %@\n", CFAbsoluteTimeGetCurrent(), line];
     NSFileHandle* h = [NSFileHandle fileHandleForWritingAtPath:log];
     if (!h) { [entry writeToFile:log atomically:NO encoding:NSUTF8StringEncoding error:NULL]; return; }
@@ -28,7 +29,7 @@ static void LPTrace(NSString* line) {
   } @catch (NSException* e) {}
 }
 
-@implementation FidelioLockPluginController
+@implementation NowPlayingLockPluginController
 
 // SpringBoard calls this CLASS method and stores the result in its _awayViewPluginControllers dict
 // (and later sends it -disable / -purgeView). We return a RETAINED singleton: one controller for the
@@ -36,7 +37,7 @@ static void LPTrace(NSString* line) {
 // leave us with a dangling instance, and we never create a second one. The small permanent retain is
 // deliberate (a lock-screen plugin lives as long as SpringBoard does).
 + (id)rootViewController {
-  static FidelioLockPluginController* shared = nil;
+  static NowPlayingLockPluginController* shared = nil;
   @try {
     if (!shared) shared = [[self alloc] init];
     LPTrace([NSString stringWithFormat:@"+rootViewController -> %@", shared]);
@@ -117,7 +118,7 @@ static UILabel* MakeLabel(CGFloat size, BOOL bold, UIColor* color, UITextAlignme
     [content addSubview:remainingLabel];
 
     idleLabel = MakeLabel(18, NO, [UIColor colorWithWhite:0.6f alpha:1], UITextAlignmentCenter);
-    idleLabel.text = @"Fidelio";
+    idleLabel.text = @"NowPlaying";
     [content addSubview:idleLabel];
 
     [self setView:content];
@@ -191,7 +192,7 @@ static CGRect CR(LPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
 - (void)disable { LPTrace(@"disable"); GUARD([self stopTimer]; [super disable];) }
 
 - (void)loadPrefs {
-  NSString* p = [FIDELIO_DIR stringByAppendingPathComponent:@"lockplugin.plist"];
+  NSString* p = [LP_DIR stringByAppendingPathComponent:@"lockplugin.plist"];
   NSDate* m = Mtime(p);
   if (m && (!prefsMtime || ![m isEqualToDate:prefsMtime])) {
     NSDictionary* d = [NSDictionary dictionaryWithContentsOfFile:p];
@@ -204,7 +205,7 @@ static CGRect CR(LPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
 }
 
 - (NSString*)pickSource {
-  NSString* ap = [FIDELIO_DIR stringByAppendingPathComponent:@"active-source"];
+  NSString* ap = [LP_DIR stringByAppendingPathComponent:@"active-source"];
   NSString* a = Trim([NSString stringWithContentsOfFile:ap encoding:NSUTF8StringEncoding error:NULL]);
   NSDate* m = Mtime(ap);
   if (!m || [[NSDate date] timeIntervalSinceDate:m] > STALE_ACTIVE_S) return @"";
@@ -226,7 +227,7 @@ static CGRect CR(LPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
     if (haveContent != had) { @try { [self setViewCanBeDisplayed:haveContent]; } @catch (NSException* e) {} }
 
     if (haveContent) {
-      NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"status-%@.plist", source]];
+      NSString* path = [LP_DIR stringByAppendingPathComponent:[NSString stringWithFormat:@"status-%@.plist", source]];
       NSDictionary* d = [NSDictionary dictionaryWithContentsOfFile:path];  // rename()d into place, never half-written
       if (d) { [status release]; status = [d retain]; [readTime release]; readTime = [[NSDate alloc] init]; }
     }
@@ -265,7 +266,7 @@ static CGRect CR(LPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
 // Reload the cover only when (name, mtime, size) changes; cap at COVER_PX; a bad file -> no image,
 // never the previous track's art.
 - (void)updateCover:(NSString*)name {
-  NSString* coverPath = [name length] ? [FIDELIO_DIR stringByAppendingPathComponent:name] : nil;
+  NSString* coverPath = [name length] ? [LP_DIR stringByAppendingPathComponent:name] : nil;
   NSDictionary* attrs = coverPath ? [[NSFileManager defaultManager] attributesOfItemAtPath:coverPath error:NULL] : nil;
   NSDate* mtime = [attrs objectForKey:NSFileModificationDate];
   unsigned long long size = [[attrs objectForKey:NSFileSize] unsignedLongLongValue];
@@ -335,7 +336,7 @@ static void ResolveKeepLit(id away) {
 - (NSString*)holdScreenLit {
   if (!(keepScreenOn && haveContent)) return @"off";
   Class cls = objc_getClass("SBAwayController");
-  id<FidelioSBAwayController> away = nil;
+  id<NowPlayingSBAwayController> away = nil;
   if (cls && [(id)cls respondsToSelector:@selector(sharedAwayController)]) away = [(id)cls sharedAwayController];
   if (!away) return @"unavailable";
   if (keepLitPath == KL_UNRESOLVED) ResolveKeepLit(away);

@@ -1,6 +1,6 @@
-# fidelio-ios3-nowplaying
+# NowPlaying (the dock display)
 
-**"Fidelio" — a native now-playing dock display for the original iPhone (iOS 3.1.3, ARMv6).** A small UIKit app that shows what the [Spotify Connect receiver](https://github.com/azarzycki/fidelio-ios3-spotify) is playing: album art, track/artist/album, a progress bar, and a second tab of live technical telemetry. It's a *display* — playback is driven from any Spotify client; the app just reads a status file the receiver writes.
+**NowPlaying — a native now-playing dock display for the original iPhone (iOS 3.1.3, ARMv6) and the iPad 1.** A small UIKit app that shows what the Spotify Connect receiver ([`../spotify/`](../spotify/)) or the AirPlay receiver ([`../airplay/`](../airplay/)) is playing: album art, track/artist/album, a progress bar, and a second tab of live technical telemetry. It's a *display* — playback is driven from any Spotify client; the app just reads a status file the receiver writes.
 
 Built with the same ARMv6 / iPhone-OS-3.1 cross-toolchain (Objective-C, manual retain/release — no ARC, no blocks), links UIKit / Foundation / CoreGraphics / QuartzCore, fake-signed with `ldid -S`. Runs at ~2 MB private resident.
 
@@ -9,11 +9,11 @@ Built with the same ARMv6 / iPhone-OS-3.1 cross-toolchain (Objective-C, manual r
 - **Technical** — a live table: state, codec + bitrate, negotiated TLS suite, Spotify access point + country, the receiver's RSS, the app's RSS, device free memory, uptime, Wi-Fi IP, battery, status-file age, device name, build.
 
 ## What's here
-- `src/` — the full sources: `main.m`, `FidelioAppDelegate.{h,m}`, `NowPlayingViewController.{h,m}`, `TechnicalViewController.{h,m}`, `FidelioStatus.{h,m}`, `Info.plist`, `gen_images.py` (draws Icon/placeholder/Default in pure Python, no PIL), and `build.sh`.
+- `src/` — the full sources: `main.m`, `NPAppDelegate.{h,m}`, `NowPlayingViewController.{h,m}`, `TechnicalViewController.{h,m}`, `NPStatus.{h,m}`, `Info.plist`, `gen_images.py` (draws Icon/placeholder/Default in pure Python, no PIL), and `build.sh`.
 - `APP.md` — the status-file contract it reads, the install steps, and the cover-art implementation notes.
 
 ## Data contract
-Polls `/var/mobile/fidelio/status.plist` (XML plist — iOS 3 has no JSON parser) once per second, and reloads `/var/mobile/fidelio/cover.jpg` when it changes. The companion receiver writes both `status.json` and `status.plist` atomically. Keys: `state, title, artist, album, duration_ms, position_ms, bitrate_kbps, codec, cover, device, ap, country, tls, rss_kb, updated` (and `source` once the AirPlay input lands). Full table in `APP.md`.
+Polls `/var/mobile/dockreceiver/status.plist` (XML plist — iOS 3 has no JSON parser) once per second, and reloads `/var/mobile/dockreceiver/cover.jpg` when it changes. The companion receiver writes both `status.json` and `status.plist` atomically. Keys: `state, title, artist, album, duration_ms, position_ms, bitrate_kbps, codec, cover, device, ap, country, tls, rss_kb, updated` (and `source` once the AirPlay input lands). Full table in `APP.md`.
 
 ## Build
 ```sh
@@ -30,4 +30,4 @@ ssh root@phone 'chown -R mobile:mobile /Applications/NowPlaying.app; chmod +x /A
 If the icon doesn't appear after the respring, run `uicache` and respring again.
 
 ## License
-Original work, MIT — see [`LICENSE`](LICENSE). Companion to [fidelio-ios3-spotify](https://github.com/azarzycki/fidelio-ios3-spotify).
+Original work, MIT — see [`LICENSE`](LICENSE). Part of the dock-receiver monorepo (see the top-level [`README.md`](../README.md)).

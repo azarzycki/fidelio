@@ -4,7 +4,7 @@ back from the live config, honours command line > settings.conf > default, marks
 (short and long) locked, and really APPLIES a file value (asserted via the daemon's own start log / a
 self-check line, not just the manifest text). audiod also applies a change live.
 
-Usage: test_settings.py PATH_TO_fidelio-audiod [PATH_TO_fidelio-raop PATH_TO_cspot-ios3]
+Usage: test_settings.py PATH_TO_dock-audiod [PATH_TO_dock-raop PATH_TO_cspot-ios3]
 """
 import os, plistlib, signal, subprocess, sys, time
 

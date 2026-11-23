@@ -12,7 +12,7 @@ typedef void* DNSServiceRef;  // host test build: no mDNS
 
 class RaopAdvertiser {
  public:
-  // name: "<MAC>@Fidelio (AirPlay)"; port: the RTSP port.
+  // name: "<MAC>@<advertised name>", by default "<MAC>@Fidelio (AirPlay)"; port: the RTSP port.
   bool start(const std::string& instanceName, uint16_t port, const std::map<std::string, std::string>& txt);
   void stop();
   ~RaopAdvertiser() { stop(); }

@@ -1,7 +1,7 @@
-// fidelio-lockctl: enable / disable a SpringBoard lock-screen bundle by name, or report status, by
+// dock-lockctl: enable / disable a SpringBoard lock-screen bundle by name, or report status, by
 // calling the private SpringBoardServices MIG routine SBEnableLockScreenBundle through dlopen/dlsym
 // (never linked), exactly as audiod's DisplayWakeApple.cpp calls its SpringBoardServices functions.
-// Lets Fidelio.lockbundle be tested by hand without injecting anything into SpringBoard.
+// Lets NowPlaying.lockbundle be tested by hand without injecting anything into SpringBoard.
 //
 // Prototype derived by disassembling the 3.1.2 SDK SpringBoardServices stub (B1.11): three args,
 //   kern_return_t SBEnableLockScreenBundle(mach_port_t serverPort, uint8_t enable, const char* name);
@@ -21,12 +21,12 @@ static const char* kPlugins = "/System/Library/SpringBoardPlugins";
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    fprintf(stderr, "usage: fidelio-lockctl enable NAME | disable NAME | status [NAME]\n"
-                    "  NAME is the bundle name without .lockbundle (default Fidelio)\n");
+    fprintf(stderr, "usage: dock-lockctl enable NAME | disable NAME | status [NAME]\n"
+                    "  NAME is the bundle name without .lockbundle (default NowPlaying)\n");
     return 2;
   }
   std::string cmd = argv[1];
-  const char* name = argc > 2 ? argv[2] : "Fidelio";
+  const char* name = argc > 2 ? argv[2] : "NowPlaying";
 
   void* sbs = dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY);
   if (!sbs) { fprintf(stderr, "dlopen SpringBoardServices failed: %s\n", dlerror() ? dlerror() : "?"); return 1; }

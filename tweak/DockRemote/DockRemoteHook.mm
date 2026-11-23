@@ -22,15 +22,15 @@
 //
 // STAGING:
 //  - With no flags the hook is a pure pass-through that writes nothing.
-//  - /var/mobile/fidelio/remote-tweak.observe: log every record iapd sends to remote-events.log (still
+//  - /var/mobile/dockreceiver/remote-tweak.observe: log every record iapd sends to remote-events.log (still
 //    passed through).
-//  - /var/mobile/fidelio/remote-tweak.observe OR remote-tweak.swallow: one line per completed key press
+//  - /var/mobile/dockreceiver/remote-tweak.observe OR remote-tweak.swallow: one line per completed key press
 //    in remote-keys.log ("<unix seconds> <code> <name> <taken|passed>"), read by NowPlaying's Technical tab.
-//  - /var/mobile/fidelio/remote-tweak.swallow: take over play/pause (0), next (20, 3) and previous (21, 4):
+//  - /var/mobile/dockreceiver/remote-tweak.swallow: take over play/pause (0), next (20, 3) and previous (21, 4):
 //    the verb goes to audiod once, at the press's first event, and every event of the press is dropped.
 //    Only when DockRemoteCore's shouldForward() agrees (setting on, a source of ours is audiod's remote
 //    target, audiod reachable); it is asked once per press. Everything else always passes through.
-//  - /var/mobile/fidelio/remote-tweak.disabled: a complete no-op, checked on every record.
+//  - /var/mobile/dockreceiver/remote-tweak.disabled: a complete no-op, checked on every record.
 //  A crash in iapd breaks the dock until a reseat. Fields are therefore read with memcpy at fixed
 //  offsets, the info dump is bounded, and nothing blocks beyond DockRemoteCore's short socket timeouts.
 #import <Foundation/Foundation.h>
@@ -44,12 +44,13 @@
 
 #import "DockRemoteCore.h"
 #import "DockRemoteKeys.h"
+#include "common/DataDir.h"
 
-static const char* kObserve = "/var/mobile/fidelio/remote-tweak.observe";
-static const char* kSwallow = "/var/mobile/fidelio/remote-tweak.swallow";
-static const char* kDisable = "/var/mobile/fidelio/remote-tweak.disabled";
-static const char* kLog     = "/var/mobile/fidelio/remote-events.log";
-static const char* kKeys    = "/var/mobile/fidelio/remote-keys.log";  // B1.16.13: for NowPlaying
+static const char* kObserve = DOCKRECEIVER_DIR "/remote-tweak.observe";
+static const char* kSwallow = DOCKRECEIVER_DIR "/remote-tweak.swallow";
+static const char* kDisable = DOCKRECEIVER_DIR "/remote-tweak.disabled";
+static const char* kLog     = DOCKRECEIVER_DIR "/remote-events.log";
+static const char* kKeys    = DOCKRECEIVER_DIR "/remote-keys.log";  // B1.16.13: for NowPlaying
 
 using namespace dockremote;
 
@@ -165,9 +166,9 @@ static void DockRemoteInit() {
     void* target = dlsym(RTLD_DEFAULT, "GSSendEvent");
     if (hook && target) {
       hook(target, (void*)new_GSSendEvent, (void**)&orig_GSSendEvent);
-      snprintf(line, sizeof line, "DockRemote B1.16.16: hooked GSSendEvent with MSHookFunction from %s (pass-through until the observe/swallow flags)", where);
+      snprintf(line, sizeof line, "DockRemote B1.17: hooked GSSendEvent with MSHookFunction from %s (pass-through until the observe/swallow flags)", where);
     } else {
-      snprintf(line, sizeof line, "DockRemote B1.16.16: NOT hooked (MSHookFunction %s, GSSendEvent %s): safe no-op",
+      snprintf(line, sizeof line, "DockRemote B1.17: NOT hooked (MSHookFunction %s, GSSendEvent %s): safe no-op",
                hook ? "found" : "not exported by any substrate library", target ? "found" : "missing");
     }
     syslog(LOG_NOTICE, "%s", line);

@@ -1,5 +1,5 @@
 #pragma once
-// fidelio-audiod server: a Unix-socket listener and a single poll() loop that drains every client
+// dock-audiod server: a Unix-socket listener and a single poll() loop that drains every client
 // (so a producer never blocks), feeds the arbiter, and writes only the active source's PCM to the
 // one AudioOutput. Every source's latest lead is kept in a per-client ring; the active one is pumped
 // into the output only while the output holds < 0.5 s, so the loop never blocks on the hardware and
@@ -42,7 +42,7 @@ struct ServerOptions {
   int hwCurve = 0;             // --hw-volume-curve: 0 linear (default: the hardware has its own taper), 1 log (60 dB), 2 cubic
   // B1.9 B: wake the display and foreground the NowPlaying app when playback starts from nothing
   bool wakeOnPlay = true;      // --wake-on-play on|off
-  std::string wakeBundle = "com.fidelio.nowplaying";
+  std::string wakeBundle = "com.dockreceiver.nowplaying";
   unsigned wakeMinIntervalMs = 5000;  // debounce: at most one wake per this interval
   // B1.16.10: what the wake does (registry wake_mode, set per device from the NowPlaying Settings tab).
   // true = "launch": wake the screen and bring NowPlaying forward (a locked iPad is unlocked first when
@@ -79,7 +79,7 @@ class Server {
   bool listen();
   void run();  // until requestStop()
   // B1.14: live settings. reg stays owned by the caller; conf is settings.conf, dir holds the manifest.
-  void enableLiveSettings(fidelio::Registry* reg, const std::string& conf, const std::string& dir) { settings = reg; settingsConf = conf; settingsDir = dir; }
+  void enableLiveSettings(dockreceiver::Registry* reg, const std::string& conf, const std::string& dir) { settings = reg; settingsConf = conf; settingsDir = dir; }
   // B1.15: the registry binds to these so the manifest reflects what the daemon actually uses and a
   // settings.conf value is applied to the live config. applyLiveConfig() pushes tunables into the
   // arbiter and recomputes derived values (call after a startup load or a live reload).
@@ -221,7 +221,7 @@ class Server {
   static const uint64_t kSbSettleMs = 4000;  // and re-enable once a new SpringBoard has been up this long
   bool unlockUnavailableLogged = false;  // B1.16.4: "SBSOpenSensitiveURLAndUnlock not available", once per process
   // B1.14 live settings
-  fidelio::Registry* settings = nullptr;
+  dockreceiver::Registry* settings = nullptr;
   std::string settingsConf, settingsDir;
   uint64_t lastSettingsCheckMs = 0;
   // B1.10 test hook (AUDIOD_STALL_ACTIVE_MS): gate reads of the active source for this long once it

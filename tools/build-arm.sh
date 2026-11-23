@@ -4,7 +4,7 @@
 # Cross-builds every ARMv6 / iPhone OS 3 artifact of the monorepo with the armv6-ios3 toolchain,
 # collects them in ARM_OUT (default $BUILD_ROOT/arm-out) and verifies each binary:
 #   size, sha256, armv6-ios3-check, tools/isa_scan.py (post-ARMv6 instructions), and for the entitled
-#   binaries the entitlement keys (armv6-ios3-ldid -e) against common/fidelio-springboard.entitlements.plist;
+#   binaries the entitlement keys (armv6-ios3-ldid -e) against common/dock-springboard.entitlements.plist;
 #   the binary's link map: no .o file and no archive member under the sysroot was linked, and exactly one
 #   start-up object, the one for its file type, from the toolchain's armv6-ios3/lib/startfiles;
 #   tools/startcheck.py: the start-up code inside the binary (its linked literals and __DATA,__dyld),
@@ -18,13 +18,14 @@
 # carry no notice, so every binary would lack it.
 # Link maps: every ARM build step runs with IOS3_LINK_MAP_DIR=$BUILD_ROOT/arm/maps/<step>, so the
 # toolchain wrapper writes <output name>.map there for each link (a directory per step, because both
-# lock bundles link an output named "Fidelio"). A binary without its map fails the verification.
+# lock bundles link an output named "NowPlaying", as the app does). A binary without its map fails the
+# verification.
 #
-#   fidelio-audiod, fidelio-lockctl  audiod/CMakeLists.txt + toolchain file (POST_BUILD strips and entitlement-signs)
-#   fidelio-raop                    airplay/CMakeLists.txt, then strip -x + ldid -S
+#   dock-audiod, dock-lockctl        audiod/CMakeLists.txt + toolchain file (POST_BUILD strips and entitlement-signs)
+#   dock-raop                        airplay/CMakeLists.txt, then strip -x + ldid -S
 #   cspot-ios3                       spotify/cli-src against deps/cspot (upstream + repo patch), then strip -x + ldid -S
 #   NowPlaying.app                   nowplaying/src/build.sh
-#   Fidelio.lockbundle, Fidelio.bundle   nowplaying/lockplugin/build.sh (EXT lockbundle and bundle)
+#   NowPlaying.lockbundle, .bundle   nowplaying/lockplugin/build.sh (EXT lockbundle and bundle)
 #   DockRemote.dylib                 tweak/DockRemote/build.sh
 #   voltest                          audiod/probe/build.sh (a device probe of the system volume categories, B1.16.12)
 #
@@ -146,15 +147,15 @@ fi
 ( export IOS3_CXX_RUNTIME=libc++ IOS3_COMPAT_INCLUDE=1; build_mbedtls arm -DCMAKE_TOOLCHAIN_FILE="$TCFILE" )
 printf '%s\n' "$SYSROOT_STAMP" > "$ARM/mbedtls.stamp"
 
-note "fidelio-audiod + fidelio-lockctl"
+note "dock-audiod + dock-lockctl"
 maps_for audiod
 stamp_dir "$ARM/audiod" "$REPO $TC_STAMP $SYSROOT_STAMP"
 [ -f "$ARM/audiod/build.ninja" ] || logged "$LOGS/arm-audiod-configure.log" cmake_env \
   cmake -S "$REPO/audiod" -B "$ARM/audiod" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$TCFILE" -DCMAKE_BUILD_TYPE=Release
 grep -q '^IOS3_LDID:FILEPATH=.*armv6-ios3-ldid$' "$ARM/audiod/CMakeCache.txt" || die "audiod CMake did not find armv6-ios3-ldid: the binaries would not be entitlement-signed"
-logged "$LOGS/arm-audiod-build.log" cmake_env ninja -C "$ARM/audiod" fidelio-audiod fidelio-lockctl
+logged "$LOGS/arm-audiod-build.log" cmake_env ninja -C "$ARM/audiod" dock-audiod dock-lockctl
 
-note "fidelio-raop"
+note "dock-raop"
 maps_for airplay
 stamp_dir "$ARM/airplay" "$REPO $TC_STAMP $SYSROOT_STAMP"
 [ -f "$ARM/airplay/build.ninja" ] || logged "$LOGS/arm-airplay-configure.log" cmake_env \
@@ -181,7 +182,7 @@ script_env() { env -u IOS3_CXX_RUNTIME -u IOS3_COMPAT_INCLUDE "$@"; }
 note "NowPlaying.app"
 maps_for nowplaying
 logged "$LOGS/arm-nowplaying.log" script_env bash "$REPO/nowplaying/src/build.sh" "$ARM/nowplaying"
-note "Fidelio.lockbundle + Fidelio.bundle"
+note "NowPlaying.lockbundle + NowPlaying.bundle"
 maps_for lockplugin-lockbundle
 logged "$LOGS/arm-lockplugin-lockbundle.log" script_env bash "$REPO/nowplaying/lockplugin/build.sh" "$ARM/lockplugin" lockbundle
 maps_for lockplugin-bundle
@@ -197,35 +198,34 @@ unset IOS3_LINK_MAP_DIR
 # ------------------------------------------------------------------ collect ---------------------------
 note "collecting into $ARM_OUT"
 mkdir -p "$ARM_OUT"
-# (fidelio-audiod-openurlswhenlocked: the B1.16.4 entitlement A/B, gone since B1.16.6; removed if an older run left it)
-rm -rf "$ARM_OUT"/{fidelio-audiod,fidelio-audiod-openurlswhenlocked,fidelio-lockctl,fidelio-raop,cspot-ios3,NowPlaying.app,Fidelio.lockbundle,Fidelio.bundle,DockRemote.dylib,DockRemote.plist,voltest,verify,report.txt,SHA256SUMS}
+rm -rf "$ARM_OUT"/{dock-audiod,dock-lockctl,dock-raop,cspot-ios3,NowPlaying.app,NowPlaying.lockbundle,NowPlaying.bundle,DockRemote.dylib,DockRemote.plist,voltest,verify,report.txt,SHA256SUMS}
 mkdir -p "$ARM_OUT/verify"
-cp "$ARM/audiod/fidelio-audiod" "$ARM/audiod/fidelio-lockctl" "$ARM_OUT/"      # already stripped + entitlement-signed (POST_BUILD)
-for b in "$ARM/airplay/fidelio-raop" "$ARM/cspot/cspot-ios3"; do               # CSPOT.md: strip -x, then ldid -S, then check
+cp "$ARM/audiod/dock-audiod" "$ARM/audiod/dock-lockctl" "$ARM_OUT/"      # already stripped + entitlement-signed (POST_BUILD)
+for b in "$ARM/airplay/dock-raop" "$ARM/cspot/cspot-ios3"; do               # CSPOT.md: strip -x, then ldid -S, then check
   cp "$b" "$ARM_OUT/"; armv6-ios3-strip -x "$ARM_OUT/$(basename "$b")"; armv6-ios3-ldid -S "$ARM_OUT/$(basename "$b")"
 done
-cp -R "$ARM/nowplaying/NowPlaying.app" "$ARM/lockplugin/Fidelio.lockbundle" "$ARM/lockplugin/Fidelio.bundle" "$ARM_OUT/"
+cp -R "$ARM/nowplaying/NowPlaying.app" "$ARM/lockplugin/NowPlaying.lockbundle" "$ARM/lockplugin/NowPlaying.bundle" "$ARM_OUT/"
 cp "$ARM/dockremote/DockRemote.dylib" "$ARM/dockremote/DockRemote.plist" "$ARM_OUT/"
 cp "$ARM/probe/voltest" "$ARM_OUT/"
-ENTS="$REPO/common/fidelio-springboard.entitlements.plist"
+ENTS="$REPO/common/dock-springboard.entitlements.plist"
 
 # ------------------------------------------------------------------ verify ----------------------------
-BINARIES="fidelio-audiod fidelio-lockctl fidelio-raop cspot-ios3 NowPlaying.app/NowPlaying Fidelio.lockbundle/Fidelio Fidelio.bundle/Fidelio DockRemote.dylib voltest"
+BINARIES="dock-audiod dock-lockctl dock-raop cspot-ios3 NowPlaying.app/NowPlaying NowPlaying.lockbundle/NowPlaying NowPlaying.bundle/NowPlaying DockRemote.dylib voltest"
 keys_of() { grep -o '<key>[^<]*</key>' "$1" | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' || true; }
 want_ents="$(keys_of "$ENTS")"
 [ -n "$want_ents" ] || die "no <key> entries in $ENTS"
 # The link map of each collected binary: $MAPS/<build step>/<name of the link's -o output>.map
 map_of() {
   case "$1" in
-    fidelio-audiod|fidelio-lockctl) echo "$MAPS/audiod/$1.map" ;;
-    fidelio-raop)                   echo "$MAPS/airplay/$1.map" ;;
-    cspot-ios3)                     echo "$MAPS/cspot/$1.map" ;;
-    NowPlaying.app/NowPlaying)      echo "$MAPS/nowplaying/NowPlaying.map" ;;
-    Fidelio.lockbundle/Fidelio)     echo "$MAPS/lockplugin-lockbundle/Fidelio.map" ;;
-    Fidelio.bundle/Fidelio)         echo "$MAPS/lockplugin-bundle/Fidelio.map" ;;
-    DockRemote.dylib)               echo "$MAPS/dockremote/$1.map" ;;
-    voltest)                        echo "$MAPS/probe/$1.map" ;;
-    *)                              echo "$MAPS/no-map-known-for/$1" ;;
+    dock-audiod|dock-lockctl)            echo "$MAPS/audiod/$1.map" ;;
+    dock-raop)                           echo "$MAPS/airplay/$1.map" ;;
+    cspot-ios3)                          echo "$MAPS/cspot/$1.map" ;;
+    NowPlaying.app/NowPlaying)           echo "$MAPS/nowplaying/NowPlaying.map" ;;
+    NowPlaying.lockbundle/NowPlaying)    echo "$MAPS/lockplugin-lockbundle/NowPlaying.map" ;;
+    NowPlaying.bundle/NowPlaying)        echo "$MAPS/lockplugin-bundle/NowPlaying.map" ;;
+    DockRemote.dylib)                    echo "$MAPS/dockremote/$1.map" ;;
+    voltest)                             echo "$MAPS/probe/$1.map" ;;
+    *)                                   echo "$MAPS/no-map-known-for/$1" ;;
   esac
 }
 # Paths in a map are compared as the linker printed them and with symlinks resolved.
@@ -255,7 +255,7 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
     nerr="$(grep -c 'ERROR' "$ARM_OUT/verify/$tag.check.txt" || true)"
     nother="$(grep 'ERROR' "$ARM_OUT/verify/$tag.check.txt" | grep -vc 'SBAwayViewPluginController' || true)"
     if [ "$crc" = 0 ] && grep -q '=> PASS' "$ARM_OUT/verify/$tag.check.txt"; then check="PASS"
-    elif [ "$nerr" = 2 ] && [ "$nother" = 0 ] && [[ "$b" == Fidelio.* ]]; then check="FAIL(2 by-design)"
+    elif [ "$nerr" = 2 ] && [ "$nother" = 0 ] && [[ "$b" == NowPlaying.lockbundle/* || "$b" == NowPlaying.bundle/* ]]; then check="FAIL(2 by-design)"
     else check="FAIL($nerr errors)"; bad=1; fi
     # post-ARMv6 instructions: tools/isa_scan.py (decodes as the ARM1176 and as ARMv7; exit 2 = could not scan)
     irc=0; python3 -I "$ISA_SCAN" "$f" > "$ARM_OUT/verify/$tag.isa.txt" 2>&1 || irc=$?
@@ -302,7 +302,7 @@ FAILS="$ARM_OUT/verify/link-failures.txt"
     fi
     [ "$linkmap" != FAIL ] || bad=1
     ents="-"
-    case "$b" in fidelio-audiod|fidelio-lockctl)
+    case "$b" in dock-audiod|dock-lockctl)
       armv6-ios3-ldid -e "$f" > "$ARM_OUT/verify/$tag.entitlements.xml" 2>/dev/null || true
       got="$(keys_of "$ARM_OUT/verify/$tag.entitlements.xml")"
       ents="$(echo $got | wc -w) keys: $(echo $got | sed 's/com\.apple\.springboard\.//g')"

@@ -18,7 +18,7 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
 
 @implementation NowPlayingViewController
 
-- (id)initWithStatus:(FidelioStatus*)s {
+- (id)initWithStatus:(NPStatus*)s {
   if ((self = [super initWithNibName:nil bundle:nil])) {
     status = s;
     self.title = @"Now Playing";
@@ -87,7 +87,7 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
   self.view = v;
   [v release];
 
-  NSString* ph = [[NSBundle mainBundle] pathForResource:([FidelioStatus isTablet] ? @"placeholder_600" : @"placeholder") ofType:@"png"];
+  NSString* ph = [[NSBundle mainBundle] pathForResource:([NPStatus isTablet] ? @"placeholder_600" : @"placeholder") ofType:@"png"];
   placeholder = [[UIImage alloc] initWithContentsOfFile:ph];
 
   coverView = [[UIImageView alloc] initWithFrame:CGRectZero];
@@ -175,7 +175,7 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
 }
 
 // B1.18: the tablet rotates (the dock may hold it either way); the phone stays portrait as before.
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [NPStatus allowsOrientation:o]; }
 - (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)o duration:(NSTimeInterval)d { [self layoutContent]; }
 - (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)o { [self layoutContent]; }
 
@@ -188,7 +188,7 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
   CGFloat W = self.view.bounds.size.width, H = self.view.bounds.size.height;
   if (W < 1 || H < 1) return;
   NPLayout L;
-  NPLayoutCompute(W, H, [FidelioStatus isTablet] ? 1 : 0, &L);
+  NPLayoutCompute(W, H, [NPStatus isTablet] ? 1 : 0, &L);
   coverView.frame = CG(L.cover);
   coverView.layer.cornerRadius = L.tablet ? 16.0f : 10.0f;
   titleLabel.frame = CG(L.title);
@@ -244,11 +244,14 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
   NSString* st = [status state];
   // Only a live playing/paused state shows track data; anything else (idle, connected, stopped,
   // no/unreadable/stale status file) shows the placeholder tile and one status line.
-  BOOL stale = status.fileMissing || status.fileUnreadable || [status fileAge] > FIDELIO_STALE_S;
+  BOOL stale = status.fileMissing || status.fileUnreadable || [status fileAge] > NP_STALE_S;
   BOOL playing = [st isEqualToString:@"playing"], paused = [st isEqualToString:@"paused"];
   // audiod decides who owns the speaker: with it idle, a player that still claims "playing" (a
   // paused AirPlay sender streaming silence, a source that lost the arbitration) is not shown.
   BOOL active = !stale && (playing || paused) && ![status audiodIdle];
+  // B1.17: the data directory is missing, or nothing in it is fresh: say so instead of an empty screen.
+  NPDaemons daemons = [status daemons];
+  if (daemons != NP_DAEMONS_RUNNING) active = NO;
   // B1.16.16: a paused source that is still the dock remote's target keeps its track on screen; audiod
   // plays nothing, so it reads "Paused" whatever the player's file says (a silent gap reads "playing").
   if (active && [status pausedTarget]) { playing = NO; paused = YES; }
@@ -262,8 +265,17 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
     long long dur = [status durationMs];
     long long pos = [status positionMsNow];
     progress.progress = dur > 0 ? (float)((double)pos / (double)dur) : 0.0f;
-    elapsedLabel.text = [FidelioStatus formatTime:pos];
-    remainingLabel.text = dur > 0 ? [NSString stringWithFormat:@"-%@", [FidelioStatus formatTime:dur - pos]] : @"";
+    elapsedLabel.text = [NPStatus formatTime:pos];
+    remainingLabel.text = dur > 0 ? [NSString stringWithFormat:@"-%@", [NPStatus formatTime:dur - pos]] : @"";
+  } else if (daemons != NP_DAEMONS_RUNNING) {
+    titleLabel.text = @"Daemons not running";
+    artistLabel.text = daemons == NP_DAEMONS_NO_DIR ? @"No directory " DOCKRECEIVER_DIR
+                                                    : @"Nothing in " DOCKRECEIVER_DIR " is being updated";
+    albumLabel.text = @"audiod, Spotify and AirPlay are not running";
+    if (coverView.image != placeholder) coverView.image = placeholder;
+    progress.progress = 0.0f;
+    elapsedLabel.text = @"";
+    remainingLabel.text = @"";
   } else {
     titleLabel.text = @"";
     artistLabel.text = @"";
@@ -275,7 +287,8 @@ static CGRect CG(NPRect r) { return CGRectMake(r.x, r.y, r.w, r.h); }
   }
 
   NSString* line;
-  if (status.fileMissing) line = @"Waiting for a player (no status file)";
+  if (daemons != NP_DAEMONS_RUNNING) line = @"Daemons not running";
+  else if (status.fileMissing) line = @"Waiting for a player (no status file)";
   else if (status.fileUnreadable) line = @"Waiting for a player (unreadable status file)";
   else if (stale) line = @"Waiting for a player (status not updating)";
   else if (active) {

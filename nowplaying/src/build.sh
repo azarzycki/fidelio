@@ -11,8 +11,8 @@ mkdir -p "$APP"
 
 # -Werror=objc-method-access: a message whose method no header declares stops the build. As a warning it
 # compiles, with the result taken to be id and the arguments promoted: wrong code (toolchain/sysroot/README.md).
-CFLAGS="-O2 -Wall -Wno-unused -Werror=objc-method-access -fno-objc-arc -fobjc-exceptions -x objective-c"
-for f in main FidelioAppDelegate FidelioStatus NowPlayingViewController TechnicalViewController SettingsViewController EnumPickerViewController StringEditorViewController NPEventProbe NPRemoteControl; do
+CFLAGS="-O2 -Wall -Wno-unused -Werror=objc-method-access -fno-objc-arc -fobjc-exceptions -I../.. -x objective-c"   # -I../..: common/DataDir.h
+for f in main NPAppDelegate NPStatus NowPlayingViewController TechnicalViewController SettingsViewController EnumPickerViewController StringEditorViewController NPEventProbe NPRemoteControl; do
   armv6-ios3-clang $CFLAGS -c "$f.m" -o "$OUT/$f.o"
 done
 armv6-ios3-clang -O2 -Wall -c NPLayout.c -o "$OUT/NPLayout.o"   # B1.18: the layout core (plain C, also host-tested)

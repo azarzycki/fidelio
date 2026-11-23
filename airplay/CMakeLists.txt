@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(fidelio-raop CXX C)
+project(dock-raop CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -15,16 +15,16 @@ file(GLOB SRC src/*.cpp)
 if(NOT APPLE)
   list(FILTER SRC EXCLUDE REGEX "AudioQueueSink")
 endif()
-# Shared with fidelio-audiod and cspot-ios3: the audiod wire framing and the SocketSink output.
+# Shared with dock-audiod and cspot-ios3: the audiod wire framing and the SocketSink output.
 set(COMMON ${CMAKE_CURRENT_SOURCE_DIR}/../common)
-add_executable(fidelio-raop ${SRC} ${COMMON}/AudiodFraming.cpp ${COMMON}/SocketSink.cpp ${COMMON}/Settings.cpp)
-target_include_directories(fidelio-raop PRIVATE src ${COMMON} ${CMAKE_CURRENT_SOURCE_DIR}/.. ${MBEDTLS_PREFIX}/include)
-target_compile_options(fidelio-raop PRIVATE -O2 -Wall -Wno-unused-function)
-target_link_libraries(fidelio-raop PRIVATE alacdec
+add_executable(dock-raop ${SRC} ${COMMON}/AudiodFraming.cpp ${COMMON}/SocketSink.cpp ${COMMON}/Settings.cpp)
+target_include_directories(dock-raop PRIVATE src ${COMMON} ${CMAKE_CURRENT_SOURCE_DIR}/.. ${MBEDTLS_PREFIX}/include)
+target_compile_options(dock-raop PRIVATE -O2 -Wall -Wno-unused-function)
+target_link_libraries(dock-raop PRIVATE alacdec
   ${MBEDTLS_PREFIX}/lib/libmbedtls.a ${MBEDTLS_PREFIX}/lib/libmbedx509.a ${MBEDTLS_PREFIX}/lib/libmbedcrypto.a
 )
 if(APPLE)
-  target_link_libraries(fidelio-raop PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")
+  target_link_libraries(dock-raop PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")
 else()
-  target_link_libraries(fidelio-raop PRIVATE pthread)
+  target_link_libraries(dock-raop PRIVATE pthread)
 endif()

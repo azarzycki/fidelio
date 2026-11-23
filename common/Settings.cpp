@@ -5,7 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-namespace fidelio {
+namespace dockreceiver {
 
 const std::string Registry::kEmpty;
 
@@ -201,4 +201,4 @@ const std::string& Registry::get(const std::string& key) const { const Option* o
 bool Registry::getBool(const std::string& key) const { const Option* o = find(key); return o && (o->value == "on" || o->value == "true" || o->value == "1"); }
 long Registry::getInt(const std::string& key) const { const Option* o = find(key); return o ? strtol(o->value.c_str(), nullptr, 10) : 0; }
 
-}  // namespace fidelio
+}  // namespace dockreceiver

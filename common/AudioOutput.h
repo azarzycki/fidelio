@@ -1,5 +1,5 @@
 #pragma once
-// PCM output interface shared by the producers (fidelio-raop, cspot-ios3) and fidelio-audiod.
+// PCM output interface shared by the producers (dock-raop, cspot-ios3) and dock-audiod.
 // Implementations: SocketSink (common/, streams to audiod; the producers' default), AudioQueueOutput
 // (airplay/src, the hardware; audiod's default and the producers' --direct-audio), FileOutput and
 // NullOutput below (host tests).

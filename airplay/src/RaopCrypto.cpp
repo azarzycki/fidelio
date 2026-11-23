@@ -12,7 +12,7 @@ RaopCrypto::RaopCrypto() {
   mbedtls_pk_init(&pk);
   mbedtls_entropy_init(&entropy);
   mbedtls_ctr_drbg_init(&drbg);
-  const char* pers = "fidelio-raop";
+  const char* pers = "dock-raop";
   int rc = mbedtls_ctr_drbg_seed(&drbg, mbedtls_entropy_func, &entropy, (const unsigned char*)pers, strlen(pers));
   if (rc != 0) { IOS3_TRACE("ctr_drbg_seed failed -0x%04x", -rc); return; }
   rc = mbedtls_pk_parse_key(&pk, (const unsigned char*)kAirportExpressKeyPem, sizeof(kAirportExpressKeyPem), nullptr, 0,

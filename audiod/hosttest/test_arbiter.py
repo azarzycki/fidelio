@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host test for fidelio-audiod's arbitration (audiod/DESIGN.md).
+"""Host test for dock-audiod's arbitration (audiod/DESIGN.md).
 
 Starts audiod with --pcm-out/--event-log, opens three client connections ("spotify" = A sends
 sample 0x1111, "airplay" = B sends 0x2222, "quiet" = C sends 16, at the dither floor and below the
@@ -12,11 +12,11 @@ flush, so its buffered tail plays out), and that the played PCM is exactly the a
 The clients behave like the real producers behind SocketSink: audio runs LEAD ms ahead of real
 time (a LEAD burst at the start of each window, then one 20 ms chunk every 20 ms), so audiod's
 per-source ring holds the next LEAD when a takeover happens and every active segment plays its
-duration + LEAD of that source's timeline. Usage: test_arbiter.py PATH_TO_fidelio-audiod
+duration + LEAD of that source's timeline. Usage: test_arbiter.py PATH_TO_dock-audiod
 """
 import os, socket, struct, subprocess, sys, threading, time
 
-AUDIOD = sys.argv[1] if len(sys.argv) > 1 else "build/fidelio-audiod"
+AUDIOD = sys.argv[1] if len(sys.argv) > 1 else "build/dock-audiod"
 GAP, TAKEOVER, HOLD, RELEASE, IDLE_STOP = 120, 400, 1500, 1500, 2000  # gap short (default is 1000) so the flap test bites; idle-stop short
 QUIET_RELEASE = 3000  # default is 8000; shortened for the test
 THRESHOLD = 24

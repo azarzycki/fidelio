@@ -171,7 +171,7 @@ Where the entries come from:
   same: `voltest` is linked with `-framework Foundation` alone and names all three. The two are
   listed in the order in which the SDK's Foundation names them. A linked binary does not depend on
   that order; the order of the files in a link map does. The two links are the names that
-  `-lSystem` (every link) and `-lobjc` (`fidelio-audiod`) search for.
+  `-lSystem` (every link) and `-lobjc` (`dock-audiod`) search for.
 
 Two symbols of the lock-screen bundles are in no library and not in the manifest:
 `_OBJC_CLASS_$_SBAwayViewPluginController` and its metaclass are left to a flat lookup at load time
@@ -229,7 +229,7 @@ of the same day (the nine outputs built with the SDK) and the seven smoke-test f
   SDK for the headers only (`usr/include` and each framework's `Headers`). Each of the sixteen
   files was linked again from the object files of the reference build, with its original link
   command, then stripped and signed as the build does. All sixteen came out byte-identical to the
-  reference: `fidelio-audiod`, `fidelio-lockctl`, `fidelio-raop`, `cspot-ios3`, `NowPlaying`, both
+  reference: `dock-audiod`, `dock-lockctl`, `dock-raop`, `cspot-ios3`, `NowPlaying`, both
   lock-screen bundles, `DockRemote.dylib`, `voltest`, and the smoke-test files `hello`, `cxx`,
   `cxx-libcxx`, `objc`, `loader`, `libt.dylib`, `t.bundle`. (`DockRemote.dylib` is compiled and
   linked in one command, so it was compiled again as well.)

@@ -1,5 +1,5 @@
-// fidelio-audiod: the audio arbiter (audiod/DESIGN.md). Owns the single audio output; cspot and
-// fidelio-raop stream PCM to it over a Unix socket; most-recent-active-source-wins, debounced.
+// dock-audiod: the audio arbiter (audiod/DESIGN.md). Owns the single audio output; cspot and
+// dock-raop stream PCM to it over a Unix socket; most-recent-active-source-wins, debounced.
 // Output: the AudioQueue on iOS (airplay/src/AudioQueueOutput.h), --pcm-out / --no-audio on the host.
 #include <signal.h>
 #include <stdio.h>
@@ -21,6 +21,7 @@
 #include "AudiodSettings.h"
 #include "Server.h"
 #include "Settings.h"
+#include "common/DataDir.h"
 
 #ifndef AUDIOD_BUILD_HASH
 #define AUDIOD_BUILD_HASH "dev"
@@ -52,7 +53,7 @@ int main(int argc, char** argv) {
   std::string pcmOut;
   double pacedPpm = 0; bool paced = false;  // --pcm-out-paced: host model of the AudioQueue's consumption
   bool noAudio = false, feedSilenceSet = false;
-  so.statusDir = "/var/mobile/fidelio";
+  so.statusDir = DOCKRECEIVER_DIR;
 #ifdef __APPLE__
   AudioQueueSink::Options aq;
 #endif
@@ -61,7 +62,7 @@ int main(int argc, char** argv) {
     std::string a = argv[i];
     auto next = [&](const char* w) -> const char* { if (i + 1 >= argc) { fprintf(stderr, "missing value for %s\n", w); exit(1); } return argv[++i]; };
     if (a == "-h" || a == "--help") {
-      printf("Usage: fidelio-audiod [OPTION]...\n"
+      printf("Usage: dock-audiod [OPTION]...\n"
              "  --sock PATH              listen here (default %s; env AUDIOD_SOCK)\n"
              "  --pcm-out FILE           write the played PCM to FILE instead of the AudioQueue (host test)\n"
              "  --no-audio               discard the played PCM\n"
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
              "  --hw-volume-curve linear|log|cubic  (default linear) slider -> hardware level map in absolute mode\n"
              "  --wake-on-play on|off    (default on) when playback starts from nothing, wake the screen and bring the\n"
              "                           NowPlaying app to the front (SpringBoardServices, dlopen'ed; no-op if unavailable)\n"
-             "  --wake-bundle ID         (default com.fidelio.nowplaying)\n"
+             "  --wake-bundle ID         (default com.dockreceiver.nowplaying)\n"
              "  --wake-mode launch|screen  (default launch) launch: wake and open the app (as above); screen: only light\n"
              "                           the screen, so a locked device shows the lock-screen plugin; no unlock (B1.16.10)\n"
              "  --unlock-on-play on|off  (default on) when that launch is refused because the device is locked, unlock it\n"
@@ -102,7 +103,7 @@ int main(int argc, char** argv) {
              "                           it succeeds (cold boot: the daemon starts before the audio session server). on: the\n"
              "                           same, but no audio until the session is up. off: bare queue only, zero AudioSession\n"
              "                           calls (A/B diagnosis only)\n"
-             "  --status-dir DIR         write DIR/active-source (default /var/mobile/fidelio); --no-status disables\n"
+             "  --status-dir DIR         write DIR/active-source (default " DOCKRECEIVER_DIR "); --no-status disables\n"
              "  --event-log FILE         machine-readable transition log: '<ms> <kind> <from> <to> <reason>'\n"
              "  --no-silence / --silence do not / do feed silence between sources (default: on for\n"
              "                           --pcm-out, off for the AudioQueue, which pads itself)\n"
@@ -213,7 +214,7 @@ int main(int argc, char** argv) {
   // B1.15: the option registry is BOUND to the Server's live opts/t and built AFTER the Server is
   // constructed, so the manifest reads back the values the daemon actually uses (not a parallel copy).
   // Set up here only the paths; the registry itself is built below, once `server` exists.
-  std::string settingsDir = so.statusDir;  // /var/mobile/fidelio by default
+  std::string settingsDir = so.statusDir;  // DOCKRECEIVER_DIR by default
   std::string settingsConf = settingsDir.empty() ? "" : settingsDir + "/settings.conf";
 
   std::unique_ptr<AudioOutput> out;
@@ -224,7 +225,7 @@ int main(int argc, char** argv) {
     out.reset(fo);
   } else {
 #ifdef __APPLE__
-    IOS3_TRACE("fidelio-audiod: AudioQueue output, --audio-session %s", AudioQueueSink::sessionModeName(aq.session));
+    IOS3_TRACE("dock-audiod: AudioQueue output, --audio-session %s", AudioQueueSink::sessionModeName(aq.session));
     out.reset(new AudioQueueOutput(aq));
     if (!feedSilenceSet) so.feedSilence = false;  // the AudioQueue sink pads silence itself
 #else
@@ -232,7 +233,7 @@ int main(int argc, char** argv) {
     IOS3_TRACE("host build: use --pcm-out FILE or --no-audio"); return 2;
 #endif
   }
-  IOS3_TRACE("fidelio-audiod start (output: %s)", noAudio ? "discard" : !pcmOut.empty() ? pcmOut.c_str() : "AudioQueue");
+  IOS3_TRACE("dock-audiod start (output: %s)", noAudio ? "discard" : !pcmOut.empty() ? pcmOut.c_str() : "AudioQueue");
 
   // B1.9: hardware volume + display wake backends (host: mocks; device: dlopen'ed private frameworks)
   std::unique_ptr<HardwareVolume> hw;
@@ -256,7 +257,7 @@ int main(int argc, char** argv) {
   // any spelling of a flag set (shown locked in the app); loadFile applies settings.conf to the live
   // struct; applyLiveConfig pushes tunables into the arbiter; selfCheck logs any default/file drift;
   // the manifest is then the live truth.
-  fidelio::Registry reg("audiod", AUDIOD_BUILD_HASH);
+  dockreceiver::Registry reg("audiod", AUDIOD_BUILD_HASH);
   audiod::buildRegistry(reg, server.mutableOptions(), server.mutableTunables(), settingsDir);
   reg.markCommandLine(argc, argv);
   if (!settingsConf.empty()) reg.loadFile(settingsConf);
@@ -272,6 +273,6 @@ int main(int argc, char** argv) {
   signal(SIGTERM, audiod::Server::requestStop);
   signal(SIGINT, audiod::Server::requestStop);
   server.run();
-  IOS3_TRACE("fidelio-audiod exit");
+  IOS3_TRACE("dock-audiod exit");
   return 0;
 }

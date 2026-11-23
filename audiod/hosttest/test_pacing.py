@@ -4,7 +4,7 @@
   test_pacing.py AUDIOD RAOP
 
 audiod runs with --pcm-out-paced PPM: a model of the AudioQueue that consumes at 44100*(1+PPM/1e6)
-frames per wall second in 46 ms bursts. The host fidelio-raop streams a 20 s scripted RAOP session
+frames per wall second in 46 ms bursts. The host dock-raop streams a 20 s scripted RAOP session
 (airplay/hosttest/raop_sender.py --jitter: a 250 ms stall every 2 s) into it. For each clock skew
 the test runs audiod twice: --no-backpressure (the b14 behaviour: the producer paced by SocketSink's
 wall clock, audiod reads everything) and the default (b15: the active source read only as fast as

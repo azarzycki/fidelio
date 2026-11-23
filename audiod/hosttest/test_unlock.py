@@ -9,7 +9,7 @@ so there is no launch retry and no timeout any more. The lock plugin (B1.11) is 
 does not unlock the device for that start. The host build's mock waker plays a locked device (env
 AUDIOD_MOCK_LOCKED / AUDIOD_MOCK_UNLOCK) and logs every call ("mock waker: ..."); audiod logs every
 decision to the event log (kind "wake"). Each scenario runs its own audiod.
-Usage: test_unlock.py PATH_TO_fidelio-audiod
+Usage: test_unlock.py PATH_TO_dock-audiod
 """
 import os, re, socket, struct, subprocess, sys, threading, time
 
@@ -81,7 +81,7 @@ def scenario(name, env, args, plays, total_ms):
     proc = subprocess.Popen([AUDIOD, "--sock", sock, "--pcm-out", out, "--event-log", evt, "--no-status", "--no-silence",
                              "--takeover-ms", str(TAKEOVER), "--hold-ms", str(HOLD), "--release-ms", str(RELEASE),
                              "--idle-stop-ms", str(IDLE_STOP), "--lead-ms", str(LEAD), "--wake-on-play", "on",
-                             "--wake-bundle", "com.fidelio.nowplaying", "--lock-plugin", "fidelio"] + args,
+                             "--wake-bundle", "com.dockreceiver.nowplaying", "--lock-plugin", "NowPlaying"] + args,
                             stdout=open(log, "w"), stderr=subprocess.STDOUT, env=e)
     for _ in range(50):
         if os.path.exists(sock):
@@ -127,9 +127,9 @@ WAKE_CALL = r"mock waker: (?:wake|launch)\("
 
 # A. not locked: the launch succeeds, no unlock is attempted, the lock plugin is enabled as before.
 w, _, log = scenario("unlocked", {}, [], [(0, "spotify", 1500)], 3000)
-check(len(has(w, "wake+launch com.fidelio.nowplaying")) == 1, "unlocked: the wake's launch succeeded (wake+launch)")
+check(len(has(w, "wake+launch com.dockreceiver.nowplaying")) == 1, "unlocked: the wake's launch succeeded (wake+launch)")
 check(not [ev for ev in w if "unlock" in ev[4]] and count(log, UNLOCK_CALL) == 0, "unlocked: no unlock requested (launch 0 -> no unlock call)")
-lp = has(w, "lock-plugin enabled fidelio")
+lp = has(w, "lock-plugin enabled NowPlaying")
 check(len(lp) == 1, "unlocked: the lock plugin is enabled (audiod did not unlock the device)")
 
 # B. locked, SpringBoard accepts the unlock request: that is the result (B1.16.6). No launch retry, no
@@ -149,20 +149,20 @@ check(len(un) == 2 and count(log, UNLOCK_CALL) == 0, f"symbol missing: both star
 check(count(log, r"SBSOpenSensitiveURLAndUnlock is not available on this system") == 1, "symbol missing: the 'not available' line is logged once per process")
 idx = [i for i, ev in enumerate(allev) if ev[1] == "wake" and (ev[4].startswith("lock-plugin enabled") or ev[4].startswith("wake: device locked"))]
 order = [allev[i][4].split(":")[0] for i in idx]
-check(order[:2] == ["lock-plugin enabled fidelio", "wake"], f"symbol missing: lock plugin enabled before the wake (B1.11 order): {order[:2]}")
+check(order[:2] == ["lock-plugin enabled NowPlaying", "wake"], f"symbol missing: lock plugin enabled before the wake (B1.11 order): {order[:2]}")
 
 # D. locked, unlock_on_play off: no unlock call, the device stays on the lock screen, plugin enabled.
 w, _, log = scenario("unlock-off", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "ok"}, ["--unlock-on-play", "off"],
                      [(0, "spotify", 1500)], 3000)
 check(len(has(w, "wake: device locked, unlock-on-play off: staying on the lock screen")) == 1, "setting off: locked -> stays on the lock screen")
 check(count(log, UNLOCK_CALL) == 0 and count(log, WAKE_CALL) == 1, "setting off: no unlock call, only the wake's launch")
-check(len(has(w, "lock-plugin enabled fidelio")) == 1, "setting off: the lock plugin is enabled")
+check(len(has(w, "lock-plugin enabled NowPlaying")) == 1, "setting off: the lock plugin is enabled")
 
 # E. locked, the unlock request fails: logged once, never retried in a loop, plugin enabled.
 w, _, log = scenario("unlock-refused", {"AUDIOD_MOCK_LOCKED": "1", "AUDIOD_MOCK_UNLOCK": "refuse"}, [], [(0, "spotify", 2500)], 3500)
 check(len(has(w, "wake: device locked, unlock request failed (nowplaying:)")) == 1, "refused: one 'unlock request failed' event")
 check(count(log, UNLOCK_CALL) == 1 and count(log, WAKE_CALL) == 1, f"refused: one unlock call and no retry loop ({count(log, UNLOCK_CALL)} calls)")
-check(len(has(w, "lock-plugin enabled fidelio")) == 1, "refused: the lock plugin is enabled")
+check(len(has(w, "lock-plugin enabled NowPlaying")) == 1, "refused: the lock plugin is enabled")
 
 # F. B1.16.6 regression: SpringBoard accepts the request but would keep answering 3 to a launch (the
 #    5.1.1 iPad does that for seconds although it IS unlocked). B1.16.4 retried the launch, gave up with
@@ -186,7 +186,7 @@ check(len(has(w, "wake (screen only)")) == 1 and count(log, r"mock waker: wakeSc
 check(count(log, WAKE_CALL) == 0 and count(log, UNLOCK_CALL) == 0 and not [ev for ev in w if "unlock" in ev[4]],
       "screen mode: nothing launched and no unlock attempted, although the device is locked")
 order = [ev[4] for ev in allev if ev[1] == "wake" and (ev[4].startswith("lock-plugin enabled") or ev[4] == "wake (screen only)")]
-check(order[:2] == ["lock-plugin enabled fidelio", "wake (screen only)"], f"screen mode: the lock plugin is enabled before the screen wakes ({order[:2]})")
+check(order[:2] == ["lock-plugin enabled NowPlaying", "wake (screen only)"], f"screen mode: the lock plugin is enabled before the screen wakes ({order[:2]})")
 
 print("\n" + (f"{len(fails)} FAILURES" if fails else "all unlock-on-play checks passed"))
 sys.exit(1 if fails else 0)

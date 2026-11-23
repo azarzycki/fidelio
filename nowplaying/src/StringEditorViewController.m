@@ -1,6 +1,6 @@
 #import "StringEditorViewController.h"
 #import "SettingsViewController.h"
-#import "FidelioStatus.h"  // B1.18: isTablet, allowsOrientation, columnViewForTable
+#import "NPStatus.h"  // B1.18: isTablet, allowsOrientation, columnViewForTable
 
 @implementation StringEditorViewController
 
@@ -21,7 +21,7 @@
   v.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   CGFloat w = v.bounds.size.width;
   // B1.18: on the tablet the field is a centred 600 pt column instead of the full width
-  CGFloat fw = [FidelioStatus isTablet] && w > 640 ? 600 : w - 20;
+  CGFloat fw = [NPStatus isTablet] && w > 640 ? 600 : w - 20;
   field = [[UITextField alloc] initWithFrame:CGRectMake((w - fw) / 2, 20, fw, 34)];
   field.borderStyle = UITextBorderStyleRoundedRect;
   field.text = [option objectForKey:@"value"];
@@ -31,7 +31,7 @@
   field.clearButtonMode = UITextFieldViewModeWhileEditing;
   field.returnKeyType = UIReturnKeyDone;
   field.delegate = self;
-  field.autoresizingMask = [FidelioStatus isTablet] ? (UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin)
+  field.autoresizingMask = [NPStatus isTablet] ? (UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin)
                                                     : UIViewAutoresizingFlexibleWidth;
   [v addSubview:field];
   self.view = v;
@@ -41,7 +41,7 @@
 
 - (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; [field becomeFirstResponder]; }
 
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [FidelioStatus allowsOrientation:o]; }  // B1.18
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)o { return [NPStatus allowsOrientation:o]; }  // B1.18
 
 // Enforce maxlen (bytes) and reject control characters as they are typed.
 - (BOOL)textField:(UITextField*)tf shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString*)s {

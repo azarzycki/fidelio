@@ -1,5 +1,5 @@
 #import "NPRemoteControl.h"
-#import "FidelioStatus.h"  // FIDELIO_DIR, FIDELIO_APP_VERSION
+#import "NPStatus.h"  // NP_DIR, NP_APP_VERSION
 
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -25,7 +25,7 @@ static AVAudioPlayer* silence = nil;   // stage 3 only
 
 static void RCLog(NSString* line) {
   @try {
-    NSString* path = [FIDELIO_DIR stringByAppendingPathComponent:@"remote-control.log"];
+    NSString* path = [NP_DIR stringByAppendingPathComponent:@"remote-control.log"];
     NSString* entry = [NSString stringWithFormat:@"%.3f %@\n", CFAbsoluteTimeGetCurrent(), line];
     NSFileHandle* h = [NSFileHandle fileHandleForWritingAtPath:path];
     if (!h) { [entry writeToFile:path atomically:NO encoding:NSUTF8StringEncoding error:NULL]; return; }
@@ -40,7 +40,7 @@ static void RCLog(NSString* line) {
 @end
 
 static int ReadStage(void) {
-  NSString* s = [NSString stringWithContentsOfFile:[FIDELIO_DIR stringByAppendingPathComponent:@"remote-control.stage"]
+  NSString* s = [NSString stringWithContentsOfFile:[NP_DIR stringByAppendingPathComponent:@"remote-control.stage"]
                                           encoding:NSUTF8StringEncoding error:NULL];
   int n = s ? [s intValue] : 1;
   return n < 1 ? 1 : n > 3 ? 3 : n;
@@ -79,7 +79,7 @@ void NPRemoteControlSetup(UIApplication* app) {
     if (![app respondsToSelector:@selector(beginReceivingRemoteControlEvents)]) return;  // iPhone OS 3.1: nothing to do
     [app performSelector:@selector(beginReceivingRemoteControlEvents)];
     active = YES;
-    RCLog([NSString stringWithFormat:@"NowPlaying %@ launched: remote-control stage %d; beginReceivingRemoteControlEvents called", FIDELIO_APP_VERSION, stage]);
+    RCLog([NSString stringWithFormat:@"NowPlaying %@ launched: remote-control stage %d; beginReceivingRemoteControlEvents called", NP_APP_VERSION, stage]);
     if (stage >= 2) {
       void* mr = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY);
       void (*setCan)(Boolean) = mr ? (void (*)(Boolean))dlsym(mr, "MRMediaRemoteSetCanBeNowPlayingApplication") : NULL;
@@ -147,7 +147,7 @@ BOOL NPRemoteControlHandle(UIEvent* event, NSString* via) {
 // CONTROL. Short timeouts, so the UI never blocks for long. Mirrors common/AudiodControl. (Moved here from
 // NowPlayingViewController in B1.16.9, unchanged, so the dock remote and the buttons share it.)
 void NPSendControl(uint8_t verb) {
-  NSString* sp = [FIDELIO_DIR stringByAppendingPathComponent:@"audiod.sock"];
+  NSString* sp = [NP_DIR stringByAppendingPathComponent:@"audiod.sock"];
   int s = socket(AF_UNIX, SOCK_STREAM, 0);
   if (s < 0) return;
   struct timeval to = { 0, 300 * 1000 };

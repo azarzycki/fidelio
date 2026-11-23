@@ -1,8 +1,8 @@
 #import <UIKit/UIKit.h>
-#import "FidelioStatus.h"
+#import "NPStatus.h"
 
 @interface NowPlayingViewController : UIViewController {
-  FidelioStatus* status;  // not retained (owned by the app delegate)
+  NPStatus* status;  // not retained (owned by the app delegate)
   UIImageView* coverView;
   UIImage* placeholder;
   UILabel* titleLabel;
@@ -22,6 +22,6 @@
   int playGlyph;            // 1 = play, 2 = pause: what the play button shows
 }
 - (void)showNotice:(NSString*)text forSeconds:(NSTimeInterval)seconds;
-- (id)initWithStatus:(FidelioStatus*)s;
+- (id)initWithStatus:(NPStatus*)s;
 - (void)update;
 @end

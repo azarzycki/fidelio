@@ -1,5 +1,5 @@
 #pragma once
-// Player thread: pulls decoded PCM from cspot's CentralAudioBuffer and feeds the sink (fidelio-audiod
+// Player thread: pulls decoded PCM from cspot's CentralAudioBuffer and feeds the sink (dock-audiod
 // over the socket, or the local AudioQueue with --direct-audio).
 // Adapted from feelfreelinux/cspot targets/cli/CliPlayer (1b07a9c) for the squeezelite-esp32
 // cspot fork API (notifyAudioReachedPlayback takes the track identifier).
