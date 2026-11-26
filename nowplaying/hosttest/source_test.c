@@ -49,6 +49,20 @@ int main(void) {
   p = pick("none", "");
   CHECK(p.idle && !p.paused, "an empty remote-target counts as none");
 
+  // B1.19: keep the dock display awake only while a source actually owns the output (active-source names
+  // it). A paused remote target, an idle audiod and a stale/absent/garbage active-source all release the
+  // assertion so the screen may auto-lock. NPSourceKeepAwake(active, target); the target never keeps it awake.
+  CHECK(NPSourceKeepAwake("spotify", "spotify") == 1, "playing via spotify: keep the screen awake");
+  CHECK(NPSourceKeepAwake("airplay", "airplay") == 1, "playing via airplay: keep the screen awake");
+  CHECK(NPSourceKeepAwake("airplay", "spotify") == 1, "an active source keeps the screen awake whatever the target");
+  CHECK(NPSourceKeepAwake("spotify", NULL) == 1, "spotify active, no remote-target (older audiod): keep awake");
+  CHECK(NPSourceKeepAwake("none", "spotify") == 0, "paused remote target: no source owns the output, let the screen sleep");
+  CHECK(NPSourceKeepAwake("none", "airplay") == 0, "paused airplay target: let the screen sleep");
+  CHECK(NPSourceKeepAwake("none", "none") == 0, "idle (both none): let the screen sleep");
+  CHECK(NPSourceKeepAwake("none", NULL) == 0, "idle, older audiod (no remote-target): let the screen sleep");
+  CHECK(NPSourceKeepAwake("", "spotify") == 0, "stale/absent active-source but a fresh target: still paused, let the screen sleep");
+  CHECK(NPSourceKeepAwake("", NULL) == 0, "no audiod (active-source stale/absent): let the screen sleep");
+
   // B1.17: the "daemons not running" state (data directory missing, empty, or only old files).
   CHECK(NPIsDirectory("/tmp") && !NPIsDirectory("/nonexistent-np-source-test") && !NPIsDirectory("/bin/sh") && !NPIsDirectory(NULL),
         "the directory check: a directory yes; a missing path, a plain file and NULL no");

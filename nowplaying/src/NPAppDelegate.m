@@ -10,7 +10,9 @@ extern char** environ;
 
 - (void)applicationDidFinishLaunching:(UIApplication*)application {
   [application setStatusBarHidden:YES animated:NO];
-  [application setIdleTimerDisabled:YES];  // a dock display must not auto-lock
+  app = application;  // B1.19: kept for -tick: (see the header). The idle timer is no longer disabled
+  // unconditionally here: -tick:, which runs at once on activation, keeps the display awake only while a
+  // source owns the output, and releases the assertion otherwise.
 
   status = [[NPStatus alloc] init];
   [status refresh];
@@ -57,6 +59,13 @@ extern char** environ;
 
 - (void)tick:(NSTimer*)t {
   [status refresh];
+  // B1.19: keep the dock display awake only while a source actually owns the output (audiod's
+  // active-source names it). When nothing is active - idle, or a paused remote target - release the
+  // assertion so the screen can auto-lock; the paused source's cover keeps rendering until then.
+  // -applicationDidBecomeActive: calls -tick:, so a wake re-evaluates this at once.
+  const char* active = [[status activeSource] UTF8String];
+  const char* target = [status pausedTarget] ? [[status shownSource] UTF8String] : NULL;
+  [app setIdleTimerDisabled:(NPSourceKeepAwake(active, target) ? YES : NO)];
   [self watchdog];
   if (tabs.selectedViewController == nowPlaying) [nowPlaying update];
   else if (tabs.selectedViewController == technical) [technical update];

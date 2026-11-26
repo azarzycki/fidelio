@@ -38,7 +38,7 @@ Write triggers: every Spirc event, state changes, and once per second while `pla
 The fork's `TrackInfo.imageUrl` is already `https://i.scdn.co/image/<hex file id>` built from `album.cover_group.image[0]` (the proto keeps only `file_id`, no size enum; in practice `image[0]` is Spotify's DEFAULT ≈300 px image). cspot-ios3 fetches it with bell's own `HTTPClient::get` (HTTPS via mbedTLS, same path as the CDN audio) on the status writer's thread, writes `cover.jpg.tmp`, renames it to `cover.jpg`, then sets `"cover":"cover.jpg"`. On any failure the field stays `""` and the app shows the placeholder. The fetch is one extra TLS connection per track change (~40 KB heap while it runs). Unverified on hardware: whether `image[0]` is really the 300 px variant for every album; the app scales whatever it gets with aspect-fill into a 256 px rounded square.
 
 ## Screens
-- **Now Playing**: 256 px cover (rounded 10 px) or the placeholder tile, title (bold 26), artist (20), album (16, dimmed), progress bar with `m:ss` elapsed / `-m:ss` remaining, status line (Playing / Paused / Stopped / Connected - waiting for Spotify / Waiting for cspot (no status file); "(stale)" appended when the status file is older than 15 s). Black background, status bar hidden, idle timer disabled so the dock screen does not lock.
+- **Now Playing**: 256 px cover (rounded 10 px) or the placeholder tile, title (bold 26), artist (20), album (16, dimmed), progress bar with `m:ss` elapsed / `-m:ss` remaining, status line (Playing / Paused / Stopped / Connected - waiting for Spotify / Waiting for cspot (no status file); "(stale)" appended when the status file is older than 15 s). Black background, status bar hidden; since 1.5.1 the screen is kept awake only while a source owns the output, so the dock may auto-lock when idle or paused ("Letting the screen sleep when nothing plays", below).
 - **Technical**: plain black table, refreshed each second: state, codec+bitrate, TLS suite, access point, country, cspot RSS, app RSS (`task_info`), device free memory (`host_statistics` free pages), uptime (`KERN_BOOTTIME`), Wi-Fi IP (`getifaddrs` en0), battery (`UIDevice`, monitoring enabled), status-file age, device name, build. Since 1.4.2 a "Dock remote" section with the last key presses comes first (below).
 
 Memory: the app allocates the two view hierarchies, one decoded cover (≈300 KB for a 300 px JPEG) and a 14-row table. No caches, no large buffers.
@@ -133,6 +133,38 @@ target, the same state the DockRemote tweak reads, so the app, the tweak and aud
   `np_source`).
 - The lock-screen plugin is unchanged: it still follows `active-source` and is disabled when nothing is
   active (keeping the screen lit while paused is not wanted).
+
+## Letting the screen sleep when nothing plays (1.5.1, B1.19)
+
+The owner's rule (2026-11-25): the dock display should stay lit only while a source actually owns the
+output. Until 1.5.0 the app disabled the idle timer once at launch and never released it, so the screen
+never auto-locked. Since 1.5.1 the 1 Hz tick sets `setIdleTimerDisabled:` each second from audiod's
+`active-source`:
+
+| State (audiod's files) | Idle timer | The screen |
+|---|---|---|
+| playing: `active-source` names a source (`spotify` / `airplay`) | disabled | kept awake |
+| paused target: `active-source` = `none`, `remote-target` = a source | released | may auto-lock (the paused cover keeps rendering until it does) |
+| idle: both `none` | released | may auto-lock |
+| no audiod (files absent or older than 30 s) | released | may auto-lock |
+
+The decision keys off **`active-source`, not `remote-target`**: a paused source still shows its cover
+(the "A paused source stays on screen" rule above is unchanged) but no longer holds the screen awake.
+When audio restarts, audiod's `wake_on_play` re-lights the screen and the app, now frontmost again,
+re-asserts on its next tick (and at once through `applicationDidBecomeActive:`, which calls the tick).
+The lock-screen plugin is unchanged; it is already gated on active content.
+
+The decision is a pure C function, `NPSourceKeepAwake(active_source, remote_target)` in `NPSource.c`
+(returns 1 iff `active_source` names a real source, reusing the same none/empty/stale rule as
+`NPPickSource`; `remote_target` is taken for symmetry but a paused target never keeps the screen awake),
+host-tested in `nowplaying/hosttest/source_test.c` (suite `np_source`).
+
+**Two caveats that decide whether the screen actually sleeps:**
+- If the device's system **Auto-Lock is set to "Never"**, the idle timer never fires, so the screen will
+  not sleep however this app behaves. The real fix is this released assertion **plus** a finite Auto-Lock
+  on the device.
+- A **locked screen puts the device Wi-Fi into power-save**, which can delay the next Spotify/AirPlay
+  stream starting (the radio has to wake first). This is a behaviour tradeoff to verify on the device.
 
 ## The dock remote's key presses in the Technical tab (1.4.2, B1.16.13)
 

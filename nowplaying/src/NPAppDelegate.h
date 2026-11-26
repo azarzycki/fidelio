@@ -21,6 +21,9 @@
   SettingsViewController* settingsVC;
   UINavigationController* settingsNav;
   NSTimer* timer;
+  UIApplication* app;        // B1.19: the application singleton (not retained; lives for the process),
+                             // kept so -tick: can set the idle timer (the project's UIKit header has no
+                             // +sharedApplication; the delegate is always handed the application)
   BOOL everValid;            // status-spotify.plist has been seen since launch
   NSTimeInterval lastProd;   // CFAbsoluteTime of the last killall, 0 = never
 }

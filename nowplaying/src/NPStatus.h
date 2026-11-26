@@ -12,7 +12,7 @@
 #include "NPSource.h"
 
 #define NP_DIR @DOCKRECEIVER_DIR  // the one default (common/DataDir.h)
-#define NP_APP_VERSION @"1.5.0 (dock-receiver)"
+#define NP_APP_VERSION @"1.5.1 (dock-receiver)"
 #define NP_STALE_S 15.0          // status file older than this: the player is not updating it
 #define NP_ACTIVE_SOURCE_STALE_S 30.0  // active-source older than this (audiod rewrites it every 10 s): audiod is gone
 // B1.18: the cover is decoded to the size it is shown at: 256 px on the phone (memory: a deliberate

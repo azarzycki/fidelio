@@ -35,6 +35,14 @@ void NPSourceName(const char* text, size_t len, char* out, size_t cap);
 //   - otherwise (no audiod): not idle, shown "" (the caller shows the most recently updated status file).
 void NPPickSource(const char* active, const char* target, NPSourcePick* out);
 
+// B1.19: should the dock display be kept awake (idle timer disabled)? 1 iff active_source names a real
+// source: audio owns the output now (playing). A paused remote target (active_source "none"/"" with
+// remote_target named), an idle audiod (active_source "none") and no audiod (active_source ""/NULL, the
+// file absent or stale) all return 0, so the display may auto-lock while the app keeps rendering a paused
+// source's cover. remote_target is accepted for symmetry with NPPickSource but never keeps the screen
+// awake. Pure: the same none/empty/stale rule as NPPickSource, no I/O.
+int NPSourceKeepAwake(const char* active_source, const char* remote_target);
+
 // B1.17: are the suite's daemons running, as far as the data directory shows (the Now Playing tab says
 // "Daemons not running" instead of an empty screen when they are not).
 typedef enum {

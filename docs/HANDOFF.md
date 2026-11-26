@@ -212,6 +212,7 @@ The patch numbers are those of the retired series (§2.1); the history file refe
 | B1.16.14 | 5f519ec, 23f407d | none | audiod ignores a source's echo of a level it reported to that source (within 3 s and one dock step, 1/255): no set, no dock call; a held dock level is dropped at its flush when the hardware level changed outside meanwhile, even before the poll has seen it; host suite `dockvol` 14 → 25 checks (§2.5, §3.1, §10.4) | installed on the phone 2026-11-22 evening; Spotify played through it without a problem; the AirPlay echo test is still owed (§3.1) |
 | B1.16.16 | 59d03a1 | none | the remote keeps a paused source: audiod's **remote target** (the active source, or the paused last one until it disconnects, sends STOP, another source of ours plays, or audio not ours plays), written to `remote-target`; with nothing active every CONTROL verb goes to it (TOGGLE/PLAY as PLAY); DockRemote takes play/pause, next and previous while a target exists (falls back to `active-source` without the file); NowPlaying 1.4.3 keeps the paused source's track on screen; host suites `remote_core`, `remote_tgt`, `np_source` (§2.5, §5.2, §10.1, §10.5, §10.6) | installed on the phone 2026-11-22 19:28–19:32, DockRemote loaded 19:34:20; **phone PASS** 19:35–19:37: play/pause paused and resumed Spotify (both taken), and the Music app started by hand took the remote back (§2.5, §3.2); next/previous while paused, AirPlay, the iPad not yet tested |
 | B1.16.15 | 86ce0b7 | none | DockRemote: codes 4 (the left key, measured) and 3 (the right key, assumed by symmetry when built; measured since, §2.5) are previous and next as well: taken like 21 and 20 under swallow, logged as `previous` and `next` (the names `rewind` and `seek-forward` are gone); host suite `remote_keys` 52 → 65 checks (§2.5, §10.5) | installed on the phone 2026-11-22, loaded 18:35:49; first swallow test 18:42: previous and next taken and sent to Spotify (§2.5); what was heard not yet reported; play/pause, AirPlay, no source active not yet tested (§3.2) |
+| B1.19 | branch `screen-sleep-idle` (not on `main`) | none | NowPlaying 1.5.1: the dock display is kept awake only while a source actually owns the output (audiod's `active-source` names it); the idle-timer assertion is released when idle or paused so the screen can auto-lock, while a paused source's cover keeps rendering. Pure `NPSourceKeepAwake` in `NPSource.c` keyed off `active-source` (**not** `remote-target`); the 1 Hz `tick:` sets `setIdleTimerDisabled:` each second (the launch-time unconditional disable is gone). `packaging/VERSION` → `1.5.1-1` so the `pkg_debs` host suite's `build-debs.sh` version check passes (the device packages themselves are deferred to a later round). Host suite `np_source` 23 → 33, 938 ok in 30 suites (§10.6, `nowplaying/APP.md`). Caveats: a device Auto-Lock of "Never" defeats it; a locked screen's Wi-Fi power-save can delay the next stream | **not built into a package, not on a device**; only NowPlaying's binary changes (1.5.1: size 127,552, `d6620efd0bc196d6abbca1e6c1147bef124640ca2eac6932610613ba86340ebe`), every other binary byte-identical to B1.17 (§2.3.1) |
 | B1.17 | 8ab46f4, 7d1ced6, 307be01, 1f7d18d, and the docs commit after them | none | the rename `fidelio` → `dock-receiver` in the tree (`RENAME.md`): `dock-audiod`, `dock-raop`, `dock-lockctl`, `NowPlaying.bundle`/`.lockbundle`, `com.dockreceiver.*`, the data directory `/var/mobile/dockreceiver` as one compile-time default (`common/DataDir.h`), NowPlaying 1.5.0 with a "Daemons not running" state; the third-party notices (`packaging/THIRD-PARTY-NOTICES.md`); two reproducible Debian packages 1.5.0-1 whose install scripts are the migration (`packaging/`, `tools/build-debs.sh`); host suites `np_source` 15 → 23, new `pkg_setup` (243) and `pkg_debs` (77), 849 ok in 30 suites (§2.3, §6.4, §6.7) | **not yet run on a device**; staged on the PC in `C:/code/fidelio/cloud-build/deploy-b117/` (the two `.deb` files and `SHA256SUMS`); the migration is the first open item (§3.0) |
 
 ### 2.3 Builds
@@ -2066,8 +2067,9 @@ Defaults are in brackets.
 
 ### 10.6 NowPlaying
 - **Structure:**
-  - `NPAppDelegate` (was `FidelioAppDelegate`) sets `setIdleTimerDisabled:YES` at launch, so an unlocked device with the app in
-    front never auto-locks.
+  - `NPAppDelegate` (was `FidelioAppDelegate`): since 1.5.1 (B1.19) the idle timer is no longer disabled
+    unconditionally at launch; the 1 Hz tick keeps the display awake only while a source owns the output
+    (below).
   - The 1 Hz tick refreshes `NPStatus` (was `FidelioStatus`).
   - The cspot watchdog runs `killall -9` on a stale status.
 - **Layout:** `NPLayout.c`; the phone is pinned to the B1.16.1 frames, and the tablet layout is size-driven
@@ -2082,7 +2084,17 @@ Defaults are in brackets.
 - **"Daemons not running"** (1.5.0, B1.17): when the data directory is missing, or nothing in it is
   fresh (no `active-source` within 30 s and no status file modified within 30 s), the Now Playing tab
   says so and which case it is, instead of an empty screen. The decision is plain C (`NPDaemonsState`,
-  `NPIsDirectory` in `NPSource.c`), host suite `np_source` (23 checks).
+  `NPIsDirectory` in `NPSource.c`), host suite `np_source` (33 checks since B1.19).
+- **Letting the screen sleep** (1.5.1, B1.19): the launch-time unconditional `setIdleTimerDisabled:YES`
+  is gone; the 1 Hz `tick:` now sets it from audiod's `active-source` — the display is kept awake only
+  while a source owns the output, and the assertion is released when idle, paused or no audiod, so the
+  screen may auto-lock while the paused cover keeps rendering. Keyed off `active-source`, **not**
+  `remote-target` (a paused target still shows but no longer holds the screen). Pure `NPSourceKeepAwake`
+  in `NPSource.c`, host suite `np_source`. `applicationDidBecomeActive:` calls `tick:`, so a wake
+  re-evaluates at once; audiod's `wake_on_play` re-lights the screen on a new audio start (unchanged).
+  Caveats (`nowplaying/APP.md`): a device Auto-Lock of "Never" never fires the idle timer, so the real
+  fix is this released assertion plus a finite Auto-Lock; and a locked screen's Wi-Fi power-save can
+  delay the next Spotify/AirPlay stream (verify on device).
 - **Technical tab, "Dock remote"** (1.4.2): the last six lines of `remote-keys.log`, newest first, polled at
   2 Hz while the tab is visible (`NPKeyLog.c`; `nowplaying/APP.md`).
 
@@ -2152,6 +2164,7 @@ Defaults are in brackets.
 The first five lines are B1.17, on the branch `b117-rename` when this was written; `main` is
 fast-forwarded to them right after the docs commit, with the marker `audiod-b117` (§2.1).
 ```
+(branch) B1.19 NowPlaying 1.5.1: let the screen sleep when no source owns the output   (branch screen-sleep-idle, not on main)
 (docs)  docs: B1.17, the rename and the packages: the record under the new names   (marker audiod-b117)
 1f7d18d B1.17 (part B 3/3) host suites pkg_setup and pkg_debs
 307be01 B1.17 (part B 2/3) two Debian packages whose install scripts are the migration

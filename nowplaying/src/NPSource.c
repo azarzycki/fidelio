@@ -38,6 +38,11 @@ void NPPickSource(const char* active, const char* target, NPSourcePick* out) {
   }
 }
 
+int NPSourceKeepAwake(const char* active_source, const char* remote_target) {
+  (void)remote_target;  // for symmetry with NPPickSource; a paused target never keeps the screen awake
+  return namesSource(active_source) ? 1 : 0;
+}
+
 int NPIsDirectory(const char* path) {
   struct stat st;
   return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode) ? 1 : 0;
