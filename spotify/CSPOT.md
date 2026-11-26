@@ -177,3 +177,50 @@ Since B1.1 the volume goes to audiod as a VOLUME message and the status files ar
 
 ## Cover size (B1.18)
 `--cover-size large|listed` (registry `cover_size`, Spotify group, advanced; default `large`). The library takes the first image of the track's `cover_group`, and the trimmed `metadata.proto` carries no size field, so it cannot choose a size itself. Usually that first image is the 300 px one. Album-art ids on `i.scdn.co` carry the size in their first 16 hex digits (`ab67616d0000b273` 640 px, `ab67616d00001e02` 300 px, `ab67616d00004851` 64 px), followed by the same image hash for every size. `CoverUrl.h` rewrites a 300/64 px id to the 640 px one. `StatusWriter` fetches that first and falls back to the listed URL if it fails (trace `cover: no 640 px version, using the listed size`). Ids without that prefix are fetched as listed. The iPad shows the cover at 600 pt; the phone decodes any size down to 256 px. The 1 MB response cap is unchanged (a 640 px JPEG is roughly 100 to 200 KB). Host test: `spotify/hosttest/cover_url_test.cpp` (6 checks).
+
+## Sequential cross-account control (B1.20, rev 9)
+cspot-ios3 can now be handed from one Spotify account to another, on demand, with no restart by hand.
+There is no "controller left" signal in this fork (no dealer/websocket/presence), so the model is
+"takeover-able whenever not playing":
+
+- **While a song is playing** the receiver holds. A **different** account's add-user POST is refused
+  fast — status 103 (`ERROR-INVALID-ARGUMENTS`, non-101) instead of the old fake `ERROR-OK` — so the
+  other phone shows "couldn't connect" rather than spinning on a switch that will not happen mid-song.
+  A **re-add by the account already logged in** is answered OK.
+- **While not playing** (`StatusWriter.state != "playing"`: paused, stopped or idle) a **different**
+  account's add-user POST is **honoured**: its blob is decoded on the live login blob (the DH key that
+  GET `/spotify_info` advertised), its reusable credentials are persisted to the credentials store
+  (0600), and the process exits cleanly so launchd relaunches and logs in as the new account. If
+  nobody adds a user, the current account keeps its session and resumes normally.
+- Same-account transfer between that account's own devices already worked (SPIRC) and is unchanged.
+
+The blob is create-once-run-forever (every bell `Task` thread is detached, there is no hard join), so
+the switch is done by **persist-and-relaunch**, never an in-process teardown. Before overwriting the
+blob with the new account the current account's Mercury session is disabled, so its reconnect cannot
+fire mid-switch. The decision itself is the pure `postDecision()` in `cli-src/UserSwitch.h`
+(host-tested, no cspot types); "is a song playing?" is the mutex-guarded `StatusWriter::isPlaying()`.
+
+**Always advertises.** Before B1.20 a device that logged in from a file (`-c` or the store) did not
+start the Zeroconf server and so could never be taken over — file-login and Zeroconf were mutually
+exclusive. It now **always** advertises on 7864, whether it logged in from a file or is waiting for a
+first add-user, so it stays takeover-able whenever it is not playing.
+
+**`--credentials-store PATH`** (default `<status-dir>/spotify-user.json`, i.e.
+`/var/mobile/dockreceiver/spotify-user.json`) is where a switched-in account's reusable credentials
+are kept. At boot, if the file is present and valid, cspot-ios3 logs straight in as that account (no
+re-add) and keeps advertising. The file is the reusable Spotify secret: mode 0600, under the owner's
+data directory, never in the repo, never logged (only usernames are logged, never `authData`). If a
+login from the store fails, the file is deleted and the receiver comes up unclaimed (advertising for
+a fresh login) — this is the fallback, and it also bounds any relaunch loop (launchd `ThrottleInterval`).
+After a successful login from the store, the file is rewritten with the reusable form the AP returned,
+so the switch survives reboots even if the persisted add-user blob was single-use. `--no-status` (no
+status dir) disables the store, and the receiver then behaves as before (wait for a first add-user).
+
+`cspot-run` is unchanged: it passes only `--client-id`/`--client-secret`; the store path defaults from
+the status dir. Host test `spotify/hosttest/user_switch_test.cpp` (22 checks: the four `postDecision`
+outcomes and the credentials-store round-trip, all with a fabricated base64 secret, never a real one).
+
+*Device-only, still unverified:* that a fresh process authenticates as the switched-in account from
+the persisted decoded add-user blob without the account re-adding (expect `AUTH_SUCCESSFUL`, non-empty
+reusable creds). If instead it is declined, the delete-on-failure path above brings the receiver up
+unclaimed and the account simply re-adds — the one implementation covers both outcomes.

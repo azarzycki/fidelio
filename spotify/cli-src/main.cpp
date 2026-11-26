@@ -47,53 +47,17 @@ VolumeCurve PlayerSink::curve = VOLUME_LOG;
 #include "cJSON.h"
 #include "civetweb.h"
 #include "ios3_trace.h"
-
-static std::string readFile(const std::string& path) {
-  std::string out;
-  FILE* f = fopen(path.c_str(), "rb");
-  if (!f) return out;
-  char buf[4096];
-  size_t n;
-  while ((n = fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
-  fclose(f);
-  return out;
-}
-
-// Owner-only and atomic (tmp + rename): the file holds the reusable auth blob, and the device
-// reboots under memory pressure, so a half-written file must never replace a good one.
-static bool writePrivateFile(const std::string& path, const std::string& data) {
-  std::string tmp = path + ".tmp";
-  int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (fd < 0) return false;
-  bool ok = fchmod(fd, 0600) == 0;
-  for (size_t done = 0; ok && done < data.size();) {
-    ssize_t n = write(fd, data.data() + done, data.size() - done);
-    if (n <= 0) ok = false;
-    else done += (size_t)n;
-  }
-  ok = (close(fd) == 0) && ok;
-  if (!ok || rename(tmp.c_str(), path.c_str()) != 0) {
-    unlink(tmp.c_str());
-    return false;
-  }
-  return true;
-}
-
-// LoginBlob::loadJson dereferences the fields without checking, so a corrupt file would crash us
-// at every start. Only hand it a document that has what it reads.
-static bool credentialsLookValid(const std::string& json) {
-  cJSON* root = cJSON_ParseWithLength(json.c_str(), json.size());
-  if (!root) return false;
-  cJSON* type = cJSON_GetObjectItem(root, "authType");
-  cJSON* user = cJSON_GetObjectItem(root, "username");
-  cJSON* data = cJSON_GetObjectItem(root, "authData");
-  bool ok = cJSON_IsNumber(type) && cJSON_IsString(user) && cJSON_IsString(data) && data->valuestring[0] != 0;
-  cJSON_Delete(root);
-  return ok;
-}
+// readFile / writePrivateFile (0600, atomic) / credentialsLookValid moved to CredStore.h so the
+// credentials-store round-trip can be tested on the host; postDecision is the pure switch decision.
+#include "CredStore.h"
+#include "UserSwitch.h"
 
 struct Options {
   std::string username, password, credentials, name = "iPhone Fidelio";
+  // On-demand cross-account switch: where a switched-in account's reusable creds are persisted so the
+  // relaunched process logs in as it. Default <statusDir>/spotify-user.json; "" (and no status dir)
+  // disables the store (behave as before: wait for a Zeroconf add-user).
+  std::string credentialsStore;
   std::string clientId, clientSecret;
   int bitrate = 96;  // kindest to a 412 MHz ARM11
   int port = 7864;
@@ -171,6 +135,7 @@ static Options parseArgs(int argc, char** argv) {
     else if (a == "-u" || a == "--username") o.username = next("-u");
     else if (a == "-p" || a == "--password") o.password = next("-p");
     else if (a == "-c" || a == "--credentials") o.credentials = next("-c");
+    else if (a == "--credentials-store") o.credentialsStore = next("--credentials-store");
     else if (a == "-n" || a == "--name") o.name = next("-n");
     else if (a == "-b" || a == "--bitrate") o.bitrate = atoi(next("-b").c_str());
     else if (a == "--port") o.port = atoi(next("--port").c_str());
@@ -258,11 +223,20 @@ class ZeroconfAuthenticator {
   std::unique_ptr<bell::BellHTTPServer> server;
   std::unique_ptr<MDNSService> mdns;
   std::shared_ptr<cspot::LoginBlob> blob;
-  std::function<void()> onAuthSuccess;
-  std::function<void()> onClose;
-  // Set by the first accepted addUser. The blob is then owned by the session (it is reused for
-  // every reconnect), so later POSTs must not rewrite it; we do not support switching users.
+  std::function<void()> onAuthSuccess;  // FirstLogin: wake main to build the context
+  std::function<void()> onClose;        // GET /close
+
+  // Sequential cross-account control (B1.20). Set true by the first accepted addUser (or pre-set by
+  // main when it logged in from a file). The blob is reused by the session for every reconnect, so a
+  // later add-user POST is handled by postDecision(): a re-add by the same account is answered OK; a
+  // different account is refused fast while playing, or (while idle) decoded, its reusable creds
+  // persisted to credStorePath, and the process exits so launchd relaunches and logs in as it.
   std::atomic<bool> authenticated{false};
+  std::string currentUser;                // the account the live blob is logged in as
+  std::string credStorePath;              // where a switched-in account's reusable creds are persisted (0600)
+  std::function<bool()> isPlaying;        // true while the current account is actively playing
+  std::function<void()> disableSession;   // pre-empt the current account's Mercury reconnect before the switch
+  std::function<void()> requestExit;      // exit cleanly (isRunning=false) so launchd relaunches
 
   void registerHandlers() {
     server = std::make_unique<bell::BellHTTPServer>(serverPort);
@@ -277,10 +251,8 @@ class ZeroconfAuthenticator {
     });
     server->registerPost("/spotify_info", [this](struct mg_connection* conn) {
       IOS3_TRACE("zeroconf POST received");
-      if (authenticated) {
-        IOS3_TRACE("zeroconf POST after login, ignored");
-        return server->makeJsonResponse(kOkJson);
-      }
+      // Parse the body first (even once logged in) so the account being added is known before we
+      // decide what to do; a missing field is still a bad request, as before.
       auto requestInfo = mg_get_request_info(conn);
       long long length = requestInfo->content_length;
       if (length <= 0) {
@@ -310,16 +282,59 @@ class ZeroconfAuthenticator {
         CSPOT_LOG(error, "Zeroconf POST without userName/blob/clientKey, ignored");
         return server->makeJsonResponse(kBadRequestJson);
       }
-      try {
-        blob->loadZeroconfQuery(queryMap);
-      } catch (const std::exception& e) {
-        CSPOT_LOG(error, "Zeroconf blob rejected: %s", e.what());
-        return server->makeJsonResponse(kBadRequestJson);
+
+      const std::string postUser = queryMap["userName"];
+      const bool playing = isPlaying ? isPlaying() : false;
+      switch (cspot::postDecision(playing, authenticated.load(), currentUser, postUser)) {
+        case cspot::PostDecision::FirstLogin: {
+          try {
+            blob->loadZeroconfQuery(queryMap);
+          } catch (const std::exception& e) {
+            CSPOT_LOG(error, "Zeroconf blob rejected: %s", e.what());
+            return server->makeJsonResponse(kBadRequestJson);
+          }
+          IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
+          currentUser = blob->getUserName();
+          authenticated = true;
+          onAuthSuccess();
+          return server->makeJsonResponse(kOkJson);
+        }
+        case cspot::PostDecision::SameUserOk:
+          IOS3_TRACE("zeroconf POST re-add by the current account, ok");
+          return server->makeJsonResponse(kOkJson);
+        case cspot::PostDecision::RefuseBusy:
+          // A different account while a song is playing: fail fast (status 103, non-101) instead of
+          // the fake OK, so the other phone shows "couldn't connect" rather than spinning on a
+          // switch that will not happen mid-song.
+          IOS3_TRACE("zeroconf POST by a different account while playing: refused (busy)");
+          return server->makeJsonResponse(kBadRequestJson);
+        case cspot::PostDecision::SwitchToNewUser: {
+          if (credStorePath.empty()) {
+            // No store to persist to (e.g. --no-status): an on-demand switch is not possible, so keep
+            // the current session and answer OK as the pre-B1.20 post-login path did.
+            IOS3_TRACE("zeroconf POST by a different account while idle, but no credentials store: ignored");
+            return server->makeJsonResponse(kOkJson);
+          }
+          IOS3_TRACE("zeroconf POST by a different account while idle: switching");
+          // Pre-empt the current account's Mercury reconnect so it cannot fire mid-switch and
+          // overwrite the blob we are about to decode the new account into.
+          if (disableSession) disableSession();
+          try {
+            blob->loadZeroconfQuery(queryMap);  // decode the new account on the live DH key
+          } catch (const std::exception& e) {
+            CSPOT_LOG(error, "Zeroconf blob rejected: %s", e.what());
+            return server->makeJsonResponse(kBadRequestJson);
+          }
+          IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
+          // Persist the new account's reusable creds (0600, atomic) for the relaunch; never log authData.
+          if (!writePrivateFile(credStorePath, blob->toJson()))
+            CSPOT_LOG(error, "Cannot write credentials store %s: %s", credStorePath.c_str(), strerror(errno));
+          // Clean exit; launchd relaunches and the fresh process logs in as the new account.
+          if (requestExit) requestExit();
+          return server->makeJsonResponse(kOkJson);
+        }
       }
-      IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
-      authenticated = true;
-      onAuthSuccess();
-      return server->makeJsonResponse(kOkJson);
+      return server->makeJsonResponse(kBadRequestJson);  // unreachable: postDecision is exhaustive
     });
 
     mdns = MDNSService::registerService(blob->getDeviceName(), "_spotify-connect", "_tcp", "", serverPort,
@@ -352,6 +367,9 @@ int main(int argc, char** argv) {
                  "  -u, --username USER      log in with username/password instead of Zeroconf\n"
                  "  -p, --password PASS\n"
                  "  -c, --credentials FILE   store/load reusable credentials (JSON)\n"
+                 "  --credentials-store FILE on-demand cross-account switch store (reusable creds, JSON, 0600);\n"
+                 "                           default <status-dir>/spotify-user.json; always advertises so an\n"
+                 "                           idle (not playing) device can be taken over by another account\n"
                  "  -b, --bitrate 96|160|320 Vorbis bitrate (default 96)\n"
                  "  --port PORT              Zeroconf HTTP port (default 7864)\n"
                  "  --client-id ID / --client-secret SECRET\n"
@@ -401,7 +419,7 @@ int main(int argc, char** argv) {
   }
 
   // Logged AFTER settings.conf is applied, so it shows the effective values (not the pre-file defaults).
-  IOS3_TRACE("cspot-ios3 rev8 start (no-audio=%d, bitrate=%d, port=%d, name='%s')", (int)args.noAudio, args.bitrate, args.port, args.name.c_str());
+  IOS3_TRACE("cspot-ios3 rev9 start (no-audio=%d, bitrate=%d, port=%d, name='%s')", (int)args.noAudio, args.bitrate, args.port, args.name.c_str());
 
   std::unique_ptr<StatusWriter> status;
   if (!args.statusDir.empty()) {
@@ -476,6 +494,14 @@ int main(int argc, char** argv) {
 
   auto loginBlob = std::make_shared<cspot::LoginBlob>(args.name);
   bool haveCredentials = false;
+  bool loadedFromStore = false;
+
+  // On-demand cross-account switch store. Default <statusDir>/spotify-user.json; a persisted switch
+  // (or an explicit --credentials-store) logs us straight in as that account at boot. Empty (and no
+  // status dir) disables the store: behave as before, i.e. wait for a Zeroconf add-user.
+  std::string credStorePath = args.credentialsStore;
+  if (credStorePath.empty() && !args.statusDir.empty())
+    credStorePath = args.statusDir + "/spotify-user.json";
 
   if (!args.username.empty()) {
     loginBlob->loadUserPass(args.username, args.password);
@@ -490,36 +516,59 @@ int main(int argc, char** argv) {
     } else {
       CSPOT_LOG(error, "Credentials file %s is not usable, logging in via Zeroconf instead", args.credentials.c_str());
     }
+  } else if (!credStorePath.empty()) {
+    // A previous session persisted a switched-in account here: log in as it, no re-add needed.
+    std::string json = readFile(credStorePath);
+    if (!json.empty() && credentialsLookValid(json)) {
+      loginBlob->loadJson(json);
+      haveCredentials = true;
+      loadedFromStore = true;
+      IOS3_TRACE("credentials store present, logging in as '%s'", loginBlob->getUserName().c_str());
+    } else if (!json.empty()) {
+      CSPOT_LOG(error, "Credentials store %s is not usable, advertising for a fresh login", credStorePath.c_str());
+    }
   }
 
+  // Always advertise over Bonjour, even when logged in from a file: a device that is not playing must
+  // stay discoverable so another account can take it over (the store and Zeroconf now coexist; before
+  // B1.20 a file-loaded device never advertised and could not be taken over).
+  zeroconfServer->blob = loginBlob;
+  zeroconfServer->credStorePath = credStorePath;
+  zeroconfServer->onAuthSuccess = [loggedInSemaphore]() { loggedInSemaphore->give(); };
+  zeroconfServer->requestExit = [&isRunning]() { isRunning = false; };
+  if (status) zeroconfServer->isPlaying = [p = status.get()]() { return p->isPlaying(); };
   if (haveCredentials) {
-    loggedInSemaphore->give();
-  } else {
-    zeroconfServer->blob = loginBlob;
-    zeroconfServer->onAuthSuccess = [loggedInSemaphore]() { loggedInSemaphore->give(); };
-    // A restart within TCP TIME_WAIT of the previous instance can fail to bind the port;
-    // retry instead of dying on the CivetException (which otherwise escapes main).
-    const int maxAttempts = 60;
-    for (int attempt = 1;; attempt++) {
-      try {
-        zeroconfServer->registerHandlers();
-        break;
-      } catch (const std::exception& e) {
-        if (attempt >= maxAttempts) {
-          CSPOT_LOG(error, "Could not start the Zeroconf HTTP server on port %d: %s", args.port, e.what());
-          return 3;
-        }
-        CSPOT_LOG(error, "Zeroconf HTTP server on port %d failed to start (%s); retrying in 2 s (%d/%d)",
-                  args.port, e.what(), attempt, maxAttempts);
-        BELL_SLEEP_MS(2000);
-      }
-    }
-    IOS3_TRACE("zeroconf server + mDNS registered");
+    // Mark the server authenticated BEFORE it starts accepting POSTs, so an immediate add-user is
+    // treated as a re-add/switch (postDecision), not a spurious first login that races the boot login.
+    zeroconfServer->authenticated = true;
+    zeroconfServer->currentUser = loginBlob->getUserName();
   }
+  // A restart within TCP TIME_WAIT of the previous instance can fail to bind the port;
+  // retry instead of dying on the CivetException (which otherwise escapes main).
+  const int maxAttempts = 60;
+  for (int attempt = 1;; attempt++) {
+    try {
+      zeroconfServer->registerHandlers();
+      break;
+    } catch (const std::exception& e) {
+      if (attempt >= maxAttempts) {
+        CSPOT_LOG(error, "Could not start the Zeroconf HTTP server on port %d: %s", args.port, e.what());
+        return 3;
+      }
+      CSPOT_LOG(error, "Zeroconf HTTP server on port %d failed to start (%s); retrying in 2 s (%d/%d)",
+                args.port, e.what(), attempt, maxAttempts);
+      BELL_SLEEP_MS(2000);
+    }
+  }
+  IOS3_TRACE("zeroconf server + mDNS registered");
+  if (haveCredentials) loggedInSemaphore->give();  // skip the add-user wait; keep advertising
 
   loggedInSemaphore->wait();
   IOS3_TRACE("credentials available, creating context");
   auto ctx = cspot::Context::createFromBlob(loginBlob);
+  // From here an on-demand switch can pre-empt this account's Mercury reconnect before it overwrites
+  // the blob (closes the A-reconnect race in the switch path).
+  zeroconfServer->disableSession = [&ctx]() { if (ctx && ctx->session) ctx->session->disable(); };
   if (args.bitrate == 320) ctx->config.audioFormat = AudioFormat_OGG_VORBIS_320;
   else if (args.bitrate == 160) ctx->config.audioFormat = AudioFormat_OGG_VORBIS_160;
   else ctx->config.audioFormat = AudioFormat_OGG_VORBIS_96;
@@ -540,10 +589,19 @@ int main(int argc, char** argv) {
 
   if (ctx->config.authData.empty()) {
     CSPOT_LOG(error, "Authentication failed");
+    // If we logged in from the persisted switch store, that stored credential is dead: delete it so
+    // the relaunch comes up unclaimed (Zeroconf) instead of looping on it. This delete-on-failure is
+    // the fallback if a fresh process cannot in fact authenticate from a persisted add-user blob.
+    if (loadedFromStore && !credStorePath.empty() && unlink(credStorePath.c_str()) == 0)
+      CSPOT_LOG(error, "Deleted the unusable credentials store %s; the relaunch will advertise for a fresh login", credStorePath.c_str());
     return 2;
   }
+  // Auto-upgrade whichever credential file we logged in from to the reusable form the AP returned, so
+  // the switch store survives reboots even if the persisted add-user blob itself was single-use.
   if (!args.credentials.empty() && !writePrivateFile(args.credentials, ctx->getCredentialsJson()))
     CSPOT_LOG(error, "Cannot write credentials to %s: %s", args.credentials.c_str(), strerror(errno));
+  if (loadedFromStore && !credStorePath.empty() && !writePrivateFile(credStorePath, ctx->getCredentialsJson()))
+    CSPOT_LOG(error, "Cannot write credentials store %s: %s", credStorePath.c_str(), strerror(errno));
 
   auto handler = std::make_shared<cspot::SpircHandler>(ctx);
   IOS3_TRACE("SpircHandler created");

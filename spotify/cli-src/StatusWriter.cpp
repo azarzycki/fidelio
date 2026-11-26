@@ -140,6 +140,11 @@ void StatusWriter::setState(const char* s) {
   pthread_mutex_unlock(&wakeMutex);
 }
 
+bool StatusWriter::isPlaying() {
+  std::scoped_lock l(mutex);
+  return state == "playing";
+}
+
 void StatusWriter::setConnection(const std::string& a, const std::string& c) {
   {
     std::scoped_lock l(mutex);

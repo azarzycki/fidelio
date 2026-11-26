@@ -28,6 +28,9 @@ class StatusWriter {
   void setCountryProvider(std::function<std::string()> provider);
   // Position helpers used by the player: the audio actually ended (playlist end).
   void audioEnded();
+  // Thread-safe snapshot of whether a song is actively playing right now; read by the Zeroconf
+  // add-user handler to decide whether a different account may take the device over (B1.20).
+  bool isPlaying();
   // B1.18: fetch the 640 px cover first (CoverUrl.h), the listed one if that fails. Set before the first track.
   void setLargeCover(bool on) { largeCover = on; }
 
