@@ -50,7 +50,7 @@ EOF
 for b in dock-audiod dock-raop cspot-ios3 dock-lockctl DockRemote.dylib NowPlaying.app/NowPlaying NowPlaying.bundle/NowPlaying NowPlaying.lockbundle/NowPlaying; do
   printf 'fake binary %s\n' "$b" > "$A/$b"; chmod 755 "$A/$b"
 done
-plist "$A/NowPlaying.app/Info.plist" com.dockreceiver.nowplaying 1.5.0
+plist "$A/NowPlaying.app/Info.plist" com.dockreceiver.nowplaying 1.5.1
 plist "$A/NowPlaying.bundle/Info.plist" com.dockreceiver.lockplugin 1.0
 plist "$A/NowPlaying.lockbundle/Info.plist" com.dockreceiver.lockplugin 1.0
 printf 'icon\n' > "$A/NowPlaying.app/Icon.png"
