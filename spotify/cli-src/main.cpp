@@ -319,17 +319,27 @@ class ZeroconfAuthenticator {
           // Pre-empt the current account's Mercury reconnect so it cannot fire mid-switch and
           // overwrite the blob we are about to decode the new account into.
           if (disableSession) disableSession();
+          // disableSession() has already dropped account A, so from here EVERY exit must relaunch:
+          // launchd should find a clean, unclaimed process, never a zombie that holds the port with no
+          // live session. We answer OK only when BOTH the decode and the persist succeed; on either
+          // failure the switch did not happen, so we report failure to phone B but still exit on
+          // purpose - a failed switch intentionally relaunches unclaimed (login-from-store then finds
+          // nothing and the fresh process waits for an add-user) rather than leaving A dropped.
           try {
             blob->loadZeroconfQuery(queryMap);  // decode the new account on the live DH key
+            IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
+            // Persist the new account's reusable creds (0600, atomic) for the relaunch; never log authData.
+            if (!writePrivateFile(credStorePath, blob->toJson())) {
+              CSPOT_LOG(error, "Cannot write credentials store %s: %s", credStorePath.c_str(), strerror(errno));
+              if (requestExit) requestExit();
+              return server->makeJsonResponse(kBadRequestJson);
+            }
           } catch (const std::exception& e) {
             CSPOT_LOG(error, "Zeroconf blob rejected: %s", e.what());
+            if (requestExit) requestExit();
             return server->makeJsonResponse(kBadRequestJson);
           }
-          IOS3_TRACE("loadZeroconfQuery done (user '%s')", blob->getUserName().c_str());
-          // Persist the new account's reusable creds (0600, atomic) for the relaunch; never log authData.
-          if (!writePrivateFile(credStorePath, blob->toJson()))
-            CSPOT_LOG(error, "Cannot write credentials store %s: %s", credStorePath.c_str(), strerror(errno));
-          // Clean exit; launchd relaunches and the fresh process logs in as the new account.
+          // Both steps succeeded: clean exit, launchd relaunches and logs in as the new account.
           if (requestExit) requestExit();
           return server->makeJsonResponse(kOkJson);
         }
